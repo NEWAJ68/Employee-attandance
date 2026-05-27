@@ -167,7 +167,7 @@ export default function ReportsView({
             Track daily worklogs, compute payroll wages, separate overtime rewards and export sheets.
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleExportToExcel}
             id="btn-export-excel"

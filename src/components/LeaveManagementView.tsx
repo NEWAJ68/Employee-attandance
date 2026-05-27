@@ -581,7 +581,7 @@ export default function LeaveManagementView({
                     {/* Micro Attendance History Table */}
                     <div className="space-y-2">
                       <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Recent Logs Feed</h4>
-                      <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <div className="border border-slate-100 rounded-xl overflow-x-auto">
                         <table className="w-full text-left text-3xs font-mono">
                           <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold">
                             <tr>

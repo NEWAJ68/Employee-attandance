@@ -15,11 +15,14 @@ import {
   Sliders,
   Maximize2,
   Calendar,
-  Bell
+  Bell,
+  AlertTriangle,
+  MapPin
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
+import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
 
 // Firebase imports
 import { signInAnonymously } from 'firebase/auth';
@@ -103,6 +106,38 @@ export default function App() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
+
+  // Geofencing Warn Alerts
+  const [acknowledgedPunches, setAcknowledgedPunches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('acknowledgedPunches');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const unacknowledgedOutPunches = attendance.filter(rec => 
+    rec.isOutOfRange === true && !acknowledgedPunches.includes(`${rec.date}_${rec.employeeId}`)
+  );
+
+  const handleAcknowledgePunch = (date: string, empId: string) => {
+    const key = `${date}_${empId}`;
+    setAcknowledgedPunches(prev => {
+      const updated = [...prev, key];
+      localStorage.setItem('acknowledgedPunches', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAcknowledgeAllPunches = () => {
+    const keysToAck = unacknowledgedOutPunches.map(rec => `${rec.date}_${rec.employeeId}`);
+    setAcknowledgedPunches(prev => {
+      const updated = [...prev, ...keysToAck];
+      localStorage.setItem('acknowledgedPunches', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Sync state helpers
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -635,7 +670,7 @@ export default function App() {
       {/* Main viewport */}
       <div className="flex-1 flex flex-col lg:pl-72 min-w-0 min-h-screen pb-12">
         {/* Top bar (for mobile toggle menu / system status indicators) */}
-        <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-6 sticky top-0 z-20 print:hidden select-none">
+        <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-4 md:px-6 sticky top-0 z-20 print:hidden select-none">
           <div className="flex items-center space-x-3">
             <button
               onClick={toggleSidebar}
@@ -658,46 +693,49 @@ export default function App() {
           </div>
 
           {/* Sync indicator caps */}
-          <div className="flex items-center space-x-3.5">
+          <div className="flex items-center space-x-1.5 sm:space-x-3.5">
             <div 
-              className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+              className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
                 firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' :
                 firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
                 'bg-rose-50 border-rose-100 text-rose-700'
               }`}
               title="Firebase Cloud Database Connection Status"
             >
-              <div className={`w-1.5 h-1.5 rounded-full ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
-              <span>Cloud DB: {firebaseStatus}</span>
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
+              <span className="hidden sm:inline">Cloud DB: {firebaseStatus}</span>
+              <span className="sm:hidden text-[9px]">DB: {firebaseStatus === 'connected' ? 'On' : firebaseStatus === 'connecting' ? 'Hold' : 'Off'}</span>
             </div>
 
             {appsScriptUrl ? (
               <div 
-                className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+                className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
                   syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700 animate-pulse'
                 }`}
                 title="Synchronized to real-time Apps Script rows"
               >
-                <Wifi className="w-3.5 h-3.5 text-emerald-500" />
+                <Wifi className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 <span className="hidden sm:inline-block">GAS Sheet: Connected</span>
+                <span className="sm:hidden text-[9px]">GAS</span>
               </div>
             ) : (
               <div 
-                className="flex items-center space-x-1.5 px-3 py-1 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"
+                className="flex items-center space-x-1 px-2 py-1 md:px-3 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"
                 title="Mock database saving to browser localState"
               >
-                <WifiOff className="w-3.5 h-3.5 text-slate-400" />
+                <WifiOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span className="hidden sm:inline-block">LocalStorage Kiosk Active</span>
+                <span className="sm:hidden text-[9px]">LOCAL</span>
               </div>
             )}
 
             {/* Logout Button */}
             <button
               onClick={isAdminLoggedIn ? handleLogout : handleEmployeeLogout}
-              className="flex items-center space-x-1.5 px-3.5 py-2 bg-rose-50 border border-slate-100 rounded-xl text-rose-700 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all select-none cursor-pointer"
+              className="flex items-center justify-center space-x-1 px-2.5 py-2 md:px-3.5 bg-rose-50 border border-slate-100 rounded-xl text-rose-700 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all select-none cursor-pointer"
               title="Click here to sign out"
             >
-              <LogOut className="w-4 h-4 text-rose-505" />
+              <LogOut className="w-4 h-4 text-rose-505 shrink-0" />
               <span className="hidden sm:inline">Sign Out</span>
             </button>
 
@@ -706,7 +744,7 @@ export default function App() {
               <button
                 id="header-bell-badge"
                 onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
-                className="p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
+                className="p-2 md:p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
               >
                 <Bell className="w-4 h-4 text-slate-600" />
                 {filteredNotifications.filter(u => !u.read).length > 0 && (
@@ -783,7 +821,7 @@ export default function App() {
         </header>
 
         {/* View Router sheets */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
           {currentView === 'terminal' && (
             <AttendanceTerminal
               employees={employees}
@@ -888,6 +926,91 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Geofencing Admin Emergency Alert Popup */}
+      {isAdminLoggedIn && unacknowledgedOutPunches.length > 0 && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 print:hidden animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-lg border border-rose-100 shadow-2xl p-6 relative overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-rose-500" />
+            
+            <div className="flex items-start space-x-3.5 mb-4">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                <AlertTriangle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-black text-slate-900 leading-snug">🚨 Outside Geofence Punch Warning</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Employee transactions registered further than <strong>100 meters</strong> of Calitech HQ (26.118557, 91.539601) are automatically captured below:
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 py-1 max-h-[50vh]">
+              {unacknowledgedOutPunches.map((rec) => {
+                const coords = rec.locationIn || rec.locationEntry2 || rec.locationOut || rec.locationExit2 || '26.1185573,91.5396016';
+                const mapUrl = `https://www.google.com/maps/place/${coords}/@${coords},18z`;
+                return (
+                  <div key={`${rec.date}_${rec.employeeId}`} className="p-3.5 bg-rose-50/50 border border-rose-100 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-800">{rec.employeeName}</span>
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-rose-100 text-rose-700 rounded-md">
+                        {rec.distanceFromHq || 'Out of Range'}m Away
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                      <div>
+                        <span className="font-medium text-slate-400 block text-[9px] uppercase tracking-wider font-mono">Log Date</span>
+                        <span className="font-extrabold text-slate-700">{rec.date}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium text-slate-400 block text-[9px] uppercase tracking-wider font-mono">Registered Stamp</span>
+                        <span className="font-extrabold text-slate-700">
+                          {rec.entryTime || rec.entryTime2 || rec.exitTime || rec.exitTime2 || 'No timestamp'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-rose-100/60">
+                      <a
+                        href={mapUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-black tracking-normal text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-100 hover:border-indigo-200 px-2.5 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 flex items-center space-x-1 shrink-0"
+                      >
+                        <MapPin className="w-3 h-3 text-indigo-500" />
+                        <span>Trace on Google Maps</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAcknowledgePunch(rec.date, rec.employeeId)}
+                        className="text-[10px] font-extrabold px-3 py-1 bg-white border border-rose-200 hover:bg-rose-100 text-rose-750 rounded-lg cursor-pointer transition-all"
+                      >
+                        Acknowledge/Approve
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
+              <span className="text-[10px] font-semibold text-slate-400 font-mono tracking-tight">
+                {unacknowledgedOutPunches.length} alert{unacknowledgedOutPunches.length > 1 ? 's' : ''} pending
+              </span>
+
+              <button
+                type="button"
+                onClick={handleAcknowledgeAllPunches}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl cursor-pointer shadow-sm hover:shadow-md transition-all active:scale-95"
+              >
+                Acknowledge All Warnings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

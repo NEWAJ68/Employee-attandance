@@ -26,6 +26,16 @@ export interface AttendanceRecord {
   overtime: number; // overtime hours (totalHours - 8, if > 8)
   status: string; // e.g., "Present", "On Lunch", "Absent", "Late Entry", etc.
   notes?: string;
+  locationIn?: string;
+  locationOut?: string;
+  locationLunchOut?: string;
+  locationLunchIn?: string;
+  locationDinnerOut?: string;
+  locationDinnerIn?: string;
+  locationEntry2?: string;
+  locationExit2?: string;
+  isOutOfRange?: boolean;
+  distanceFromHq?: number;
 }
 
 export interface Settings {

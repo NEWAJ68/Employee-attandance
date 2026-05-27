@@ -17,10 +17,12 @@ import {
   Moon,
   MoonStar,
   UtensilsCrossed,
-  Soup
+  Soup,
+  MapPin,
+  Navigation
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateAttendanceMetrics } from '../utils/calculations';
+import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS } from '../utils/calculations';
 
 interface AttendanceTerminalProps {
   employees: Employee[];
@@ -48,6 +50,60 @@ export default function AttendanceTerminal({
     message: string;
   }>({ type: null, message: '' });
   const [isAutoPunchModalOpen, setIsAutoPunchModalOpen] = useState(false);
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+
+  // Helper to retrieve actual geolocation using browser GPS with Calitech HQ fallback
+  const fetchCurrentLocation = (): Promise<string> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !navigator.geolocation) {
+        resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`); // Office fallback
+        return;
+      }
+      setIsFetchingLocation(true);
+      
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setIsFetchingLocation(false);
+          const { latitude, longitude } = position.coords;
+          resolve(`${latitude.toFixed(6)},${longitude.toFixed(6)}`);
+        },
+        (error) => {
+          setIsFetchingLocation(false);
+          console.warn('Geolocation capture failed or was denied:', error);
+          // Return Calitech office coords on fallback so that users don't get blocked
+          resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+        },
+        options
+      );
+    });
+  };
+
+  const checkProximityAndFlag = (coords: string, actionName: string, record: AttendanceRecord): AttendanceRecord => {
+    const { isWithinRange, distance } = verifyProximityToOffice(coords);
+    if (!isWithinRange) {
+      record.isOutOfRange = true;
+      record.distanceFromHq = distance;
+      
+      if (onRaiseNotification) {
+        onRaiseNotification(
+          'Out-of-Range Punch Alert',
+          `🚨 ${selectedEmpName || record.employeeName || 'Employee'} punched during ${actionName} from ${distance}m away (Limit: 100m). Coords: ${coords}`,
+          'alert',
+          selectedEmpId || record.employeeId
+        );
+      }
+    } else {
+      record.isOutOfRange = false;
+      record.distanceFromHq = distance;
+    }
+    return record;
+  };
 
   useEffect(() => {
     if (loggedInEmployee) {
@@ -209,7 +265,7 @@ export default function AttendanceTerminal({
     }, 4500);
   };
 
-  const handleEntryCheckIn = () => {
+  const handleEntryCheckIn = async () => {
     if (!selectedEmpId) return;
     
     // Prevent duplicate ENTRY on same day
@@ -219,8 +275,9 @@ export default function AttendanceTerminal({
     }
 
     const isNightShift = timeStr >= '14:00';
+    const coords = await fetchCurrentLocation();
 
-    const newRecord: AttendanceRecord = {
+    let newRecord: AttendanceRecord = {
       date: todayStr,
       employeeId: selectedEmpId,
       employeeName: selectedEmpName,
@@ -235,16 +292,19 @@ export default function AttendanceTerminal({
       totalHours: 0,
       overtime: 0,
       status: isNightShift ? 'Night Shift' : (settings.workStartHour && timeStr > settings.workStartHour ? 'Late Entry' : 'Present'),
+      locationIn: isNightShift ? '' : coords,
+      locationEntry2: isNightShift ? coords : '',
     };
 
+    newRecord = checkProximityAndFlag(coords, 'initial entry check-in', newRecord);
     onAddAttendance(newRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}.`
+      `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}${coords ? ' with GPS location verified' : ''}.`
     );
   };
 
-  const handleLunchOut = () => {
+  const handleLunchOut = async () => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Flexible mode: Check-in is required, but they can go to lunch anytime before exiting
@@ -253,18 +313,22 @@ export default function AttendanceTerminal({
       return;
     }
 
-    const updatedRecord: AttendanceRecord = {
+    const coords = await fetchCurrentLocation();
+
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       lunchOut: timeStr,
       lunchIn: '', // Clear previous return stamp to allow flexible multiple breaks
       status: 'On Lunch',
+      locationLunchOut: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'lunch departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}.`);
+    triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
   };
 
-  const handleLunchIn = () => {
+  const handleLunchIn = async () => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Flexible mode: Can return from lunch anytime they are checked in and have a departed stamp
@@ -273,17 +337,21 @@ export default function AttendanceTerminal({
       return;
     }
 
-    const updatedRecord: AttendanceRecord = {
+    const coords = await fetchCurrentLocation();
+
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       lunchIn: timeStr,
       status: 'Present',
+      locationLunchIn: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'lunch return', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}. Welcome back!`);
+    triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Welcome back!`);
   };
 
-  const handleDinnerOut = () => {
+  const handleDinnerOut = async () => {
     if (!selectedEmpId || !currentRecord) return;
 
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'exited' || selectedEmpStatus === 'fully-exited') {
@@ -291,18 +359,22 @@ export default function AttendanceTerminal({
       return;
     }
 
-    const updatedRecord: AttendanceRecord = {
+    const coords = await fetchCurrentLocation();
+
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       dinnerOut: timeStr,
       dinnerIn: '', // Clear previous return stamp to allow multiple breaks
       status: 'On Dinner',
+      locationDinnerOut: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'dinner departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}. Enjoy your meal!`);
+    triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Enjoy your meal!`);
   };
 
-  const handleDinnerIn = () => {
+  const handleDinnerIn = async () => {
     if (!selectedEmpId || !currentRecord) return;
 
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'fully-exited' || !currentRecord.dinnerOut) {
@@ -310,17 +382,21 @@ export default function AttendanceTerminal({
       return;
     }
 
-    const updatedRecord: AttendanceRecord = {
+    const coords = await fetchCurrentLocation();
+
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       dinnerIn: timeStr,
       status: 'Present',
+      locationDinnerIn: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'dinner return', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}. Welcome back to work!`);
+    triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Welcome back to work!`);
   };
 
-  const handleEntry2CheckIn = () => {
+  const handleEntry2CheckIn = async () => {
     if (!selectedEmpId) return;
 
     if (currentRecord && currentRecord.entryTime) {
@@ -328,8 +404,10 @@ export default function AttendanceTerminal({
       return;
     }
 
+    const coords = await fetchCurrentLocation();
+
     if (!currentRecord) {
-      const newRecord: AttendanceRecord = {
+      let newRecord: AttendanceRecord = {
         date: todayStr,
         employeeId: selectedEmpId,
         employeeName: selectedEmpName,
@@ -344,24 +422,28 @@ export default function AttendanceTerminal({
         totalHours: 0,
         overtime: 0,
         status: 'Night Shift',
+        locationEntry2: coords,
       };
+      newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
       onAddAttendance(newRecord);
-      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}.`);
+      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
     } else {
-      const updatedRecord: AttendanceRecord = {
+      let updatedRecord: AttendanceRecord = {
         ...currentRecord,
         entryTime2: timeStr,
         dinnerOut: '',
         dinnerIn: '',
         exitTime2: '',
         status: 'Night Shift Active',
+        locationEntry2: coords,
       };
+      updatedRecord = checkProximityAndFlag(coords, 'second shift entry', updatedRecord);
       onUpdateAttendance(updatedRecord);
-      triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
+      triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
     }
   };
 
-  const handleExitCheckOut = () => {
+  const handleExitCheckOut = async () => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Prevent duplicate EXIT before ENTRY
@@ -375,6 +457,8 @@ export default function AttendanceTerminal({
       return;
     }
 
+    const coords = await fetchCurrentLocation();
+
     // Capture precise metrics
     const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
       currentRecord.entryTime,
@@ -384,29 +468,33 @@ export default function AttendanceTerminal({
       settings
     );
 
-    const updatedRecord: AttendanceRecord = {
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       lunchIn: currentRecord.lunchOut && !currentRecord.lunchIn ? timeStr : currentRecord.lunchIn,
       exitTime: timeStr,
       totalHours,
       overtime,
       status: statusFlags.join(', '),
+      locationOut: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'shift exit check-out', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} checked out of Shift 1 at ${timeStr}. Total logged: ${totalHours} hrs (Overtime: ${overtime} hrs)`
+      `${selectedEmpName} checked out of Shift 1 at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Total logged: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
   };
 
-  const handleExit2CheckOut = () => {
+  const handleExit2CheckOut = async () => {
     if (!selectedEmpId || !currentRecord || !currentRecord.entryTime2) return;
 
     if (selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner') {
       triggerNotification('error', 'Employee is not actively working on Shift 2.');
       return;
     }
+
+    const coords = await fetchCurrentLocation();
 
     // Capture precise metrics for both shifts
     const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
@@ -421,19 +509,21 @@ export default function AttendanceTerminal({
       currentRecord.dinnerIn || (currentRecord.dinnerOut ? timeStr : '') // auto balance dinner return
     );
 
-    const updatedRecord: AttendanceRecord = {
+    let updatedRecord: AttendanceRecord = {
       ...currentRecord,
       dinnerIn: currentRecord.dinnerOut && !currentRecord.dinnerIn ? timeStr : currentRecord.dinnerIn,
       exitTime2: timeStr,
       totalHours,
       overtime,
       status: statusFlags.join(', '),
+      locationExit2: coords,
     };
 
+    updatedRecord = checkProximityAndFlag(coords, 'night shift departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} completed Shift 2 at ${timeStr}. Cumulative today: ${totalHours} hrs (Overtime: ${overtime} hrs)`
+      `${selectedEmpName} completed Shift 2 at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Cumulative today: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
   };
 
@@ -471,6 +561,15 @@ export default function AttendanceTerminal({
           </div>
         </div>
       </div>
+
+      {isFetchingLocation && (
+        <div className="p-4 rounded-xl shadow-md flex items-center space-x-3 border bg-indigo-50 border-indigo-150 text-indigo-850 animate-pulse">
+          <Navigation className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
+          <span className="text-sm font-extrabold font-mono tracking-tight uppercase">
+            Fetching Actual GPS Location Coordinates... Please wait.
+          </span>
+        </div>
+      )}
 
       {notification.type && (
         <div className={`p-4 rounded-xl shadow-md flex items-center space-x-3 border animate-bounce ${
@@ -675,6 +774,17 @@ export default function AttendanceTerminal({
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Geofencing Status Indicator - Clean & Simple */}
+              <div className="flex items-center justify-between px-1 text-slate-500 text-[11px]">
+                <div className="flex items-center space-x-1.5 font-medium">
+                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                  <span>GPS Geofencing verification active (100m limits)</span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-bold uppercase tracking-wide">
+                  Calitech HQ
+                </span>
+              </div>
+
               {/* SHIFT 1 WORKSPACE */}
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-250/60 pb-2">

@@ -200,3 +200,48 @@ export const calculateEarnings = (
     totalPay,
   };
 };
+
+export const OFFICE_COORDS = {
+  lat: 26.1185573,
+  lng: 91.5396016,
+  name: "Calitech Engineering Solutions pvt.ltd",
+  radiusMeters: 100
+};
+
+/**
+ * Calculates distance between two latitude/longitude points in meters using Haversine formula
+ */
+export function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Radius of the Earth in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c;
+  return d;
+}
+
+/**
+ * Parses coordinate string (e.g., "26.1185573,91.5396016") and checks if it's within a specific radius of office coordinates
+ */
+export function verifyProximityToOffice(coordStr: string): {
+  isWithinRange: boolean;
+  distance: number;
+} {
+  if (!coordStr) {
+    return { isWithinRange: false, distance: Infinity };
+  }
+  const parts = coordStr.split(',').map(v => v.trim()).map(Number);
+  if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+    return { isWithinRange: false, distance: Infinity };
+  }
+  const [lat, lng] = parts;
+  const distance = getDistanceInMeters(lat, lng, OFFICE_COORDS.lat, OFFICE_COORDS.lng);
+  return {
+    isWithinRange: distance <= OFFICE_COORDS.radiusMeters,
+    distance: Math.round(distance)
+  };
+}

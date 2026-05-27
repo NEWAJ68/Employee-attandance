@@ -18,7 +18,8 @@ import {
   User,
   Check,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest } from '../types';
 
@@ -146,7 +147,8 @@ export default function MyAttendanceView({
       clockOut: detail?.exitTime || detail?.exitTime2 || '--:--',
       hours: detail?.totalHours || 0,
       overtime: detail?.overtime || 0,
-      notes: detail?.notes
+      notes: detail?.notes,
+      rawRecord: detail
     };
   });
 
@@ -271,10 +273,10 @@ export default function MyAttendanceView({
       )}
 
       {/* Bento Grid Header Layout: Corporate ID Card & Section Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Left: ID Card Widget & Profile Photo Upload */}
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-6 rounded-2xl text-white shadow-md border border-slate-800 flex flex-col justify-between relative overflow-hidden select-none">
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-4 sm:p-6 rounded-2xl text-white shadow-md border border-slate-800 flex flex-col justify-between relative overflow-hidden select-none">
           <div className="absolute -top-4 -right-4 h-24 w-24 rounded-full bg-indigo-500/10 blur-xl"></div>
           
           <div className="space-y-4">
@@ -290,7 +292,7 @@ export default function MyAttendanceView({
             <div className="flex items-center space-x-4">
               {/* Photo Upload Container */}
               <div className="relative group shrink-0">
-                <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-indigo-500/40 bg-slate-950/40 flex items-center justify-center relative shadow">
+                <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full overflow-hidden border-2 border-indigo-500/40 bg-slate-950/40 flex items-center justify-center relative shadow">
                   {loggedInEmployee.photoUrl ? (
                     <img 
                       src={loggedInEmployee.photoUrl} 
@@ -322,7 +324,7 @@ export default function MyAttendanceView({
               </div>
 
               {/* ID Details */}
-              <div className="space-y-1">
+              <div className="space-y-0.5 sm:space-y-1">
                 <h3 className="text-sm font-black tracking-tight text-white">{loggedInEmployee.name}</h3>
                 <p className="text-2xs text-slate-350 font-mono">{loggedInEmployee.id} • {loggedInEmployee.department}</p>
                 <div className="text-[10px] text-slate-400">
@@ -338,22 +340,22 @@ export default function MyAttendanceView({
             )}
           </div>
 
-          <div className="pt-4 border-t border-slate-850 mt-4 flex items-center justify-between text-2xs text-slate-400 font-mono">
+          <div className="pt-3 sm:pt-4 border-t border-slate-850 mt-4 flex items-center justify-between text-2xs text-slate-400 font-mono">
             <span>Email Status:</span>
             <span className="text-indigo-200 truncate max-w-[150px] font-sans">{loggedInEmployee.email}</span>
           </div>
         </div>
 
         {/* Right 2 Cols: Month pickers & Description summary */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col justify-between gap-4">
+        <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
-              <span className="bg-indigo-50 text-indigo-700 p-2 rounded-xl border border-indigo-100 flex items-center justify-center">
+              <span className="bg-indigo-50 text-indigo-700 p-2 rounded-xl border border-indigo-100 flex items-center justify-center shrink-0">
                 <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
               </span>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-widest leading-none block">Personal Board</span>
-                <h1 className="text-lg font-black text-slate-900 tracking-tight leading-snug">My Attendance Statement</h1>
+                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-snug">My Attendance Statement</h1>
               </div>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed font-medium">
@@ -362,9 +364,9 @@ export default function MyAttendanceView({
           </div>
 
           {/* Month Selection and Download Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4">
-            <div className="flex items-center space-x-3">
-              <div className="relative shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-50 pt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+              <div className="relative shrink-0 w-full sm:w-auto">
                 <CalendarIcon className="w-4 h-4 text-slate-450 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input 
                   type="month" 
@@ -374,15 +376,16 @@ export default function MyAttendanceView({
                       setSelectedMonth(e.target.value);
                     }
                   }}
-                  className="appearance-none border border-slate-200 outline-none rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:ring-1 focus:ring-indigo-500 bg-slate-50 cursor-pointer"
+                  className="appearance-none border border-slate-200 outline-none rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:ring-1 focus:ring-indigo-500 bg-slate-50 cursor-pointer w-full sm:w-auto"
                 />
               </div>
 
               {/* View Switcher: Calendar vs Table list */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-150/40">
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-150/40 w-full sm:w-fit justify-center sm:justify-start">
                 <button
+                  type="button"
                   onClick={() => setViewType('calendar')}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
                     viewType === 'calendar' 
                       ? 'bg-white text-indigo-700 shadow-2xs' 
                       : 'text-slate-550 hover:text-slate-800'
@@ -392,8 +395,9 @@ export default function MyAttendanceView({
                   <span>Calendar Grid</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setViewType('table')}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
                     viewType === 'table' 
                       ? 'bg-white text-indigo-700 shadow-2xs' 
                       : 'text-slate-550 hover:text-slate-800'
@@ -406,8 +410,9 @@ export default function MyAttendanceView({
             </div>
 
             <button
+              type="button"
               onClick={handleDownloadCSV}
-              className="flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer"
+              className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer w-full sm:w-auto"
             >
               <Download className="w-4 h-4" />
               <span>Download CSV Report</span>
@@ -418,51 +423,51 @@ export default function MyAttendanceView({
       </div>
 
       {/* Metrics Summary Panels */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-1 sm:space-y-2">
           <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block">Total Workdays</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-slate-800 tracking-tight">{totalDaysInSelection}</span>
-            <span className="text-[10px] text-slate-400 font-medium">days logs</span>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{totalDaysInSelection}</span>
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">days logged</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-emerald-50 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present (P)</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-emerald-600 tracking-tight">{presentDaysCount}</span>
-            <span className="text-[10px] text-emerald-500 font-semibold font-mono">({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-emerald-50 shadow-2xs space-y-1 sm:space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present</span>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">{presentDaysCount}</span>
+            <span className="text-[9px] sm:text-[10px] text-emerald-500 font-semibold font-mono">({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-rose-50 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent (A)</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-rose-650 tracking-tight">{absentDaysCount}</span>
-            <span className="text-[10px] text-rose-450 font-bold">{leavesCount} on leaves</span>
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-rose-50 shadow-2xs space-y-1 sm:space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent</span>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl sm:text-2xl font-black text-rose-650 tracking-tight">{absentDaysCount}</span>
+            <span className="text-[9px] sm:text-[10px] text-rose-450 font-bold whitespace-nowrap">{leavesCount} leave</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-indigo-50 shadow-2xs space-y-2">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-indigo-50 shadow-2xs space-y-1 sm:space-y-2">
           <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-500 block">Log Book Hours</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-indigo-650 tracking-tight">{sumWorkHours.toFixed(1)}h</span>
-            <span className="text-[10px] text-slate-400 font-medium font-mono">accumulated</span>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl sm:text-2xl font-black text-indigo-650 tracking-tight">{sumWorkHours.toFixed(1)}h</span>
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium font-mono">accumulated</span>
           </div>
         </div>
       </div>
 
       {/* CORE DISPLAY SWITCH: Calendar View vs Table View */}
       {viewType === 'calendar' ? (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden p-6 space-y-6 animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-slate-150/50 pb-3">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden p-4 sm:p-6 space-y-4 sm:space-y-6 animate-fadeIn">
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-150/50 pb-3 gap-3">
             <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono flex items-center gap-1.5">
               <CalendarIcon className="w-4 h-4 text-indigo-600" />
-              <span>Personal Month Calendar Sheet: {selectedMonth}</span>
+              <span>Sheet: <span className="text-indigo-650 font-bold">{selectedMonth}</span></span>
             </h3>
 
             {/* Quick Status Legends */}
-            <div className="flex flex-wrap items-center gap-3 text-3xs font-bold leading-none select-none">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-3xs font-bold leading-none select-none">
               <div className="flex items-center gap-1">
                 <span className="h-4 w-4 rounded-md bg-emerald-150 border border-emerald-300 text-emerald-850 flex items-center justify-center font-mono text-[9px] font-black">P</span>
                 <span className="text-slate-500 font-sans uppercase">Present</span>
@@ -491,7 +496,9 @@ export default function MyAttendanceView({
           </div>
 
           {/* Grid Layout definition */}
-          <div className="grid grid-cols-7 gap-2">
+          <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2">
+            <div className="w-[660px] sm:w-full">
+              <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
             {/* Calendar Weekday titles */}
             {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => (
               <div key={day} className="text-center py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
@@ -506,7 +513,7 @@ export default function MyAttendanceView({
                 return (
                   <div 
                     key={`empty-${idx}`} 
-                    className="min-h-[92px] bg-slate-50/20 rounded-xl border border-dashed border-slate-100/60"
+                    className="min-h-[60px] sm:min-h-[92px] bg-slate-50/20 rounded-xl border border-dashed border-slate-100/60"
                   />
                 );
               }
@@ -574,51 +581,109 @@ export default function MyAttendanceView({
               return (
                 <div 
                   key={dateStringVal}
-                  className={`min-h-[92px] p-2 rounded-xl border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
+                  className={`min-h-[60px] sm:min-h-[92px] p-1.5 sm:p-2 rounded-xl border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
                     isToday ? 'ring-2 ring-indigo-500 border-indigo-500' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`text-[11px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
+                    <span className={`text-[10px] sm:text-[11px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
                       {dateNum}
-                      {isToday && <span className="text-[7px] text-indigo-655 uppercase ml-1 block sm:inline font-bold">Today</span>}
+                      {isToday && <span className="text-[6.5px] text-indigo-655 uppercase ml-0.5 hidden sm:inline-block font-bold">Today</span>}
                     </span>
                     {badgeChar && (
-                      <span className={`inline-flex h-5 items-center justify-center text-[10px] font-black rounded-lg border px-1.5 uppercase leading-none font-mono ${badgeStyle}`}>
+                      <span className={`inline-flex h-4 sm:h-5 items-center justify-center text-[8px] sm:text-[10px] font-black rounded-md sm:rounded-lg border px-1 sm:px-1.5 uppercase leading-none font-mono ${badgeStyle}`}>
                         {badgeChar}
                       </span>
                     )}
                   </div>
 
                   {logMatch && logMatch.status !== 'Future' && logMatch.status !== 'Weekly Off' && logMatch.status !== 'On Leave' && (
-                    <div className="mt-1 space-y-0.5 select-none font-mono text-[9px] text-slate-500 flex flex-col">
+                    <div className="mt-1 space-y-0.5 select-none font-mono text-[9px] text-slate-550 flex flex-col">
                       {logMatch.hours > 0 ? (
                         <>
-                          <span className="font-bold text-slate-700 block truncate">In: {logMatch.clockIn}</span>
-                          <span className="font-bold text-slate-700 block truncate">Out: {logMatch.clockOut}</span>
-                          <span className="text-indigo-655 font-extrabold font-mono mt-0.5 leading-tight">{logMatch.hours.toFixed(1)} hrs</span>
+                          {/* Desktop details view */}
+                          <div className="hidden sm:flex flex-col space-y-0.5">
+                            <span className="font-bold text-slate-700 flex items-center gap-1 truncate">
+                              In: {logMatch.clockIn}
+                              {(logMatch.rawRecord?.locationIn || logMatch.rawRecord?.locationEntry2) && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationIn || logMatch.rawRecord.locationEntry2}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[8px] text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
+                                  title="Verify GPS Location"
+                                >
+                                  <MapPin className="w-2 h-2" />
+                                </a>
+                              )}
+                            </span>
+                            <span className="font-bold text-slate-700 flex items-center gap-1 truncate">
+                              Out: {logMatch.clockOut}
+                              {(logMatch.rawRecord?.locationOut || logMatch.rawRecord?.locationExit2) && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationOut || logMatch.rawRecord.locationExit2}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[8px] text-teal-610 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
+                                  title="Verify GPS Location"
+                                >
+                                  <MapPin className="w-2 h-2" />
+                                </a>
+                              )}
+                            </span>
+                          </div>
+
+                          {/* Mobile compact labels */}
+                          <div className="flex sm:hidden flex-col text-[8px] font-bold text-slate-700 space-y-0.5">
+                            <span className="truncate">
+                              I: {logMatch.clockIn}
+                            </span>
+                            <span className="truncate">
+                              O: {logMatch.clockOut}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 mt-0.5">
+                            <span className="text-indigo-655 font-extrabold font-mono text-[8px] sm:text-[9.5px] leading-none shrink-0">{logMatch.hours.toFixed(1)} hrs</span>
+                            {/* General Map Pin link on mobile */}
+                            <span className="inline-flex sm:hidden">
+                              {(logMatch.rawRecord?.locationIn || logMatch.rawRecord?.locationEntry2 || logMatch.rawRecord?.locationOut || logMatch.rawRecord?.locationExit2) && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationIn || logMatch.rawRecord.locationEntry2 || logMatch.rawRecord.locationOut || logMatch.rawRecord.locationExit2}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 p-0.5 rounded shrink-0 transition-all scale-90"
+                                  title="GPS Location Link"
+                                >
+                                  <MapPin className="w-2 h-2" />
+                                </a>
+                              )}
+                            </span>
+                          </div>
                         </>
                       ) : (
-                        <span className="text-slate-350 italic text-[8px]">No clocks logged</span>
+                        <span className="text-slate-350 italic text-[7.5px] sm:text-[8px] hidden sm:block">No clocks logged</span>
                       )}
                     </div>
                   )}
 
                   {logMatch && logMatch.status === 'Weekly Off' && (
-                    <div className="text-[10px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5">
+                    <div className="text-[10px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5 hidden sm:flex">
                       <Coffee className="w-3 h-3 text-slate-405" />
                       <span>OFF DAY</span>
                     </div>
                   )}
 
                   {logMatch && logMatch.status === 'On Leave' && (
-                    <div className="text-[9px] uppercase tracking-wider font-mono text-teal-600 font-black">
+                    <div className="text-[9px] uppercase tracking-wider font-mono text-teal-600 font-black hidden sm:block">
                       Excused Out
                     </div>
                   )}
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -742,19 +807,73 @@ export default function MyAttendanceView({
 
                         {/* Clock details */}
                         <td className="py-3 px-4 font-mono font-bold text-slate-650 h-12">
-                          {log.clockIn}
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{log.clockIn}</span>
+                            {(log.rawRecord?.locationIn || log.rawRecord?.locationEntry2) && (
+                              <a
+                                href={`https://www.google.com/maps?q=${log.rawRecord.locationIn || log.rawRecord.locationEntry2}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-100 transition-colors"
+                                title="Verify GPS Location"
+                              >
+                                <MapPin className="w-2.5 h-2.5" />
+                                <span>GPS</span>
+                              </a>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3 px-4 font-mono text-slate-500 h-12">
-                          {log.lunchOut}
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{log.lunchOut}</span>
+                            {log.rawRecord?.locationLunchOut && (
+                              <a
+                                href={`https://www.google.com/maps?q=${log.rawRecord.locationLunchOut}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-100 transition-colors"
+                                title="Lunch Out GPS"
+                              >
+                                <MapPin className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3 px-4 font-mono text-slate-500 h-12">
-                          {log.lunchIn}
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{log.lunchIn}</span>
+                            {log.rawRecord?.locationLunchIn && (
+                              <a
+                                href={`https://www.google.com/maps?q=${log.rawRecord.locationLunchIn}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-100 transition-colors"
+                                title="Lunch In GPS"
+                              >
+                                <MapPin className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3 px-4 font-mono font-bold text-slate-655 h-12">
-                          {log.clockOut}
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{log.clockOut}</span>
+                            {(log.rawRecord?.locationOut || log.rawRecord?.locationExit2) && (
+                              <a
+                                href={`https://www.google.com/maps?q=${log.rawRecord.locationOut || log.rawRecord.locationExit2}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-100 transition-colors"
+                                title="Verify GPS Location"
+                              >
+                                <MapPin className="w-2.5 h-2.5" />
+                                <span>GPS</span>
+                              </a>
+                            )}
+                          </div>
                         </td>
 
                         {/* Log Hours */}

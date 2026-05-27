@@ -17,7 +17,8 @@ import {
   Sparkles,
   Bell,
   ShieldAlert,
-  AlertTriangle
+  AlertTriangle,
+  MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, AppNotification, LeaveRequest } from '../types';
 
@@ -107,6 +108,14 @@ export default function DashboardView({
       status,
       labelColor,
       totalHours: todayRec?.totalHours || 0,
+      locationIn: todayRec?.locationIn || '',
+      locationOut: todayRec?.locationOut || '',
+      locationLunchOut: todayRec?.locationLunchOut || '',
+      locationLunchIn: todayRec?.locationLunchIn || '',
+      locationDinnerOut: todayRec?.locationDinnerOut || '',
+      locationDinnerIn: todayRec?.locationDinnerIn || '',
+      locationEntry2: todayRec?.locationEntry2 || '',
+      locationExit2: todayRec?.locationExit2 || '',
     };
   });
 
@@ -141,7 +150,7 @@ export default function DashboardView({
             Real-time telemetry and schedule metrics of Apex Tech Solutions.
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Real-time sync visual indicator */}
           <button
             onClick={triggerRefresh}
@@ -294,32 +303,136 @@ export default function DashboardView({
                         </td>
                         <td className="py-3 px-4 text-slate-500">{item.department}</td>
                         <td className="py-3 px-4 font-mono text-slate-800">
-                          <div className="flex flex-col">
-                            <span className="font-semibold">{item.entryTime}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold">{item.entryTime}</span>
+                              {item.locationIn && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationIn}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                  title="Check In GPS Location"
+                                >
+                                  <MapPin className="w-2 h-2" />
+                                </a>
+                              )}
+                            </div>
                             {item.entryTime2 !== '--:--' && (
-                              <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.entryTime2}</span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.entryTime2}</span>
+                                {item.locationEntry2 && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${item.locationEntry2}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                    title="Shift 2 GPS Location"
+                                  >
+                                    <MapPin className="w-2 h-2" />
+                                  </a>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600 text-2xs space-y-1">
                           {item.lunchOut !== '--:--' ? (
-                            <div>
-                              <span className="font-bold text-slate-400 uppercase text-[9px]">L:</span> {item.lunchOut} → {item.lunchIn !== '--:--' ? item.lunchIn : <span className="text-amber-500 font-black uppercase text-[9px] font-mono">On Break</span>}
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="font-bold text-slate-400 uppercase text-[9px]">L:</span> 
+                                <span>{item.lunchOut}</span> 
+                                {item.locationLunchOut && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${item.locationLunchOut}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-[7px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded transition-colors"
+                                    title="Lunch Out GPS"
+                                  >
+                                    <MapPin className="w-1.5 h-1.5" />
+                                  </a>
+                                )}
+                                <span>→</span>
+                                <span>{item.lunchIn !== '--:--' ? item.lunchIn : <span className="text-amber-500 font-black uppercase text-[9px] font-mono">On Break</span>}</span>
+                                {item.lunchIn !== '--:--' && item.locationLunchIn && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${item.locationLunchIn}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-[7px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded transition-colors"
+                                    title="Lunch Return GPS"
+                                  >
+                                    <MapPin className="w-1.5 h-1.5" />
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <div className="text-slate-350">L: --:--</div>
                           )}
                           {item.dinnerOut !== '--:--' && (
-                            <div className="text-indigo-900">
-                              <span className="font-bold text-indigo-500 uppercase text-[9px]">D:</span> {item.dinnerOut} → {item.dinnerIn !== '--:--' ? item.dinnerIn : <span className="text-rose-500 font-black uppercase text-[9px] font-mono animate-pulse">On Dinner</span>}
+                            <div className="flex items-center gap-1 flex-wrap text-indigo-900">
+                              <span className="font-bold text-indigo-500 uppercase text-[9px]">D:</span> 
+                              <span>{item.dinnerOut}</span>
+                              {item.locationDinnerOut && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationDinnerOut}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[7px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-0.5 rounded transition-colors"
+                                  title="Dinner Out GPS"
+                                >
+                                  <MapPin className="w-1.5 h-1.5" />
+                                </a>
+                              )}
+                              <span>→</span>
+                              <span>{item.dinnerIn !== '--:--' ? item.dinnerIn : <span className="text-rose-500 font-black uppercase text-[9px] font-mono animate-pulse">On Dinner</span>}</span>
+                              {item.dinnerIn !== '--:--' && item.locationDinnerIn && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationDinnerIn}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[7px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-0.5 rounded transition-colors"
+                                  title="Dinner Return GPS"
+                                >
+                                  <MapPin className="w-1.5 h-1.5" />
+                                </a>
+                              )}
                             </div>
                           )}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-800">
-                          <div className="flex flex-col">
-                            <span className="font-semibold">{item.exitTime}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold">{item.exitTime}</span>
+                              {item.locationOut && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationOut}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                  title="Check Out GPS Location"
+                                >
+                                  <MapPin className="w-2 h-2" />
+                                </a>
+                              )}
+                            </div>
                             {item.exitTime2 !== '--:--' && (
-                              <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.exitTime2}</span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.exitTime2}</span>
+                                {item.locationExit2 && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${item.locationExit2}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                    title="Shift 2 Exit GPS Location"
+                                  >
+                                    <MapPin className="w-2 h-2" />
+                                  </a>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
