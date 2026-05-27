@@ -46,6 +46,15 @@ export default function Sidebar({
       description: loggedInEmployee ? 'Clock In / Out / break' : 'Check-In/Out Desk',
       adminOnly: false,
     },
+    ...(loggedInEmployee ? [
+      {
+        id: 'my-attendance',
+        name: 'My Attendance Logs',
+        icon: FileSpreadsheet,
+        description: 'View datewise logs & download',
+        adminOnly: false,
+      }
+    ] : []),
     {
       id: 'leaves',
       name: loggedInEmployee ? 'My Leave Requests' : 'Leave Management',

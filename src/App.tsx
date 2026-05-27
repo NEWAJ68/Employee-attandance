@@ -35,6 +35,7 @@ import EmployeeProfiles from './components/EmployeeProfiles';
 import ReportsView from './components/ReportsView';
 import SheetsSyncHub from './components/SheetsSyncHub';
 import LeaveManagementView from './components/LeaveManagementView';
+import MyAttendanceView from './components/MyAttendanceView';
 
 const LOCAL_STORAGE_KEY = 'apex_attendance_mgmt_v1';
 
@@ -579,9 +580,9 @@ export default function App() {
     // View Guards
     if (isAdminLoggedIn) {
       setCurrentView(view);
-    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'sync')) {
+    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'sync' || view === 'my-attendance')) {
       setCurrentView(view);
-    } else if (view === 'terminal' || view === 'sync' || view === 'admin-login') {
+    } else if (view === 'terminal' || view === 'sync' || view === 'admin-login' || view === 'my-attendance') {
       setCurrentView(view);
     } else {
       setCurrentView('admin-login');
@@ -592,6 +593,11 @@ export default function App() {
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
+
+  // Filter notifications for logged-in employee privacy
+  const filteredNotifications = loggedInEmployee 
+    ? notifications.filter(n => !n.employeeId || n.employeeId === loggedInEmployee.id)
+    : notifications;
 
   if (!isAdminLoggedIn && !loggedInEmployee) {
     return (
@@ -700,9 +706,9 @@ export default function App() {
                 className="p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
               >
                 <Bell className="w-4 h-4 text-slate-600" />
-                {notifications.filter(u => !u.read).length > 0 && (
+                {filteredNotifications.filter(u => !u.read).length > 0 && (
                   <span className="absolute top-1 right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center animate-pulse shadow">
-                    {notifications.filter(u => !u.read).length}
+                    {filteredNotifications.filter(u => !u.read).length}
                   </span>
                 )}
               </button>
@@ -712,16 +718,18 @@ export default function App() {
                   <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                     <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Bell className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Administrative Shifts Alerts</span>
+                      <span>{loggedInEmployee ? 'My Personal Alerts' : 'Administrative Shifts Alerts'}</span>
                     </h3>
-                    {notifications.filter(n => !n.read).length > 0 && (
+                    {filteredNotifications.filter(n => !n.read).length > 0 && (
                       <button
                         onClick={async () => {
                           try {
-                            const updated = notifications.map(n => ({ ...n, read: true }));
+                            const unreadFilteredNotifs = filteredNotifications.filter(n => !n.read);
+                            const updated = notifications.map(n => 
+                              unreadFilteredNotifs.some(ufn => ufn.id === n.id) ? { ...n, read: true } : n
+                            );
                             setNotifications(updated);
-                            const unreadNotifs = notifications.filter(n => !n.read);
-                            for (const n of unreadNotifs) {
+                            for (const n of unreadFilteredNotifs) {
                               await setDoc(doc(db, 'notifications', n.id), { ...n, read: true });
                             }
                             setIsNotificationDropdownOpen(false);
@@ -737,10 +745,10 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
-                    {notifications.length === 0 ? (
-                      <p className="text-[10px] text-slate-400 font-mono text-center py-6">No administrative logs collected today.</p>
+                    {filteredNotifications.length === 0 ? (
+                      <p className="text-[10px] text-slate-400 font-mono text-center py-6">No notifications collected today.</p>
                     ) : (
-                      notifications.slice(0, 5).map(notif => (
+                      filteredNotifications.slice(0, 5).map(notif => (
                         <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${notif.read ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
                           <div className="flex items-center justify-between font-bold text-slate-800">
                             <span>{notif.title}</span>
@@ -752,17 +760,19 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="pt-2 text-center border-t border-slate-50">
-                    <button
-                      onClick={() => {
-                        handleViewChangeBySelector('dashboard');
-                        setIsNotificationDropdownOpen(false);
-                      }}
-                      className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold uppercase tracking-wider block w-full text-center"
-                    >
-                      Audit Shift Logs Dashboard
-                    </button>
-                  </div>
+                  {!loggedInEmployee && (
+                    <div className="pt-2 text-center border-t border-slate-50">
+                      <button
+                        onClick={() => {
+                          handleViewChangeBySelector('dashboard');
+                          setIsNotificationDropdownOpen(false);
+                        }}
+                        className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold uppercase tracking-wider block w-full text-center"
+                      >
+                        Audit Shift Logs Dashboard
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -861,6 +871,14 @@ export default function App() {
               isAdminLoggedIn={isAdminLoggedIn}
               settings={settings}
               loggedInEmployee={loggedInEmployee}
+            />
+          )}
+
+          {currentView === 'my-attendance' && loggedInEmployee && (
+            <MyAttendanceView
+              loggedInEmployee={loggedInEmployee}
+              attendance={attendance}
+              onNavigateToView={handleViewChangeBySelector}
             />
           )}
         </main>

@@ -321,24 +321,44 @@ export default function AttendanceTerminal({
   };
 
   const handleEntry2CheckIn = () => {
-    if (!selectedEmpId || !currentRecord) return;
+    if (!selectedEmpId) return;
 
-    if (selectedEmpStatus !== 'exited') {
-      triggerNotification('error', 'Employee must checkout from first shift before starting the dynamic double / night shift.');
+    if (currentRecord && currentRecord.entryTime) {
+      triggerNotification('error', 'Night shift is disabled for employees who completed Day Shift today.');
       return;
     }
 
-    const updatedRecord: AttendanceRecord = {
-      ...currentRecord,
-      entryTime2: timeStr,
-      dinnerOut: '',
-      dinnerIn: '',
-      exitTime2: '',
-      status: 'Double Shift Active',
-    };
-
-    onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
+    if (!currentRecord) {
+      const newRecord: AttendanceRecord = {
+        date: todayStr,
+        employeeId: selectedEmpId,
+        employeeName: selectedEmpName,
+        entryTime: '',
+        lunchOut: '',
+        lunchIn: '',
+        exitTime: '',
+        entryTime2: timeStr,
+        exitTime2: '',
+        dinnerOut: '',
+        dinnerIn: '',
+        totalHours: 0,
+        overtime: 0,
+        status: 'Night Shift',
+      };
+      onAddAttendance(newRecord);
+      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}.`);
+    } else {
+      const updatedRecord: AttendanceRecord = {
+        ...currentRecord,
+        entryTime2: timeStr,
+        dinnerOut: '',
+        dinnerIn: '',
+        exitTime2: '',
+        status: 'Night Shift Active',
+      };
+      onUpdateAttendance(updatedRecord);
+      triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
+    }
   };
 
   const handleExitCheckOut = () => {
@@ -633,77 +653,51 @@ export default function AttendanceTerminal({
                   }`}></span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* ENTRY BUTTON */}
+                {/* 1. ENTRY PUNCH (TOP) */}
+                <div className="w-full font-sans">
                   <button
                     type="button"
                     id="btn-kiosk-entry"
                     onClick={handleEntryCheckIn}
                     disabled={selectedEmpStatus !== 'not-entered'}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
+                    className={`flex items-center justify-between w-full p-4.5 rounded-xl border text-left transition-all group ${
                       selectedEmpStatus === 'not-entered'
-                        ? 'border-indigo-100 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-900 shadow-sm cursor-pointer hover:border-indigo-200'
+                        ? 'border-indigo-150 bg-indigo-50/50 hover:bg-indigo-55/60 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
                   >
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-indigo-600 block">
-                        Clock Entry
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest font-mono text-indigo-600 block">
+                        Shift Check-In Stamp
                       </span>
-                      <span className="text-sm font-extrabold block">ENTRY PUNCH</span>
-                      <span className="text-[10px] text-slate-500 block">
+                      <span className="text-sm font-black block text-slate-800">ENTRY PUNCH</span>
+                      <span className="text-[10.5px] text-slate-500 block">
                         {timeStr >= '14:00' ? (
-                          <span className="text-indigo-650 font-semibold font-mono">Starts Night Shift (≥ 14:00)</span>
+                          <span className="text-indigo-650 font-bold font-mono">Starts Night Shift (≥ 14:00)</span>
                         ) : (
-                          <span>Starts Day Shift (&lt; 14:00)</span>
+                          <span>Initiate Day Shift (&lt; 14:00)</span>
                         )}
                       </span>
                     </div>
-                    <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'not-entered' ? 'bg-indigo-600 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                    <div className={`p-3 rounded-xl transition-transform ${
+                      selectedEmpStatus === 'not-entered' ? 'bg-indigo-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
-                      <LogIn className="w-4 h-4" />
-                    </div>
-                  </button>
-
-                  {/* EXIT BUTTON */}
-                  <button
-                    type="button"
-                    id="btn-kiosk-exit"
-                    onClick={handleExitCheckOut}
-                    disabled={selectedEmpStatus !== 'active-working' && selectedEmpStatus !== 'on-lunch'}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'active-working' || selectedEmpStatus === 'on-lunch'
-                        ? 'border-indigo-100 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-900 shadow-sm cursor-pointer hover:border-indigo-200'
-                        : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
-                    }`}
-                  >
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-indigo-600 block">
-                        Wrap-Up S1
-                      </span>
-                      <span className="text-sm font-extrabold block">EXIT PUNCH</span>
-                      <span className="text-[10px] text-slate-500 block">Clock out standard.</span>
-                    </div>
-                    <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'active-working' || selectedEmpStatus === 'on-lunch' ? 'bg-indigo-600 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
-                    }`}>
-                      <LogOut className="w-4 h-4" />
+                      <LogIn className="w-5 h-5" />
                     </div>
                   </button>
                 </div>
 
-                {/* Lunch break row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
+                {/* 2. LUNCH BREAK ROW (MIDDLE) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                   {/* LUNCH OUT BUTTON */}
                   <button
                     type="button"
                     id="btn-kiosk-lunchout"
                     onClick={handleLunchOut}
-                    disabled={selectedEmpStatus !== 'active-working'}
+                    disabled={!(currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'active-working'
-                        ? 'border-amber-100 bg-amber-50/45 hover:bg-amber-50 text-amber-900 shadow-sm cursor-pointer hover:border-amber-200'
+                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut)
+                        ? 'border-amber-100 bg-amber-50/45 hover:bg-amber-55 text-amber-900 shadow-sm cursor-pointer hover:border-amber-200'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
                   >
@@ -715,7 +709,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Start lunch rest hour.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'active-working' ? 'bg-amber-505 bg-amber-500 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut) ? 'bg-amber-500 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Utensils className="w-4 h-4" />
                     </div>
@@ -726,9 +720,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-lunchin"
                     onClick={handleLunchIn}
-                    disabled={selectedEmpStatus !== 'on-lunch'}
+                    disabled={!(currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'on-lunch'
+                      (currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime)
                         ? 'border-teal-100 bg-teal-50/45 hover:bg-teal-50 text-teal-900 shadow-sm cursor-pointer hover:border-teal-200'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -741,9 +735,37 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Back from lunch rest.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'on-lunch' ? 'bg-teal-600 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime) ? 'bg-teal-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Coffee className="w-4 h-4" />
+                    </div>
+                  </button>
+                </div>
+
+                {/* 3. EXIT PUNCH (BOTTOM, AFTER LUNCH RETURN) */}
+                <div className="w-full pt-1">
+                  <button
+                    type="button"
+                    id="btn-kiosk-exit"
+                    onClick={handleExitCheckOut}
+                    disabled={!(currentRecord && currentRecord.entryTime && !currentRecord.exitTime)}
+                    className={`flex items-center justify-between w-full p-4 rounded-xl border text-left transition-all group ${
+                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime)
+                        ? 'border-rose-150 bg-rose-50/20 hover:bg-rose-50/45 text-rose-950 shadow-sm cursor-pointer hover:border-rose-300'
+                        : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest font-mono text-rose-600 block">
+                        Conclude Daily Duty
+                      </span>
+                      <span className="text-sm font-black block text-slate-800">EXIT PUNCH</span>
+                      <span className="text-[10.5px] text-slate-500 block">Conclude standard working desk shifts & log payroll hours.</span>
+                    </div>
+                    <div className={`p-3 rounded-xl transition-transform ${
+                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime) ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <LogOut className="w-5 h-5" />
                     </div>
                   </button>
                 </div>
@@ -767,9 +789,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-entry2"
                     onClick={handleEntry2CheckIn}
-                    disabled={selectedEmpStatus !== 'exited'}
+                    disabled={!!(currentRecord && currentRecord.entryTime) || !!(currentRecord && currentRecord.entryTime2)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'exited'
+                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2)
                         ? 'border-indigo-200 bg-indigo-100/20 hover:bg-indigo-100/40 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
                     }`}
@@ -779,10 +801,12 @@ export default function AttendanceTerminal({
                         Clock Shift 2
                       </span>
                       <span className="text-sm font-extrabold block">START SHIFT 2</span>
-                      <span className="text-[10px] text-slate-500 block">Log second shift / night.</span>
+                      <span className="text-[10px] text-slate-500 block">
+                        {currentRecord?.entryTime ? 'Disabled: Day Duty Completed' : 'Log second shift / night.'}
+                      </span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'exited' ? 'bg-indigo-700 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2) ? 'bg-indigo-700 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Moon className="w-4 h-4" />
                     </div>

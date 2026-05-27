@@ -491,69 +491,7 @@ export default function DashboardView({
                 Daily checks peaked at <strong className="font-extrabold text-indigo-950">100% capacity</strong> during last weekend shift rosters.
               </span>
             </div>
-          </div>
-
-          {/* Bento Panel: Sandbox Simulation Station */}
-          <div className="bg-slate-900 text-slate-200 p-5 rounded-2xl shadow-lg border border-slate-800 font-sans">
-            <div className="flex items-center space-x-2 pb-2 border-b border-slate-800 mb-3">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <div>
-                <h3 className="text-xs font-bold font-mono tracking-wider text-slate-100 uppercase">
-                  Staff Sandbox Controller
-                </h3>
-                <p className="text-[10px] text-slate-400 font-sans leading-none mt-0.5">Evaluate employee-facing views</p>
-              </div>
-            </div>
-
-            <p className="text-[10.5px] text-slate-400 leading-relaxed mb-3">
-              Instantly test physical clock-in, break hours, overtime computations, or leave logs by acting as any registered worker:
-            </p>
-
-            <div className="space-y-2">
-              {/* Presets Grid */}
-              <div className="grid grid-cols-1 gap-1.5">
-                {activeEmployees.slice(0, 3).map((emp) => (
-                  <div key={emp.id} className="flex items-center justify-between bg-slate-800/60 p-2 rounded-xl border border-slate-700/30">
-                    <div className="flex flex-col min-w-0 pr-2">
-                      <span className="font-bold text-white text-[11px] truncate leading-tight">{emp.name}</span>
-                      <span className="text-[9px] font-mono text-slate-400 leading-none mt-0.5">{emp.id} · {emp.department}</span>
-                    </div>
-                    {onEvaluateEmployee && (
-                      <button
-                        type="button"
-                        onClick={() => onEvaluateEmployee(emp.id)}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-mono font-bold px-2.5 py-1.5 rounded-lg text-[9.5px] uppercase transition-all tracking-wider shrink-0 cursor-pointer"
-                      >
-                        Mimic
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* General Selector dropdown for additional employees */}
-              {activeEmployees.length > 3 && onEvaluateEmployee && (
-                <div className="pt-2 border-t border-slate-800 flex items-center">
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        onEvaluateEmployee(e.target.value);
-                      }
-                    }}
-                    defaultValue=""
-                    className="w-full bg-slate-800 border border-slate-700/50 text-slate-300 text-[10px] outline-none px-2 py-1.5 rounded-lg focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="">-- Mimic other registered workers --</option>
-                    {activeEmployees.slice(3).map(emp => (
-                      <option key={emp.id} value={emp.id} className="bg-slate-900 text-white">
-                        {emp.name} ({emp.id})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
+             </div>
 
           {/* Settings reference rules bento */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
