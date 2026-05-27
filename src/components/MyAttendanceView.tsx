@@ -19,22 +19,27 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  MapPin
+  MapPin,
+  Wallet,
+  TrendingUp
 } from 'lucide-react';
-import { Employee, AttendanceRecord, LeaveRequest } from '../types';
+import { Employee, AttendanceRecord, LeaveRequest, Settings } from '../types';
+import { calculateEarnings } from '../utils/calculations';
 
 interface MyAttendanceViewProps {
   loggedInEmployee: Employee;
   attendance: AttendanceRecord[];
   onNavigateToView?: (view: string) => void;
   onUpdateEmployee?: (employee: Employee) => void;
+  settings?: Settings;
 }
 
 export default function MyAttendanceView({
   loggedInEmployee,
   attendance,
   onNavigateToView,
-  onUpdateEmployee
+  onUpdateEmployee,
+  settings
 }: MyAttendanceViewProps) {
   // Toggle states
   const [viewType, setViewType] = useState<'calendar' | 'table'>('calendar');
@@ -237,6 +242,20 @@ export default function MyAttendanceView({
   const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
   const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
   const sumWorkHours = processedLogs.reduce((acc, current) => acc + current.hours, 0);
+
+  // Compute earnings and details for Monthly Payroll Summary Card
+  const currentCurrency = settings?.currency || 'INR';
+  const currencySymbol = currentCurrency === 'USD' ? '$' : currentCurrency === 'INR' ? '₹' : currentCurrency === 'EUR' ? '€' : currentCurrency === 'GBP' ? '£' : currentCurrency + ' ';
+
+  const totalOvertimeHours = processedLogs.reduce((acc, curr) => acc + curr.overtime, 0);
+  const totalStandardHours = Math.max(0, sumWorkHours - totalOvertimeHours);
+
+  const { regularPay, overtimePay, totalPay } = calculateEarnings(
+    sumWorkHours,
+    totalOvertimeHours,
+    loggedInEmployee.hourlyRate,
+    settings?.overtimeRateMultiplier || 1.5
+  );
 
   return (
     <div className="space-y-6 animate-fadeIn font-sans" id="my-attendance-sheet">
@@ -498,10 +517,10 @@ export default function MyAttendanceView({
           {/* Grid Layout definition */}
           <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2">
             <div className="w-[660px] sm:w-full">
-              <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
             {/* Calendar Weekday titles */}
             {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => (
-              <div key={day} className="text-center py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+              <div key={day} className="text-center py-1 text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
                 <span className="hidden sm:inline">{day}</span>
                 <span className="sm:hidden">{day.slice(0, 3)}</span>
               </div>
@@ -513,7 +532,7 @@ export default function MyAttendanceView({
                 return (
                   <div 
                     key={`empty-${idx}`} 
-                    className="min-h-[60px] sm:min-h-[92px] bg-slate-50/20 rounded-xl border border-dashed border-slate-100/60"
+                    className="min-h-[48px] sm:min-h-[74px] bg-slate-50/20 rounded-lg border border-dashed border-slate-100/60"
                   />
                 );
               }
@@ -581,24 +600,24 @@ export default function MyAttendanceView({
               return (
                 <div 
                   key={dateStringVal}
-                  className={`min-h-[60px] sm:min-h-[92px] p-1.5 sm:p-2 rounded-xl border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
+                  className={`min-h-[48px] sm:min-h-[74px] p-1 sm:p-1.5 rounded-lg border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
                     isToday ? 'ring-2 ring-indigo-500 border-indigo-500' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`text-[10px] sm:text-[11px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
+                    <span className={`text-[9px] sm:text-[10px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
                       {dateNum}
-                      {isToday && <span className="text-[6.5px] text-indigo-655 uppercase ml-0.5 hidden sm:inline-block font-bold">Today</span>}
+                      {isToday && <span className="text-[6px] text-indigo-655 uppercase ml-0.5 hidden sm:inline-block font-bold">Today</span>}
                     </span>
                     {badgeChar && (
-                      <span className={`inline-flex h-4 sm:h-5 items-center justify-center text-[8px] sm:text-[10px] font-black rounded-md sm:rounded-lg border px-1 sm:px-1.5 uppercase leading-none font-mono ${badgeStyle}`}>
+                      <span className={`inline-flex h-3.5 sm:h-4.5 items-center justify-center text-[7.5px] sm:text-[8.5px] font-black rounded border px-0.5 sm:px-1 uppercase leading-none font-mono ${badgeStyle}`}>
                         {badgeChar}
                       </span>
                     )}
                   </div>
 
                   {logMatch && logMatch.status !== 'Future' && logMatch.status !== 'Weekly Off' && logMatch.status !== 'On Leave' && (
-                    <div className="mt-1 space-y-0.5 select-none font-mono text-[9px] text-slate-550 flex flex-col">
+                    <div className="mt-1 space-y-0.5 select-none font-mono text-[8px] sm:text-[8.5px] text-slate-550 flex flex-col">
                       {logMatch.hours > 0 ? (
                         <>
                           {/* Desktop details view */}
@@ -610,7 +629,7 @@ export default function MyAttendanceView({
                                   href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationIn || logMatch.rawRecord.locationEntry2}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[8px] text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
+                                  className="inline-flex items-center text-[7.5px] text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
                                   title="Verify GPS Location"
                                 >
                                   <MapPin className="w-2 h-2" />
@@ -624,7 +643,7 @@ export default function MyAttendanceView({
                                   href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationOut || logMatch.rawRecord.locationExit2}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[8px] text-teal-610 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
+                                  className="inline-flex items-center text-[7.5px] text-teal-610 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
                                   title="Verify GPS Location"
                                 >
                                   <MapPin className="w-2 h-2" />
@@ -634,7 +653,7 @@ export default function MyAttendanceView({
                           </div>
 
                           {/* Mobile compact labels */}
-                          <div className="flex sm:hidden flex-col text-[8px] font-bold text-slate-700 space-y-0.5">
+                          <div className="flex sm:hidden flex-col text-[7.5px] font-bold text-slate-700 space-y-0.5">
                             <span className="truncate">
                               I: {logMatch.clockIn}
                             </span>
@@ -644,7 +663,7 @@ export default function MyAttendanceView({
                           </div>
 
                           <div className="flex items-center justify-between gap-1 mt-0.5">
-                            <span className="text-indigo-655 font-extrabold font-mono text-[8px] sm:text-[9.5px] leading-none shrink-0">{logMatch.hours.toFixed(1)} hrs</span>
+                            <span className="text-indigo-655 font-extrabold font-mono text-[7.5px] sm:text-[8.5px] leading-none shrink-0">{logMatch.hours.toFixed(1)} hrs</span>
                             {/* General Map Pin link on mobile */}
                             <span className="inline-flex sm:hidden">
                               {(logMatch.rawRecord?.locationIn || logMatch.rawRecord?.locationEntry2 || logMatch.rawRecord?.locationOut || logMatch.rawRecord?.locationExit2) && (
@@ -655,27 +674,27 @@ export default function MyAttendanceView({
                                   className="text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 p-0.5 rounded shrink-0 transition-all scale-90"
                                   title="GPS Location Link"
                                 >
-                                  <MapPin className="w-2 h-2" />
+                                  <MapPin className="w-1.5 h-1.5" />
                                 </a>
                               )}
                             </span>
                           </div>
                         </>
                       ) : (
-                        <span className="text-slate-350 italic text-[7.5px] sm:text-[8px] hidden sm:block">No clocks logged</span>
+                        <span className="text-slate-350 italic text-[7px] sm:text-[7.5px] hidden sm:block">No clocks logged</span>
                       )}
                     </div>
                   )}
 
                   {logMatch && logMatch.status === 'Weekly Off' && (
-                    <div className="text-[10px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5 hidden sm:flex">
-                      <Coffee className="w-3 h-3 text-slate-405" />
+                    <div className="text-[8.5px] sm:text-[9.5px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5 hidden sm:flex">
+                      <Coffee className="w-2.5 h-2.5 text-slate-405" />
                       <span>OFF DAY</span>
                     </div>
                   )}
 
                   {logMatch && logMatch.status === 'On Leave' && (
-                    <div className="text-[9px] uppercase tracking-wider font-mono text-teal-600 font-black hidden sm:block">
+                    <div className="text-[8px] sm:text-[8.5px] uppercase tracking-wider font-mono text-teal-600 font-black hidden sm:block">
                       Excused Out
                     </div>
                   )}
@@ -688,7 +707,100 @@ export default function MyAttendanceView({
         </div>
       ) : (
         /* TABLE VIEW FALLBACK LIST */
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
+        <div className="space-y-6">
+          {/* Monthly Payroll Summary Card */}
+          <div className="bg-gradient-to-br from-slate-50 via-indigo-50/20 to-white border border-indigo-150/75 rounded-2xl p-5 sm:p-6 shadow-xs select-none animate-fadeIn">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100/60 pb-4 mb-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                  <Wallet className="w-5 h-5 shrink-0" />
+                </div>
+                <div>
+                  <span className="text-[9px] font-bold text-indigo-500 font-mono uppercase tracking-widest leading-none block">Corporate Billing Period</span>
+                  <h3 className="text-sm font-black text-slate-850 tracking-tight leading-snug">Monthly Payroll Summary</h3>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-1.5 bg-white/80 border border-slate-150 px-3 py-1 rounded-full text-[10px] font-mono font-bold text-slate-500 uppercase shadow-3xs select-none">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Period: {selectedMonth}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* Gross Salary Estimate Column */}
+              <div className="bg-white border border-slate-150/80 p-4 rounded-xl shadow-3xs flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block mb-1">
+                    Estimated Gross Pay
+                  </span>
+                  <div className="flex items-baseline text-indigo-650">
+                    <span className="text-xl sm:text-2xl font-black tracking-tight font-sans">
+                      {currencySymbol}{totalPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold ml-1 text-slate-400">
+                      {currentCurrency}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-3xs text-slate-400 font-mono">
+                  <span>Regular + OT Hours</span>
+                  <span className="font-extrabold text-slate-650">{sumWorkHours.toFixed(2)} hrs</span>
+                </div>
+              </div>
+
+              {/* Detail columns breakout: Regular Work */}
+              <div className="bg-slate-50/55 border border-slate-150/60 p-4 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block">Standard Hours</span>
+                    <span className="text-[8px] bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded uppercase font-mono tracking-tight">1.0x Rate</span>
+                  </div>
+                  <div className="flex items-baseline space-x-1">
+                    <span className="text-lg sm:text-xl font-black text-slate-800 tracking-tight font-sans">{totalStandardHours.toFixed(2)}h</span>
+                    <span className="text-[9px] text-slate-400 font-medium font-mono">logged</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-slate-200/50 flex items-center justify-between text-2xs text-slate-500 font-mono">
+                  <span>Rate: {currencySymbol}{loggedInEmployee.hourlyRate.toFixed(2)}/hr</span>
+                  <span className="font-extrabold text-slate-700">{currencySymbol}{regularPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Detail columns breakout: Overtime Premium */}
+              <div className="bg-emerald-50/15 border border-emerald-100/50 p-4 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Overtime Hours</span>
+                    <span className="text-[8px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded uppercase font-mono tracking-tight">
+                      {settings?.overtimeRateMultiplier || 1.5}x Multiplier
+                    </span>
+                  </div>
+                  <div className="flex items-baseline space-x-1">
+                    <span className="text-lg sm:text-xl font-black text-emerald-600 tracking-tight font-sans">{totalOvertimeHours.toFixed(2)}h</span>
+                    <span className="text-[9px] text-emerald-500 font-bold font-mono">logged</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-emerald-100/60 flex items-center justify-between text-2xs text-slate-500 font-mono">
+                  <span>OT Rate: {currencySymbol}{(loggedInEmployee.hourlyRate * (settings?.overtimeRateMultiplier || 1.5)).toFixed(2)}/hr</span>
+                  <span className="font-extrabold text-emerald-600 font-sans">{currencySymbol}{overtimePay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Explanatory note banner */}
+            <div className="mt-4 p-3.5 bg-indigo-50/45 border border-indigo-100/40 rounded-xl flex items-start gap-2.5 text-slate-500 text-2xs leading-relaxed font-sans">
+              <span className="text-indigo-650 shrink-0 select-none text-[11px] font-bold">ℹ</span>
+              <p>
+                Estimated payroll details are aggregated for <span className="font-bold text-slate-700">{loggedInEmployee.name}</span> over the defined month. Exact corporate paychecks are verified server-side through leaves, monthly bonuses, global deductions, and tax compliance structures.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
           {/* Filter controls bar */}
           <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
             <span className="font-extrabold text-slate-700 font-mono uppercase tracking-wider">
@@ -900,6 +1012,7 @@ export default function MyAttendanceView({
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 

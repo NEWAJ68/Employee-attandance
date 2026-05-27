@@ -1,10 +1,17 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Initialize Firestore with robust multi-tab offline local cache persistence
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+}, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth();
 export const googleProvider = new GoogleAuthProvider();
 
@@ -55,14 +62,22 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connection test as outlined in validation checklist
-async function testConnection() {
+// Connection test with a fast, non-blocking timeout fallback to detect offline environments gracefully
+export async function testConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase connection check timed out')), 2500)
+    );
+    await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')),
+      timeout
+    ]);
+    return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration: Client is offline.");
-    }
+    console.info("Firestore status log: Operating in offline/local state. Cache/IndexedDB is active.");
+    return false;
   }
 }
+
+// Trigger initial connection test silently
 testConnection();

@@ -20,7 +20,7 @@ import {
   Soup,
   MapPin,
   Navigation,
-  Nfc
+  Trash2
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS } from '../utils/calculations';
@@ -52,15 +52,7 @@ export default function AttendanceTerminal({
   }>({ type: null, message: '' });
   const [isAutoPunchModalOpen, setIsAutoPunchModalOpen] = useState(false);
 
-  // NFC states
-  const [authMethod, setAuthMethod] = useState<'dropdown' | 'nfc'>('dropdown');
-  const [isNfcScanning, setIsNfcScanning] = useState(false);
-  const [isNfcSupported, setIsNfcSupported] = useState(false);
-  const [nfcError, setNfcError] = useState('');
-  const [isAutoPunchEnabled, setIsAutoPunchEnabled] = useState(true);
-  const [shouldTriggerAutoPunch, setShouldTriggerAutoPunch] = useState(false);
-  const [nfcScanSuccessMessage, setNfcScanSuccessMessage] = useState('');
-  const [lastScannedEmpId, setLastScannedEmpId] = useState('');
+
 
   // Audio feeedback beep generator using Web Audio API
   const playBeep = (success: boolean) => {
@@ -108,106 +100,7 @@ export default function AttendanceTerminal({
     }
   };
 
-  // Check Web NFC support on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'NDEFReader' in window) {
-      setIsNfcSupported(true);
-    }
-  }, []);
 
-  // Web NFC Scan process
-  const startNfcScanning = async () => {
-    if (typeof window === 'undefined' || !('NDEFReader' in window)) {
-      setNfcError('Web NFC API is not supported on this device/browser.');
-      return;
-    }
-
-    try {
-      setIsNfcScanning(true);
-      setNfcError('');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const NDEFReaderClass = (window as any).NDEFReader;
-      const ndef = new NDEFReaderClass();
-      await ndef.scan();
-      
-      triggerNotification('success', 'NFC Hardware Scanner active. Tap your card...');
-      
-      ndef.addEventListener('reading', ({ message, serialNumber }: any) => {
-        console.log(`NFC tag read. Serial number: ${serialNumber}`);
-        
-        let scannedId = '';
-        
-        // Try to decode NDEF records if present
-        if (message && message.records && message.records.length > 0) {
-          for (const record of message.records) {
-            if (record.recordType === 'text') {
-              const textDecoder = new TextDecoder(record.encoding || 'utf-8');
-              const text = textDecoder.decode(record.data);
-              scannedId = text.trim();
-              break;
-            }
-          }
-        }
-        
-        // Fallback: use hash of serial to choose employee if card is generic/empty, for real-world prototyping
-        if (!scannedId && serialNumber) {
-          const activeEmps = employees.filter(e => e.status === 'Active');
-          if (activeEmps.length > 0) {
-            const index = Math.abs(serialNumber.split('').reduce((acc: number, val: string) => acc + val.charCodeAt(0), 0)) % activeEmps.length;
-            scannedId = activeEmps[index].id;
-          }
-        }
-        
-        if (scannedId) {
-          handleEmployeeNfcSwipe(scannedId);
-        } else {
-          playBeep(false);
-          setNfcError('Empty Card: Missing Employee Badge text record.');
-        }
-      });
-      
-      ndef.addEventListener('readingerror', () => {
-        playBeep(false);
-        setNfcError('Reading error: Failed to scan NFC. Try holding closer.');
-      });
-      
-    } catch (err: any) {
-      console.error('NFC scanning error:', err);
-      setIsNfcScanning(false);
-      setNfcError(`NFC error: ${err.message || err}. Sandbox frame policies may restrict Web NFC.`);
-    }
-  };
-
-  const stopNfcScanning = () => {
-    setIsNfcScanning(false);
-  };
-
-  const handleEmployeeNfcSwipe = (empId: string) => {
-    const emp = employees.find(e => e.id === empId && e.status === 'Active');
-    if (!emp) {
-      playBeep(false);
-      setNfcError(`Card badge does not match any Active employee: ${empId}`);
-      triggerNotification('error', `Unknown NFC Tag Ref: ${empId}`);
-      return;
-    }
-
-    // Success Tap!
-    playBeep(true);
-    setSelectedEmpId(emp.id);
-    setLastScannedEmpId(emp.id);
-    setNfcScanSuccessMessage(`Scanned: ${emp.name} (${emp.id})`);
-    setNfcError('');
-    triggerNotification('success', `NFC Badge Tap success: ${emp.name} recognized.`);
-
-    // Clear success message after 4s
-    setTimeout(() => {
-      setNfcScanSuccessMessage(prev => prev.includes(emp.name) ? '' : prev);
-    }, 4000);
-
-    if (isAutoPunchEnabled) {
-      setShouldTriggerAutoPunch(true);
-    }
-  };
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   // Helper to retrieve actual geolocation using browser GPS with Calitech HQ fallback
@@ -269,51 +162,7 @@ export default function AttendanceTerminal({
     }
   }, [loggedInEmployee]);
 
-  // NFC Auto-Punch trigger effect
-  useEffect(() => {
-    if (shouldTriggerAutoPunch && selectedEmpId) {
-      setShouldTriggerAutoPunch(false); // consume immediately
-      
-      const status = getEmployeeStatus(selectedEmpId);
-      const record = getTodayRecord(selectedEmpId);
-      const empName = employees.find(e => e.id === selectedEmpId)?.name || '';
 
-      // Defer execution slightly to let UI states transition smoothly
-      setTimeout(async () => {
-        try {
-          if (status === 'not-entered') {
-            await handleEntryCheckIn();
-          } else if (status === 'active-working') {
-            if (record && !record.lunchOut) {
-              await handleLunchOut();
-            } else if (record && record.lunchIn && !record.exitTime) {
-              await handleExitCheckOut();
-            } else {
-              await handleExitCheckOut();
-            }
-          } else if (status === 'on-lunch') {
-            await handleLunchIn();
-          } else if (status === 'exited') {
-            await handleEntry2CheckIn();
-          } else if (status === 'active-working-shift2') {
-            if (record && !record.dinnerOut) {
-              await handleDinnerOut();
-            } else if (record && record.dinnerIn && !record.exitTime2) {
-              await handleExit2CheckOut();
-            } else {
-              await handleExit2CheckOut();
-            }
-          } else if (status === 'on-dinner') {
-            await handleDinnerIn();
-          } else if (status === 'fully-exited') {
-            triggerNotification('error', `Shift already concluded today for ${empName}`);
-          }
-        } catch (err) {
-          console.error('NFC Auto Punch execution error:', err);
-        }
-      }, 350);
-    }
-  }, [selectedEmpId, shouldTriggerAutoPunch]);
 
   // Notifications permission state
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(() => {
@@ -504,7 +353,7 @@ export default function AttendanceTerminal({
     onAddAttendance(newRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}${coords ? ' with GPS location verified' : ''}.`
+      `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}.`
     );
   };
 
@@ -529,7 +378,7 @@ export default function AttendanceTerminal({
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
+    triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}.`);
   };
 
   const handleLunchIn = async () => {
@@ -552,7 +401,7 @@ export default function AttendanceTerminal({
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch return', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Welcome back!`);
+    triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}. Welcome back!`);
   };
 
   const handleDinnerOut = async () => {
@@ -575,7 +424,7 @@ export default function AttendanceTerminal({
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Enjoy your meal!`);
+    triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}. Enjoy your meal!`);
   };
 
   const handleDinnerIn = async () => {
@@ -597,7 +446,7 @@ export default function AttendanceTerminal({
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner return', updatedRecord);
     onUpdateAttendance(updatedRecord);
-    triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Welcome back to work!`);
+    triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}. Welcome back to work!`);
   };
 
   const handleEntry2CheckIn = async () => {
@@ -630,7 +479,7 @@ export default function AttendanceTerminal({
       };
       newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
       onAddAttendance(newRecord);
-      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
+      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}.`);
     } else {
       let updatedRecord: AttendanceRecord = {
         ...currentRecord,
@@ -643,7 +492,7 @@ export default function AttendanceTerminal({
       };
       updatedRecord = checkProximityAndFlag(coords, 'second shift entry', updatedRecord);
       onUpdateAttendance(updatedRecord);
-      triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}${coords ? ' (GPS tracked)' : ''}.`);
+      triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
     }
   };
 
@@ -686,7 +535,7 @@ export default function AttendanceTerminal({
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} checked out of Shift 1 at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Total logged: ${totalHours} hrs (Overtime: ${overtime} hrs)`
+      `${selectedEmpName} checked out of Shift 1 at ${timeStr}. Total logged: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
   };
 
@@ -727,7 +576,7 @@ export default function AttendanceTerminal({
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 
-      `${selectedEmpName} completed Shift 2 at ${timeStr}${coords ? ' (GPS tracked)' : ''}. Cumulative today: ${totalHours} hrs (Overtime: ${overtime} hrs)`
+      `${selectedEmpName} completed Shift 2 at ${timeStr}. Cumulative today: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
   };
 
@@ -766,14 +615,7 @@ export default function AttendanceTerminal({
         </div>
       </div>
 
-      {isFetchingLocation && (
-        <div className="p-4 rounded-xl shadow-md flex items-center space-x-3 border bg-indigo-50 border-indigo-150 text-indigo-850 animate-pulse">
-          <Navigation className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
-          <span className="text-sm font-extrabold font-mono tracking-tight uppercase">
-            Fetching Actual GPS Location Coordinates... Please wait.
-          </span>
-        </div>
-      )}
+      {/* Silent fetch - no visual banner / popup overlay shown to employees */}
 
       {notification.type && (
         <div className={`p-4 rounded-xl shadow-md flex items-center space-x-3 border animate-bounce ${
@@ -800,43 +642,10 @@ export default function AttendanceTerminal({
               <span>Select Your Name</span>
             </div>
             
-            {/* Identification Method Tabs */}
-            {!loggedInEmployee && (
-              <div className="flex bg-slate-100 p-1 rounded-xl mb-4.5 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod('dropdown')}
-                  className={`flex-1 py-2 px-3 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    authMethod === 'dropdown'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-500 hover:text-slate-850'
-                  }`}
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>Manual List</span>
-                </button>
-                <button
-                  type="button"
-                  id="nfc-selector-tab"
-                  onClick={() => setAuthMethod('nfc')}
-                  className={`flex-1 py-2 px-3 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    authMethod === 'nfc'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-500 hover:text-slate-850'
-                  } ${isNfcScanning ? 'animate-pulse ring-2 ring-indigo-500/40' : ''}`}
-                >
-                  <Nfc className={`w-3.5 h-3.5 ${isNfcScanning ? 'text-indigo-600 animate-pulse' : 'text-indigo-505'}`} />
-                  <span>NFC Badge Tap</span>
-                </button>
-              </div>
-            )}
-
             <p className="text-2xs text-slate-400 mb-4 leading-relaxed tracking-wide uppercase font-mono">
               {loggedInEmployee 
                 ? 'Authorized Employee Cabin Session' 
-                : authMethod === 'dropdown' 
-                  ? 'Find and choose your profile name in the dropdown below to authorize check-ins.' 
-                  : 'Tap your physical RFID/NFC smart badge on the terminal or tap simulated cards below.'}
+                : 'Find and choose your profile name in the dropdown below to authorize check-ins.'}
             </p>
 
             <div className="space-y-4">
@@ -864,7 +673,7 @@ export default function AttendanceTerminal({
                       <p className="text-3xs text-slate-500 font-mono mt-0.5">{loggedInEmployee.id} • {loggedInEmployee.department}</p>
                     </div>
                   </div>
-                ) : authMethod === 'dropdown' ? (
+                ) : (
                   <div className="space-y-1">
                     <label className="block text-3xs uppercase tracking-wider font-semibold text-slate-400 mb-1 font-mono">
                       Identify Profile
@@ -876,7 +685,7 @@ export default function AttendanceTerminal({
                         setSelectedEmpId(e.target.value);
                         setNotification({ type: null, message: '' });
                       }}
-                      className="w-full px-3.5 py-3 border border-slate-200 rounded-xl shadow-xs bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 select-none text-sm transition-all text-slate-750"
+                      className="w-full px-3.5 py-3 border border-slate-200 rounded-xl shadow-xs bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 select-none text-sm transition-all text-slate-755 text-slate-750"
                     >
                       <option value="">-- Choose Your Profile --</option>
                       {activeEmployees.map((emp) => (
@@ -885,186 +694,6 @@ export default function AttendanceTerminal({
                         </option>
                       ))}
                     </select>
-                  </div>
-                ) : (
-                  /* Interactive NFC Scanner Interface */
-                  <div className="space-y-4 animate-fadeIn">
-                    <div 
-                      className={`relative overflow-hidden rounded-2xl border-2 p-5 text-center transition-all duration-300 min-h-[195px] flex flex-col items-center justify-center ${
-                        nfcScanSuccessMessage 
-                          ? 'bg-[#0f172a] border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
-                          : nfcError 
-                            ? 'bg-[#0f172a] border-rose-500/80' 
-                            : isNfcScanning 
-                              ? 'bg-[#0f172a] border-indigo-500/80 shadow-[0_0_15px_rgba(99,102,241,0.1)]' 
-                              : 'bg-slate-900 border-slate-800'
-                      }`}
-                    >
-                      {/* Interactive glow nodes */}
-                      <span className={`absolute top-2 right-2 h-2 w-2 rounded-full ${
-                        isNfcScanning ? 'bg-indigo-400 animate-ping' : isNfcSupported ? 'bg-emerald-400' : 'bg-amber-400'
-                      }`}></span>
-
-                      {/* Scanning or Success animation waves */}
-                      {isNfcScanning && (
-                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
-                          <span className="h-28 w-28 rounded-full border border-indigo-450 animate-ping absolute"></span>
-                          <span className="h-40 w-40 rounded-full border border-indigo-455 animate-ping absolute"></span>
-                        </div>
-                      )}
-
-                      {/* Display States */}
-                      {nfcScanSuccessMessage ? (
-                        <div className="space-y-2 animate-fadeIn">
-                          <div className="h-10 w-10 rounded-full bg-emerald-500/15 border border-emerald-505/30 text-emerald-450 flex items-center justify-center mx-auto mb-2 animate-bounce">
-                            <Nfc className="w-5 h-5 text-emerald-400" />
-                          </div>
-                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest font-mono">
-                            Swipe Identified
-                          </span>
-                          <h4 className="text-sm font-extrabold text-white leading-tight">
-                            {employees.find(e => e.id === selectedEmpId)?.name}
-                          </h4>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            Badge: {selectedEmpId}
-                          </span>
-                        </div>
-                      ) : nfcError ? (
-                        <div className="space-y-1.5 px-2 animate-fadeIn">
-                          <span className="text-[10px] font-bold text-rose-455 uppercase tracking-wider font-mono">
-                            Scan Warning
-                          </span>
-                          <p className="text-[11px] text-slate-300 font-mono leading-relaxed">
-                            {nfcError}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setNfcError('')}
-                            className="mt-2 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                          >
-                            Reset Sensor Screen
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3.5">
-                          <div className={`p-4 rounded-full border flex items-center justify-center mx-auto transition-all ${
-                            isNfcScanning 
-                              ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-400 scale-105 animate-pulse' 
-                              : 'bg-slate-800/60 border-slate-700/60 text-slate-400'
-                          }`}>
-                            <Nfc className="w-6 h-6" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono block mb-0.5">
-                              {isNfcScanning ? 'Awaiting Contact...' : 'NFC Card Receiver'}
-                            </span>
-                            <p className="text-[10px] text-slate-450 max-w-xs mx-auto px-4 leading-normal">
-                              {isNfcScanning 
-                                ? 'Scanner armed. Wave your badge near the side/rear sensor loop.' 
-                                : 'Hardware scanner offline. Use simulation badges below or launch scan below.'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Hardware Trigger Action button */}
-                    {isNfcSupported ? (
-                      <button
-                        type="button"
-                        onClick={isNfcScanning ? stopNfcScanning : startNfcScanning}
-                        className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
-                          isNfcScanning
-                            ? 'bg-rose-50 border-rose-150 text-rose-700 hover:bg-rose-100/50'
-                            : 'bg-indigo-50 border-indigo-150 text-indigo-700 hover:bg-indigo-100/50'
-                        }`}
-                      >
-                        <Nfc className="w-4 h-4 shrink-0" />
-                        <span>{isNfcScanning ? 'Deactivate Device Scanner' : 'Activate Hardware Scanner'}</span>
-                      </button>
-                    ) : null}
-
-                    {/* Active Auto Punch Toggle */}
-                    <div className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-between gap-4 ${
-                      isAutoPunchEnabled 
-                        ? 'bg-indigo-50/60 border-indigo-150 shadow-xs' 
-                        : 'bg-slate-50 border-slate-200'
-                    }`}>
-                      <div className="flex-1">
-                        <span className={`font-extrabold text-3xs uppercase font-mono tracking-normal block mb-1 transition-colors duration-200 ${
-                          isAutoPunchEnabled ? 'text-indigo-900' : 'text-slate-700'
-                        }`}>
-                          Smart Auto-Punch
-                        </span>
-                        <p className={`text-[10px] leading-normal transition-colors duration-200 ${
-                          isAutoPunchEnabled ? 'text-indigo-800/80' : 'text-slate-500'
-                        }`}>
-                          Card tap automatically decides and registers the next logical stamp (Check In / Lunch / Exit).
-                        </p>
-                      </div>
-                      
-                      {/* Interactive Custom Switch Toggle */}
-                      <button
-                        type="button"
-                        id="nfc-auto-punch-toggle-btn"
-                        onClick={() => setIsAutoPunchEnabled(!isAutoPunchEnabled)}
-                        className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-250 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-550 ${
-                          isAutoPunchEnabled ? 'bg-indigo-600' : 'bg-slate-300'
-                        }`}
-                        role="switch"
-                        aria-checked={isAutoPunchEnabled}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-250 ease-in-out ${
-                            isAutoPunchEnabled ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Team Badges Simulator section */}
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 font-mono tracking-wider">
-                          Simulated Team Badges
-                        </span>
-                        <span className="text-[9px] bg-slate-100 text-slate-500 font-mono font-bold px-1.5 py-0.5 rounded-md">
-                          Click to Tap
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 max-h-[145px] overflow-y-auto pr-1">
-                        {activeEmployees.map((emp) => (
-                          <button
-                            key={emp.id}
-                            type="button"
-                            onClick={() => handleEmployeeNfcSwipe(emp.id)}
-                            className={`p-2.5 rounded-xl border text-left transition-all hover:bg-indigo-50/20 active:scale-95 flex items-center gap-2 cursor-pointer ${
-                              selectedEmpId === emp.id 
-                                ? 'bg-indigo-50/40 border-indigo-300 text-indigo-900 font-medium' 
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                            }`}
-                          >
-                            {emp.photoUrl ? (
-                              <img 
-                                src={emp.photoUrl} 
-                                alt={emp.name} 
-                                className="h-6 w-6 rounded-full object-cover border border-slate-150 shrink-0" 
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="h-6 w-6 bg-slate-100 rounded-full flex items-center justify-center text-[9px] font-bold text-slate-500 shrink-0 uppercase">
-                                {emp.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <h5 className="font-bold text-[10.5px] truncate text-slate-750">{emp.name.split(' ')[0]}</h5>
-                              <p className="text-[8px] font-mono text-slate-400 uppercase truncate tracking-tight">{emp.id}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>

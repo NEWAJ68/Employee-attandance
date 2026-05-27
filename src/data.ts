@@ -37,7 +37,7 @@ export const INITIAL_SETTINGS: Settings = {
   overtimeRateMultiplier: 1.5,
   workStartHour: '10:00',
   workEndHour: '17:00',
-  currency: 'USD',
+  currency: 'INR',
 };
 
 // Generates some sensible attendance logs spanning the last few days

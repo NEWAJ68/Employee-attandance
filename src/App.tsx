@@ -27,7 +27,7 @@ import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
 // Firebase imports
 import { signInAnonymously } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth, OperationType, handleFirestoreError } from './firebase';
+import { db, auth, OperationType, handleFirestoreError, testConnection } from './firebase';
 
 // Component Imports
 import Sidebar from './components/Sidebar';
@@ -142,7 +142,7 @@ export default function App() {
   // Sync state helpers
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('local');
-  const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'offline' | 'error'>('connecting');
 
   // Unified State Loader with real-time Firebase syncing
   useEffect(() => {
@@ -286,15 +286,17 @@ export default function App() {
     let unsubscribes: (() => void) | null = null;
 
     signInAnonymously(auth)
-      .then(() => {
+      .then(async () => {
         console.log('Firebase Anonymous Session initialized successfully.');
-        setFirebaseStatus('connected');
+        const isOnline = await testConnection();
+        setFirebaseStatus(isOnline ? 'connected' : 'offline');
         unsubscribes = initializeFirestoreSubscriptions();
       })
-      .catch((err) => {
+      .catch(async (err) => {
         console.warn('Firebase Anonymous Auth restricted by GCP project policy, proceeding unauthenticated:', err.message);
-        // Fallback: Proceed unauthenticated with connected state since our security rules allow schema-validated operations
-        setFirebaseStatus('connected');
+        // Fallback: Proceed unauthenticated with connected state if reachable, otherwise offline
+        const isOnline = await testConnection();
+        setFirebaseStatus(isOnline ? 'connected' : 'offline');
         unsubscribes = initializeFirestoreSubscriptions();
       });
 
@@ -922,6 +924,7 @@ export default function App() {
               attendance={attendance}
               onNavigateToView={handleViewChangeBySelector}
               onUpdateEmployee={handleUpdateEmployee}
+              settings={settings}
             />
           )}
         </main>
