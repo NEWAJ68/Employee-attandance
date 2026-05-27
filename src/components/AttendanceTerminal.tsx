@@ -107,7 +107,7 @@ export default function AttendanceTerminal({
   const fetchCurrentLocation = (): Promise<string> => {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !navigator.geolocation) {
-        resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`); // Office fallback
+        resolve("NOT_SUPPORTED");
         return;
       }
       setIsFetchingLocation(true);
@@ -127,16 +127,63 @@ export default function AttendanceTerminal({
         (error) => {
           setIsFetchingLocation(false);
           console.warn('Geolocation capture failed or was denied:', error);
-          // Return Calitech office coords on fallback so that users don't get blocked
-          resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+          if (settings.strictGeofencing) {
+            resolve("DENIED");
+          } else {
+            // Return Calitech office coords on fallback so that users don't get blocked
+            resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+          }
         },
         options
       );
     });
   };
 
-  const checkProximityAndFlag = (coords: string, actionName: string, record: AttendanceRecord): AttendanceRecord => {
+  /**
+   * Helper that checks if a GPS coordinate is valid and within range.
+   * If settings.strictGeofencing is enabled, blocks the action and returns false.
+   */
+  const validateGeofencingOrBlock = (coords: string): boolean => {
+    if (!settings.strictGeofencing) return true; // not enforced
+
+    if (coords === "DENIED" || coords === "NOT_SUPPORTED" || !coords) {
+      triggerNotification(
+        'error', 
+        'GPS verification failed! You must allow browser space location permissions to record your attendance.'
+      );
+      playBeep(false);
+      return false;
+    }
+
     const { isWithinRange, distance } = verifyProximityToOffice(coords);
+    if (!isWithinRange) {
+      triggerNotification(
+        'error', 
+        `PUNCH DENIED! You are ${distance}m away. You must be within 100m of Calitech Office Guwahati to punch.`
+      );
+      playBeep(false);
+
+      if (onRaiseNotification) {
+        onRaiseNotification(
+          'BLOCKED Out-of-Range Punch',
+          `❌ SECURITY BLOCK: ${selectedEmpName || 'Unidentified'} tried punching from ${distance}m away (Limit: 100m). Coordinate: ${coords}`,
+          'alert',
+          selectedEmpId
+        );
+      }
+      return false;
+    }
+
+    return true;
+  };
+
+  const checkProximityAndFlag = (coords: string, actionName: string, record: AttendanceRecord): AttendanceRecord => {
+    // If coords are denied, but strict geofencing is off, fallback range
+    const resolvedCoords = (coords === "DENIED" || coords === "NOT_SUPPORTED" || !coords) 
+      ? `${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}` 
+      : coords;
+
+    const { isWithinRange, distance } = verifyProximityToOffice(resolvedCoords);
     if (!isWithinRange) {
       record.isOutOfRange = true;
       record.distanceFromHq = distance;
@@ -144,7 +191,7 @@ export default function AttendanceTerminal({
       if (onRaiseNotification) {
         onRaiseNotification(
           'Out-of-Range Punch Alert',
-          `🚨 ${selectedEmpName || record.employeeName || 'Employee'} punched during ${actionName} from ${distance}m away (Limit: 100m). Coords: ${coords}`,
+          `🚨 ${selectedEmpName || record.employeeName || 'Employee'} punched during ${actionName} from ${distance}m away (Limit: 100m). Coords: ${resolvedCoords}`,
           'alert',
           selectedEmpId || record.employeeId
         );
@@ -329,6 +376,7 @@ export default function AttendanceTerminal({
 
     const isNightShift = timeStr >= '14:00';
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     let newRecord: AttendanceRecord = {
       date: todayStr,
@@ -367,6 +415,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     let updatedRecord: AttendanceRecord = {
       ...currentRecord,
@@ -391,6 +440,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     let updatedRecord: AttendanceRecord = {
       ...currentRecord,
@@ -413,6 +463,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     let updatedRecord: AttendanceRecord = {
       ...currentRecord,
@@ -436,6 +487,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     let updatedRecord: AttendanceRecord = {
       ...currentRecord,
@@ -458,6 +510,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     if (!currentRecord) {
       let newRecord: AttendanceRecord = {
@@ -511,6 +564,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     // Capture precise metrics
     const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
@@ -548,6 +602,7 @@ export default function AttendanceTerminal({
     }
 
     const coords = await fetchCurrentLocation();
+    if (!validateGeofencingOrBlock(coords)) return;
 
     // Capture precise metrics for both shifts
     const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
@@ -614,6 +669,18 @@ export default function AttendanceTerminal({
           </div>
         </div>
       </div>
+
+      {settings.strictGeofencing && (
+        <div className="bg-indigo-50/70 border border-indigo-120/45 p-4 rounded-xl flex items-start space-x-3 text-slate-700 animate-fadeIn" id="strict-geo-banner">
+          <MapPin className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5 animate-pulse" />
+          <div className="text-xs">
+            <span className="font-bold text-indigo-950 block">🔒 Strict Office Geofencing Protection Active</span>
+            <p className="mt-0.5 text-slate-550 leading-relaxed font-sans">
+              This terminal is strictly locked to <strong>{OFFICE_COORDS.name} Guwahati Campus</strong>. Employee punches are audited in real-time using secure browser GPS: you must be within 100 meters of the central office to check in or out.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Silent fetch - no visual banner / popup overlay shown to employees */}
 

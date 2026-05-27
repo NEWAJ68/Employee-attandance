@@ -10,7 +10,7 @@ import {
   Check, 
   Mail, 
   Briefcase, 
-  DollarSign, 
+  IndianRupee, 
   Calendar,
   AlertTriangle,
   Grid
@@ -263,12 +263,11 @@ export default function EmployeeProfiles({
                     </div>
                     <div className="flex items-center justify-between text-slate-800">
                       <div className="flex items-center space-x-2">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                        <IndianRupee className="w-3.5 h-3.5 text-emerald-500" />
                         <span>Hourly Wage:</span>
                       </div>
                       <span className="font-bold font-mono text-indigo-600 text-sm">
-                        {settings.currency === 'USD' ? '$' : '₹'}
-                        {emp.hourlyRate.toFixed(2)}/hr
+                        ₹{emp.hourlyRate.toFixed(2)}/hr
                       </span>
                     </div>
                   </div>
@@ -421,7 +420,7 @@ export default function EmployeeProfiles({
 
                 <div>
                   <label className="block text-2xs uppercase tracking-wider font-semibold text-slate-500 mb-1 font-mono">
-                    Hourly Wage Rate ({settings.currency === 'USD' ? '$' : '₹'})
+                    Hourly Wage Rate (₹)
                   </label>
                   <input
                     type="number"

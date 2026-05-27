@@ -79,6 +79,10 @@ service cloud.firestore {
     }
 
     // Rules Mapping
+    match /test/{docId} {
+      allow read: if isSignedIn();
+    }
+
     match /employees/{employeeId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidId(employeeId) && isValidEmployee(incoming());

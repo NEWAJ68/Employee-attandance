@@ -45,7 +45,8 @@ export interface Settings {
   overtimeRateMultiplier: number; // e.g., 1.5
   workStartHour: string; // e.g., "09:00" for late calculations
   workEndHour: string; // e.g., "17:00" for early exit calculations
-  currency: string; // e.g., "USD" ($), "INR" (₹), etc.
+  currency: string; // Indian Rupee (₹) by default
+  strictGeofencing?: boolean; // if true, blocks punches outside 100m of Calitech HQ
 }
 
 export interface LeaveRequest {

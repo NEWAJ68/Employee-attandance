@@ -244,8 +244,7 @@ export default function MyAttendanceView({
   const sumWorkHours = processedLogs.reduce((acc, current) => acc + current.hours, 0);
 
   // Compute earnings and details for Monthly Payroll Summary Card
-  const currentCurrency = settings?.currency || 'INR';
-  const currencySymbol = currentCurrency === 'USD' ? '$' : currentCurrency === 'INR' ? '₹' : currentCurrency === 'EUR' ? '€' : currentCurrency === 'GBP' ? '£' : currentCurrency + ' ';
+  const currencySymbol = '₹';
 
   const totalOvertimeHours = processedLogs.reduce((acc, curr) => acc + curr.overtime, 0);
   const totalStandardHours = Math.max(0, sumWorkHours - totalOvertimeHours);
@@ -739,7 +738,7 @@ export default function MyAttendanceView({
                       {currencySymbol}{totalPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-mono font-bold ml-1 text-slate-400">
-                      {currentCurrency}
+                      INR
                     </span>
                   </div>
                 </div>

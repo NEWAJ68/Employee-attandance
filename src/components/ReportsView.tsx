@@ -5,7 +5,7 @@ import {
   Calendar, 
   Search, 
   Filter, 
-  DollarSign, 
+  IndianRupee, 
   TrendingUp, 
   Clock, 
   User, 
@@ -310,15 +310,14 @@ export default function ReportsView({
         {/* Core Wages calculated */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
           <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl border border-emerald-110/30">
-            <DollarSign className="w-6 h-6" />
+            <IndianRupee className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0 font-sans">
             <span className="text-3xs font-mono uppercase tracking-widest text-slate-400 font-bold block">
               Core Shift Wages
             </span>
             <span className="text-2xl font-extrabold text-slate-900 mt-0.5 block">
-              {settings.currency === 'USD' ? '$' : '₹'}
-              {totalWagesPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{totalWagesPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <p className="text-3xs text-emerald-650 font-mono uppercase mt-1">
               Standard completed terms
@@ -336,8 +335,7 @@ export default function ReportsView({
               Overtime Bonuses
             </span>
             <span className="text-2xl font-extrabold text-slate-900 mt-0.5 block">
-              {settings.currency === 'USD' ? '$' : '₹'}
-              {totalOvertimePaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{totalOvertimePaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <p className="text-3xs text-indigo-600 font-mono uppercase font-semibold mt-1">
               At {settings.overtimeRateMultiplier}x premium multiplier
@@ -373,8 +371,7 @@ export default function ReportsView({
               Cumulative Expense
             </span>
             <span className="text-2xl font-black mt-0.5 block">
-              {settings.currency === 'USD' ? '$' : '₹'}
-              {grandTotalPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{grandTotalPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <p className="text-3xs text-indigo-150 font-mono uppercase mt-1">
               Net payout amount
@@ -478,17 +475,16 @@ export default function ReportsView({
                         {rec.overtime > 0 ? `+${rec.overtime.toFixed(2)}h` : '--'}
                       </td>
                       <td className="py-3 px-4 text-center font-mono">
-                        {settings.currency === 'USD' ? '$' : '₹'}{rate}/hr
+                        ₹{rate}/hr
                       </td>
                       <td className="py-3 px-6 text-right font-mono font-bold text-slate-900">
                         <div className="flex flex-col text-right">
                           <span>
-                            {settings.currency === 'USD' ? '$' : '₹'}
-                            {earnings.totalPay.toFixed(2)}
+                            ₹{earnings.totalPay.toFixed(2)}
                           </span>
                           {rec.overtime > 0 && (
                             <span className="text-[9px] text-indigo-550 font-semibold">
-                              (incl. {settings.currency === 'USD' ? '$' : '₹'}{earnings.overtimePay.toFixed(2)} OT)
+                              (incl. ₹{earnings.overtimePay.toFixed(2)} OT)
                             </span>
                           )}
                         </div>

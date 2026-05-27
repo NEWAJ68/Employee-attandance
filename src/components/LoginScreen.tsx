@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ShieldAlert, UserCheck, LogIn, Lock, HelpCircle, Users, UserPlus, Mail, Briefcase, DollarSign, CheckCircle } from 'lucide-react';
+import { KeyRound, ShieldAlert, UserCheck, LogIn, Lock, HelpCircle, Users, UserPlus, Mail, Briefcase, IndianRupee, CheckCircle } from 'lucide-react';
 import { Employee } from '../types';
 import CESLogo from './CESLogo';
 
@@ -313,7 +313,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <DollarSign className="h-3.5 w-3.5 text-slate-400" />
+                        <IndianRupee className="h-3.5 w-3.5 text-slate-400" />
                       </div>
                       <input
                         id="reg-rate"
