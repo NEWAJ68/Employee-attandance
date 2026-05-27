@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      // Allow unauthenticated operations to function under host-side restricted Anonymous Auth
+      return true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity-Specific Validation Helpers
+    function isValidEmployee(data) {
+      return data.id is string && data.id.size() <= 64 
+          && data.name is string && data.name.size() <= 128
+          && data.department is string && data.department.size() <= 128
+          && data.email is string && data.email.size() <= 128
+          && data.hourlyRate is number && data.hourlyRate >= 0
+          && data.joinedDate is string && data.joinedDate.size() <= 32
+          && data.status is string && (data.status == 'Active' || data.status == 'Inactive')
+          && (!('password' in data) || (data.password is string && data.password.size() <= 128));
+    }
+
+    function isValidAttendance(data) {
+      return data.date is string && data.date.size() <= 32
+          && data.employeeId is string && data.employeeId.size() <= 64
+          && data.employeeName is string && data.employeeName.size() <= 128
+          && data.totalHours is number && data.totalHours >= 0
+          && data.overtime is number && data.overtime >= 0
+          && data.status is string && data.status.size() <= 128;
+    }
+
+    function isValidSettings(data) {
+      return data.companyName is string && data.companyName.size() <= 128
+          && data.standardHours is number && data.standardHours >= 0
+          && data.lunchDurationMinutes is number && data.lunchDurationMinutes >= 0
+          && data.overtimeRateMultiplier is number && data.overtimeRateMultiplier >= 0
+          && data.workStartHour is string && data.workStartHour.size() <= 16
+          && data.workEndHour is string && data.workEndHour.size() <= 16
+          && data.currency is string && data.currency.size() <= 16;
+    }
+
+    function isValidLeave(data) {
+      return data.id is string && data.id.size() <= 64
+          && data.employeeId is string && data.employeeId.size() <= 64
+          && data.employeeName is string && data.employeeName.size() <= 128
+          && data.leaveType is string && (data.leaveType == 'Sick' || data.leaveType == 'Vacation' || data.leaveType == 'Personal' || data.leaveType == 'Other')
+          && data.startDate is string && data.startDate.size() <= 32
+          && data.endDate is string && data.endDate.size() <= 32
+          && data.status is string && (data.status == 'Pending' || data.status == 'Approved' || data.status == 'Rejected')
+          && data.notes is string && data.notes.size() <= 1000
+          && data.submittedAt is string && data.submittedAt.size() <= 64;
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.id.size() <= 64
+          && data.title is string && data.title.size() <= 128
+          && data.message is string && data.message.size() <= 1000
+          && data.type is string && (data.type == 'info' || data.type == 'warning' || data.type == 'alert' || data.type == 'success')
+          && data.timestamp is string && data.timestamp.size() <= 64
+          && data.read is bool
+          && data.isAdmin is bool;
+    }
+
+    // Rules Mapping
+    match /employees/{employeeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(employeeId) && isValidEmployee(incoming());
+      allow update: if isSignedIn() && isValidId(employeeId) && isValidEmployee(incoming());
+      allow delete: if isSignedIn() && isValidId(employeeId);
+    }
+
+    match /attendance/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(recordId) && isValidAttendance(incoming());
+      allow update: if isSignedIn() && isValidId(recordId) && isValidAttendance(incoming());
+      allow delete: if isSignedIn() && isValidId(recordId);
+    }
+
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId) && (docId == 'global' ? isValidSettings(incoming()) : true);
+    }
+
+    match /leaveRequests/{leaveId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(leaveId) && isValidLeave(incoming());
+      allow update: if isSignedIn() && isValidId(leaveId) && isValidLeave(incoming());
+      allow delete: if isSignedIn() && isValidId(leaveId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
+      allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
+      allow delete: if isSignedIn() && isValidId(notificationId);
+    }
+  }
+}

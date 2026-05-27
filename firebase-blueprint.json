@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Profile details of a registered staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique Employee ID (e.g. CES001)" },
+        "name": { "type": "string", "description": "Full display name" },
+        "department": { "type": "string", "description": "Corporate department" },
+        "email": { "type": "string", "format": "email", "description": "Corporate email address" },
+        "hourlyRate": { "type": "number", "description": "Base hourly wages" },
+        "joinedDate": { "type": "string", "format": "date", "description": "ISO date of joining" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"], "description": "Current status" },
+        "password": { "type": "string", "description": "Custom confidential pass/PIN code for privacy protection" }
+      },
+      "required": ["id", "name", "department", "email", "hourlyRate", "joinedDate", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "A daily work shift attendance ledger entry",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date", "description": "Log date (YYYY-MM-DD)" },
+        "employeeId": { "type": "string", "description": "Associated employee ID link" },
+        "employeeName": { "type": "string", "description": "Cached display name" },
+        "entryTime": { "type": "string", "description": "Session 1 Check-in HH:MM" },
+        "lunchOut": { "type": "string", "description": "Session 1 Lunch leave HH:MM" },
+        "lunchIn": { "type": "string", "description": "Session 1 Lunch return HH:MM" },
+        "exitTime": { "type": "string", "description": "Session 1 Complete checkout HH:MM" },
+        "entryTime2": { "type": "string", "description": "Session 2 Check-in HH:MM (Night shift)" },
+        "exitTime2": { "type": "string", "description": "Session 2 Complete checkout HH:MM" },
+        "dinnerOut": { "type": "string", "description": "Session 2 Dinner leave HH:MM" },
+        "dinnerIn": { "type": "string", "description": "Session 2 Dinner return HH:MM" },
+        "totalHours": { "type": "number", "description": "Cumulative productive hours" },
+        "overtime": { "type": "number", "description": "Cumulative overtime hours" },
+        "status": { "type": "string", "description": "Duty status indicator" },
+        "notes": { "type": "string", "description": "Manual shift notes" }
+      },
+      "required": ["date", "employeeId", "employeeName", "totalHours", "overtime", "status"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global operational settings and limits",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string", "description": "Display name of organization" },
+        "standardHours": { "type": "number", "description": "Standard work hours threshold" },
+        "lunchDurationMinutes": { "type": "number", "description": "Standard lunch break minutes allocation" },
+        "overtimeRateMultiplier": { "type": "number", "description": "Overtime wage multiplier" },
+        "workStartHour": { "type": "string", "description": "Daily delay start hour checkpoint HH:MM" },
+        "workEndHour": { "type": "string", "description": "Daily early exit end hour checkpoint HH:MM" },
+        "currency": { "type": "string", "description": "Currency selector" }
+      },
+      "required": ["companyName", "standardHours", "lunchDurationMinutes", "overtimeRateMultiplier", "workStartHour", "workEndHour", "currency"]
+    },
+    "LeaveRequest": {
+      "title": "LeaveRequest",
+      "description": "Time-off and leaves request document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique database ID hash" },
+        "employeeId": { "type": "string", "description": "ID link of applicant" },
+        "employeeName": { "type": "string", "description": "Cached display name of applicant" },
+        "leaveType": { "type": "string", "enum": ["Sick", "Vacation", "Personal", "Other"], "description": "Reason details" },
+        "startDate": { "type": "string", "format": "date", "description": "First day of leave" },
+        "endDate": { "type": "string", "format": "date", "description": "Last day of leave" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"], "description": "Approval progression" },
+        "notes": { "type": "string", "description": "Personal descriptions/messages" },
+        "submittedAt": { "type": "string", "description": "ISO format request timestamp" }
+      },
+      "required": ["id", "employeeId", "employeeName", "leaveType", "startDate", "endDate", "status", "notes", "submittedAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "System push notifications and alerts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique notification identifier" },
+        "title": { "type": "string", "description": "Short heading text" },
+        "message": { "type": "string", "description": "Dynamic payload details" },
+        "type": { "type": "string", "enum": ["info", "warning", "alert", "success"], "description": "Severe rating context" },
+        "timestamp": { "type": "string", "description": "Logged time of emit" },
+        "read": { "type": "boolean", "description": "Read state flag" },
+        "isAdmin": { "type": "boolean", "description": "Whether intended strictly for management dashboard" },
+        "employeeId": { "type": "string", "description": "Link reference if employee specific" }
+      },
+      "required": ["id", "title", "message", "type", "timestamp", "read", "isAdmin"]
+    }
+  },
+  "firestore": {
+    "employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Private corporate staff credentials and profile lists"
+    },
+    "attendance/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Real-time shifts clock records and metrics logs"
+    },
+    "settings/global": {
+      "schema": "Settings",
+      "description": "Unified system parameters and operational policies"
+    },
+    "leaveRequests/{leaveId}": {
+      "schema": "LeaveRequest",
+      "description": "Time-off balance planning tickets database"
+    },
+    "notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "System alert and logging collection"
+    }
+  }
+}

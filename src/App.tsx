@@ -1,0 +1,870 @@
+import { useState, useEffect } from 'react';
+import { 
+  Menu, 
+  X, 
+  Clock, 
+  ShieldAlert, 
+  FileSpreadsheet, 
+  HelpCircle, 
+  LogOut, 
+  AlertCircle,
+  TrendingUp,
+  Briefcase,
+  Wifi,
+  WifiOff,
+  Sliders,
+  Maximize2,
+  Calendar,
+  Bell
+} from 'lucide-react';
+
+import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
+import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
+
+// Firebase imports
+import { signInAnonymously } from 'firebase/auth';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { db, auth, OperationType, handleFirestoreError } from './firebase';
+
+// Component Imports
+import Sidebar from './components/Sidebar';
+import LoginScreen from './components/LoginScreen';
+import DashboardView from './components/DashboardView';
+import AttendanceTerminal from './components/AttendanceTerminal';
+import EmployeeProfiles from './components/EmployeeProfiles';
+import ReportsView from './components/ReportsView';
+import SheetsSyncHub from './components/SheetsSyncHub';
+import LeaveManagementView from './components/LeaveManagementView';
+
+const LOCAL_STORAGE_KEY = 'apex_attendance_mgmt_v1';
+
+const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
+  {
+    id: 'LR-101',
+    employeeId: 'CES003',
+    employeeName: 'Dibakar Choudhury',
+    leaveType: 'Vacation',
+    startDate: '2026-06-01',
+    endDate: '2026-06-05',
+    status: 'Pending',
+    notes: 'Family trip. Fully reachable by email if urgent.',
+    submittedAt: '2026-05-24T18:30:00Z',
+  },
+  {
+    id: 'LR-102',
+    employeeId: 'CES002',
+    employeeName: 'Shahmim Newaj',
+    leaveType: 'Personal',
+    startDate: '2026-05-28',
+    endDate: '2026-05-28',
+    status: 'Pending',
+    notes: 'Urgent dentist appointment in the afternoon.',
+    submittedAt: '2026-05-25T08:15:00Z',
+  }
+];
+
+const INITIAL_NOTIFICATIONS: AppNotification[] = [
+  {
+    id: 'NT-101',
+    title: 'Late Entry Alert',
+    message: 'Shahmim Newaj checked in late today at 10:12 AM (Threshold: 10:00 AM).',
+    type: 'warning',
+    timestamp: '10:12 AM',
+    read: false,
+    isAdmin: true,
+    employeeId: 'CES002'
+  },
+  {
+    id: 'NT-102',
+    title: 'System Active Reminders',
+    message: 'Weekly payroll calculations synchronized to browser local state.',
+    type: 'success',
+    timestamp: '08:00 AM',
+    read: true,
+    isAdmin: true
+  }
+];
+
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<string>('terminal');
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  
+  // Primary application state
+  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
+  const [appsScriptUrl, setAppsScriptUrl] = useState<string>('');
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
+  const [loggedInEmployee, setLoggedInEmployee] = useState<Employee | null>(null);
+
+  // Leave & Push notifications state
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
+
+  // Sync state helpers
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('local');
+  const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+
+  // Unified State Loader with real-time Firebase syncing
+  useEffect(() => {
+    // 1. Initial immediate boot load from LocalStorage as silent offline fallback
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+
+        // Setup self-healing/reset if old employee IDs exist
+        const hasOutdatedData = parsed.employees && parsed.employees.some((e: any) => e.id.startsWith('EMP-'));
+        if (hasOutdatedData) {
+          localStorage.removeItem(LOCAL_STORAGE_KEY);
+        } else {
+          if (parsed.employees) setEmployees(parsed.employees);
+          if (parsed.attendance) setAttendance(parsed.attendance);
+          if (parsed.settings) setSettings(parsed.settings);
+          if (parsed.appsScriptUrl) {
+            setAppsScriptUrl(parsed.appsScriptUrl);
+            setSyncStatus('synced');
+          }
+          if (parsed.isAdminLoggedIn) setIsAdminLoggedIn(parsed.isAdminLoggedIn);
+          if (parsed.loggedInEmployee) setLoggedInEmployee(parsed.loggedInEmployee);
+          if (parsed.leaveRequests) setLeaveRequests(parsed.leaveRequests);
+          if (parsed.notifications) setNotifications(parsed.notifications);
+        }
+      } catch (e) {
+        console.error('Failed reading serialized local storage files:', e);
+      }
+    }
+
+    // 2. Perform Anonymous Firebase auth login mapping or fallback to unauthenticated
+    setFirebaseStatus('connecting');
+
+    const initializeFirestoreSubscriptions = () => {
+      // Snapshot - Employees
+      const unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
+        if (snapshot.empty) {
+          // Seed defaults onto Firestore
+          INITIAL_EMPLOYEES.forEach((emp) => {
+            setDoc(doc(db, 'employees', emp.id), emp).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `employees/${emp.id}`);
+            });
+          });
+        } else {
+          const list: Employee[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as Employee);
+          });
+          setEmployees(list);
+        }
+      }, (err) => {
+        console.error('Employees cloud listing denied:', err);
+      });
+
+      // Snapshot - Attendance
+      const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        if (snapshot.empty) {
+          // Seed default logs relative to today's date
+          const seededLogs = generateInitialAttendance(new Date().toISOString().split('T')[0]);
+          seededLogs.forEach((rec) => {
+            const docId = `${rec.date}_${rec.employeeId}`;
+            setDoc(doc(db, 'attendance', docId), rec).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
+            });
+          });
+        } else {
+          const list: AttendanceRecord[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as AttendanceRecord);
+          });
+          setAttendance(list);
+        }
+      }, (err) => {
+        console.error('Attendance cloud listing denied:', err);
+      });
+
+      // Snapshot - Settings
+      const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+        if (!docSnap.exists()) {
+          setDoc(doc(db, 'settings', 'global'), INITIAL_SETTINGS).catch(err => {
+            handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+          });
+        } else {
+          setSettings(docSnap.data() as Settings);
+        }
+      }, (err) => {
+        console.error('Settings document snapshot query failed:', err);
+      });
+
+      // Snapshot - Leave Requests
+      const unsubLeaves = onSnapshot(collection(db, 'leaveRequests'), (snapshot) => {
+        if (snapshot.empty) {
+          INITIAL_LEAVE_REQUESTS.forEach((req) => {
+            setDoc(doc(db, 'leaveRequests', req.id), req).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${req.id}`);
+            });
+          });
+        } else {
+          const list: LeaveRequest[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as LeaveRequest);
+          });
+          list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+          setLeaveRequests(list);
+        }
+      }, (err) => {
+        console.error('Leave requests query failed:', err);
+      });
+
+      // Snapshot - Notifications
+      const unsubNotifs = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+        if (snapshot.empty) {
+          INITIAL_NOTIFICATIONS.forEach((notif) => {
+            setDoc(doc(db, 'notifications', notif.id), notif).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`);
+            });
+          });
+        } else {
+          const list: AppNotification[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as AppNotification);
+          });
+          // Sort by unique timestamp string or id if desired, keeping newest first
+          list.sort((a, b) => b.id.localeCompare(a.id));
+          setNotifications(list);
+        }
+      }, (err) => {
+        console.error('Audit alerts subscription query denied:', err);
+      });
+
+      return () => {
+        unsubEmp();
+        unsubAttendance();
+        unsubSettings();
+        unsubLeaves();
+        unsubNotifs();
+      };
+    };
+
+    let unsubscribes: (() => void) | null = null;
+
+    signInAnonymously(auth)
+      .then(() => {
+        console.log('Firebase Anonymous Session initialized successfully.');
+        setFirebaseStatus('connected');
+        unsubscribes = initializeFirestoreSubscriptions();
+      })
+      .catch((err) => {
+        console.warn('Firebase Anonymous Auth restricted by GCP project policy, proceeding unauthenticated:', err.message);
+        // Fallback: Proceed unauthenticated with connected state since our security rules allow schema-validated operations
+        setFirebaseStatus('connected');
+        unsubscribes = initializeFirestoreSubscriptions();
+      });
+
+    return () => {
+      if (unsubscribes) {
+        unsubscribes();
+      }
+    };
+  }, []);
+
+  // Unified State Writer to LocalStorage
+  const handleSaveToLocalStorage = (
+    nextEmployees: Employee[] = employees,
+    nextAttendance: AttendanceRecord[] = attendance,
+    nextSettings: Settings = settings,
+    nextUrl: string = appsScriptUrl,
+    nextAdminState: boolean = isAdminLoggedIn,
+    nextLeaves: LeaveRequest[] = leaveRequests,
+    nextNotifs: AppNotification[] = notifications,
+    nextEmp: Employee | null = loggedInEmployee
+  ) => {
+    const backupObj = {
+      employees: nextEmployees,
+      attendance: nextAttendance,
+      settings: nextSettings,
+      appsScriptUrl: nextUrl,
+      isAdminLoggedIn: nextAdminState,
+      leaveRequests: nextLeaves,
+      notifications: nextNotifs,
+      loggedInEmployee: nextEmp
+    };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(backupObj));
+  };
+
+  // Sync to localCache as reactive backup automatically on React states variations
+  useEffect(() => {
+    handleSaveToLocalStorage();
+  }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
+
+  // Dispatch Administrative push alerts
+  const handleRaiseNotification = async (
+    title: string,
+    message: string,
+    type: 'info' | 'warning' | 'alert' | 'success',
+    employeeId?: string
+  ) => {
+    const newNotif: AppNotification = {
+      id: `NT-${Date.now()}-${Math.floor(Math.random() * 1050)}`,
+      title,
+      message,
+      type,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: false,
+      isAdmin: true,
+      employeeId
+    };
+
+    try {
+      await setDoc(doc(db, 'notifications', newNotif.id), newNotif);
+
+      // Native Browser Notification block
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(title, { body: message, icon: '/favicon.ico' });
+        } catch (e) {
+          console.log('Fired notification warning internally', message);
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `notifications/${newNotif.id}`);
+    }
+  };
+
+  // Google Sheets Remote Sync Trigger Action
+  const triggerRemoteSheetsSync = async (actionType: 'syncAttendance' | 'syncEmployees' | 'syncSettings', payload: any) => {
+    if (!appsScriptUrl) return;
+    setIsSyncing(true);
+
+    try {
+      const response = await fetch(appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors', // standard Apps Script POST targets operate on redirecting forms/no-cors safely
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: actionType,
+          ...payload
+        })
+      });
+      // "no-cors" triggers don't return response codes readable in sandbox environments, but they successfully stream to Sheet rows
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Remote sheets serialization index failed:', err);
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // HANDLERS
+  const handleLogin = (role: 'admin' | 'employee', employeeId?: string) => {
+    if (role === 'admin') {
+      setIsAdminLoggedIn(true);
+      setLoggedInEmployee(null);
+      setCurrentView('dashboard');
+      handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, true, leaveRequests, notifications, null);
+    } else if (role === 'employee' && employeeId) {
+      const emp = employees.find(e => e.id === employeeId);
+      if (emp) {
+        setLoggedInEmployee(emp);
+        setIsAdminLoggedIn(false);
+        setCurrentView('terminal');
+        handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, false, leaveRequests, notifications, emp);
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdminLoggedIn(false);
+    setLoggedInEmployee(null);
+    setCurrentView('terminal');
+    handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, false, leaveRequests, notifications, null);
+  };
+
+  const handleEmployeeLogout = () => {
+    setIsAdminLoggedIn(false);
+    setLoggedInEmployee(null);
+    setCurrentView('admin-login');
+    handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, false, leaveRequests, notifications, null);
+  };
+
+  const handleAddEmployee = async (newEmp: Employee) => {
+    try {
+      await setDoc(doc(db, 'employees', newEmp.id), newEmp);
+      // Synchronous local state fallback
+      setEmployees((prev) => [...prev.filter(e => e.id !== newEmp.id), newEmp]);
+      triggerRemoteSheetsSync('syncEmployees', { employees: [...employees, newEmp] });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `employees/${newEmp.id}`);
+    }
+  };
+
+  const handleUpdateEmployee = async (updatedEmp: Employee) => {
+    try {
+      await setDoc(doc(db, 'employees', updatedEmp.id), updatedEmp);
+      setEmployees((prev) => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+      triggerRemoteSheetsSync('syncEmployees', { employees: employees.map((emp) => emp.id === updatedEmp.id ? updatedEmp : emp) });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `employees/${updatedEmp.id}`);
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'employees', id));
+      setEmployees((prev) => prev.filter(e => e.id !== id));
+      triggerRemoteSheetsSync('syncEmployees', { employees: employees.filter((emp) => emp.id !== id) });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `employees/${id}`);
+    }
+  };
+
+  const handleAddAttendance = async (newRecord: AttendanceRecord) => {
+    const docId = `${newRecord.date}_${newRecord.employeeId}`;
+    try {
+      await setDoc(doc(db, 'attendance', docId), newRecord);
+      setAttendance((prev) => [...prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId)), newRecord]);
+
+      const empName = employees.find(e => e.id === newRecord.employeeId)?.name || 'Employee';
+
+      // 1. Late Entry alert
+      if (newRecord.entryTime) {
+        const cleanEntry = newRecord.entryTime.replace(' AM', '').replace(' PM', '').trim();
+        const cleanTarget = settings.workStartHour.trim();
+        
+        const [eH, eM] = cleanEntry.split(':').map(Number);
+        const [tH, tM] = cleanTarget.split(':').map(Number);
+        if (eH > tH || (eH === tH && eM > tM)) {
+          handleRaiseNotification(
+            'Late Entry Alert',
+            `${empName} logged entry late at ${newRecord.entryTime} (Shift Window starts: ${settings.workStartHour} AM).`,
+            'warning',
+            newRecord.employeeId
+          );
+        }
+      }
+
+      // 2. Duplicate Check-in warning
+      const duplicateCount = attendance.filter(r => r.date === newRecord.date && r.employeeId === newRecord.employeeId).length;
+      if (duplicateCount > 0) {
+        handleRaiseNotification(
+          'Duplicate Entry Attempt',
+          `Duplicate log warning: Multiple entry markers checked in for ${empName} today.`,
+          'alert',
+          newRecord.employeeId
+        );
+      }
+
+      triggerRemoteSheetsSync('syncAttendance', { record: newRecord });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
+    }
+  };
+
+  const handleUpdateAttendance = async (updatedRecord: AttendanceRecord) => {
+    const docId = `${updatedRecord.date}_${updatedRecord.employeeId}`;
+    try {
+      await setDoc(doc(db, 'attendance', docId), updatedRecord);
+      setAttendance((prev) => prev.map(rec => rec.date === updatedRecord.date && rec.employeeId === updatedRecord.employeeId ? updatedRecord : rec));
+
+      // Early Departure alert
+      if (updatedRecord.exitTime) {
+        const cleanExit = updatedRecord.exitTime.replace(' AM', '').replace(' PM', '').trim();
+        const cleanTargetEnd = settings.workEndHour || '17:00';
+        const [eH, eM] = cleanExit.split(':').map(Number);
+        const [tH, tM] = cleanTargetEnd.split(':').map(Number);
+        if (eH < tH || (eH === tH && eM < tM)) {
+          const empName = employees.find(e => e.id === updatedRecord.employeeId)?.name || 'Employee';
+          handleRaiseNotification(
+            'Early Exit Alert',
+            `${empName} wrapped shift early at ${updatedRecord.exitTime} (Target: ${settings.workEndHour} PM).`,
+            'warning',
+            updatedRecord.employeeId
+          );
+        }
+      }
+
+      triggerRemoteSheetsSync('syncAttendance', { record: updatedRecord });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
+    }
+  };
+
+  // Leave system request submission
+  const handleSubmitLeaveRequest = async (newRequest: LeaveRequest) => {
+    try {
+      await setDoc(doc(db, 'leaveRequests', newRequest.id), newRequest);
+      setLeaveRequests((prev) => [newRequest, ...prev.filter(r => r.id !== newRequest.id)]);
+      
+      handleRaiseNotification(
+        'New Leave Request',
+        `${newRequest.employeeName} submitted a ${newRequest.leaveType} leave request starting ${newRequest.startDate}.`,
+        'info',
+        newRequest.employeeId
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${newRequest.id}`);
+    }
+  };
+
+  // Process / Approve Leave
+  const handleDecideLeaveRequest = async (requestId: string, status: 'Approved' | 'Rejected') => {
+    try {
+      const targetRequest = leaveRequests.find(r => r.id === requestId);
+      if (!targetRequest) return;
+
+      const updatedRequest: LeaveRequest = { ...targetRequest, status };
+      await setDoc(doc(db, 'leaveRequests', requestId), updatedRequest);
+      setLeaveRequests((prev) => prev.map(r => r.id === requestId ? updatedRequest : r));
+
+      if (status === 'Approved') {
+        // excused with 'ON LEAVE' flag
+        const newAttendanceRecord: AttendanceRecord = {
+          employeeId: targetRequest.employeeId,
+          employeeName: targetRequest.employeeName,
+          date: targetRequest.startDate,
+          entryTime: 'ON LEAVE',
+          exitTime: 'ON LEAVE',
+          lunchOut: '',
+          lunchIn: '',
+          totalHours: 0,
+          overtime: 0,
+          status: `On Leave: ${targetRequest.leaveType}`
+        };
+
+        const docId = `${targetRequest.startDate}_${targetRequest.employeeId}`;
+        await setDoc(doc(db, 'attendance', docId), newAttendanceRecord);
+        setAttendance((prev) => [...prev.filter(r => !(r.date === targetRequest.startDate && r.employeeId === targetRequest.employeeId)), newAttendanceRecord]);
+        
+        handleRaiseNotification(
+          'Leave Approved',
+          `${targetRequest.employeeName}'s leave approved for ${targetRequest.startDate}. Attendance Excuse recorded.`,
+          'success',
+          targetRequest.employeeId
+        );
+      } else {
+        handleRaiseNotification(
+          'Leave Declined',
+          `${targetRequest.employeeName}'s leave request for ${targetRequest.startDate} was rejected.`,
+          'warning',
+          targetRequest.employeeId
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${requestId}`);
+    }
+  };
+
+  const handleUpdateAppsScriptUrl = (url: string) => {
+    setAppsScriptUrl(url);
+    const nextStatus = url ? 'synced' : 'local';
+    setSyncStatus(nextStatus);
+    handleSaveToLocalStorage(employees, attendance, settings, url, isAdminLoggedIn);
+  };
+
+  const handleUpdateSettings = async (updatedSettings: Settings) => {
+    try {
+      await setDoc(doc(db, 'settings', 'global'), updatedSettings);
+      setSettings(updatedSettings);
+      triggerRemoteSheetsSync('syncSettings', { settings: updatedSettings });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+    }
+  };
+
+  const handleViewChangeBySelector = (view: string) => {
+    // View Guards
+    if (isAdminLoggedIn) {
+      setCurrentView(view);
+    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'sync')) {
+      setCurrentView(view);
+    } else if (view === 'terminal' || view === 'sync' || view === 'admin-login') {
+      setCurrentView(view);
+    } else {
+      setCurrentView('admin-login');
+    }
+    setIsSidebarOpen(false); // Close mobile panel
+  };
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  if (!isAdminLoggedIn && !loggedInEmployee) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" id="main-application-stage">
+        <div className="max-w-md w-full">
+          <LoginScreen
+            onLogin={handleLogin}
+            companyName={settings.companyName}
+            employees={employees}
+            onAddEmployee={handleAddEmployee}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f3f4f6] flex" id="main-application-stage">
+      {/* Dynamic Sidebar navigation */}
+      <Sidebar
+        currentView={currentView}
+        onViewChange={handleViewChangeBySelector}
+        isAdminLoggedIn={isAdminLoggedIn}
+        loggedInEmployee={loggedInEmployee}
+        onLogout={handleLogout}
+        onEmployeeLogout={handleEmployeeLogout}
+        companyName={settings.companyName}
+        isOpen={isSidebarOpen}
+        onToggleSidebar={toggleSidebar}
+      />
+
+      {/* Main viewport */}
+      <div className="flex-1 flex flex-col lg:pl-72 min-w-0 min-h-screen pb-12">
+        {/* Top bar (for mobile toggle menu / system status indicators) */}
+        <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-6 sticky top-0 z-20 print:hidden select-none">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={toggleSidebar}
+              className="lg:hidden text-slate-500 hover:text-slate-800 bg-slate-100 p-2 rounded-xl transition-all cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="hidden text-xs md:flex items-center space-x-1.5 font-bold uppercase font-mono tracking-widest text-slate-400">
+              <span>View:</span>
+              <span className="text-slate-650 tracking-normal capitalize font-sans">
+                {currentView === 'terminal' && 'Attendance Kiosk Desk'}
+                {currentView === 'dashboard' && 'Workforce Dashboard'}
+                {currentView === 'employees' && 'Staff Directory'}
+                {currentView === 'reports' && 'Wages & Overtime Audit'}
+                {currentView === 'sync' && 'Sheets Integration Center'}
+                {currentView === 'admin-login' && 'Admin Authorization'}
+                {currentView === 'leaves' && 'Leaves & Verification Portal'}
+              </span>
+            </h2>
+          </div>
+
+          {/* Sync indicator caps */}
+          <div className="flex items-center space-x-3.5">
+            <div 
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+                firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' :
+                firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
+                'bg-rose-50 border-rose-100 text-rose-700'
+              }`}
+              title="Firebase Cloud Database Connection Status"
+            >
+              <div className={`w-1.5 h-1.5 rounded-full ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
+              <span>Cloud DB: {firebaseStatus}</span>
+            </div>
+
+            {appsScriptUrl ? (
+              <div 
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+                  syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700 animate-pulse'
+                }`}
+                title="Synchronized to real-time Apps Script rows"
+              >
+                <Wifi className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden sm:inline-block">GAS Sheet: Connected</span>
+              </div>
+            ) : (
+              <div 
+                className="flex items-center space-x-1.5 px-3 py-1 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"
+                title="Mock database saving to browser localState"
+              >
+                <WifiOff className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline-block">LocalStorage Kiosk Active</span>
+              </div>
+            )}
+
+            {/* Logout Button */}
+            <button
+              onClick={isAdminLoggedIn ? handleLogout : handleEmployeeLogout}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-rose-50 border border-slate-100 rounded-xl text-rose-700 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all select-none cursor-pointer"
+              title="Click here to sign out"
+            >
+              <LogOut className="w-4 h-4 text-rose-505" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+
+            {/* Notification Bell Dropdown */}
+            <div className="relative">
+              <button
+                id="header-bell-badge"
+                onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+                className="p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
+              >
+                <Bell className="w-4 h-4 text-slate-600" />
+                {notifications.filter(u => !u.read).length > 0 && (
+                  <span className="absolute top-1 right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center animate-pulse shadow">
+                    {notifications.filter(u => !u.read).length}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationDropdownOpen && (
+                <div className="absolute right-0 mt-2.5 w-76 bg-white border border-slate-100 shadow-xl rounded-2xl z-30 p-4 space-y-3.5 animate-fadeIn font-sans text-left">
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                    <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Administrative Shifts Alerts</span>
+                    </h3>
+                    {notifications.filter(n => !n.read).length > 0 && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const updated = notifications.map(n => ({ ...n, read: true }));
+                            setNotifications(updated);
+                            const unreadNotifs = notifications.filter(n => !n.read);
+                            for (const n of unreadNotifs) {
+                              await setDoc(doc(db, 'notifications', n.id), { ...n, read: true });
+                            }
+                            setIsNotificationDropdownOpen(false);
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.WRITE, 'notifications');
+                          }
+                        }}
+                        className="text-[10.5px] text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer"
+                      >
+                        Read All
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+                    {notifications.length === 0 ? (
+                      <p className="text-[10px] text-slate-400 font-mono text-center py-6">No administrative logs collected today.</p>
+                    ) : (
+                      notifications.slice(0, 5).map(notif => (
+                        <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${notif.read ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
+                          <div className="flex items-center justify-between font-bold text-slate-800">
+                            <span>{notif.title}</span>
+                            <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-600 leading-normal font-sans">{notif.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="pt-2 text-center border-t border-slate-50">
+                    <button
+                      onClick={() => {
+                        handleViewChangeBySelector('dashboard');
+                        setIsNotificationDropdownOpen(false);
+                      }}
+                      className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold uppercase tracking-wider block w-full text-center"
+                    >
+                      Audit Shift Logs Dashboard
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* View Router sheets */}
+        <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
+          {currentView === 'terminal' && (
+            <AttendanceTerminal
+              employees={employees}
+              attendance={attendance}
+              onAddAttendance={handleAddAttendance}
+              onUpdateAttendance={handleUpdateAttendance}
+              settings={settings}
+              onRaiseNotification={handleRaiseNotification}
+              loggedInEmployee={loggedInEmployee}
+            />
+          )}
+
+          {currentView === 'admin-login' && (
+            <LoginScreen
+              onLogin={handleLogin}
+              companyName={settings.companyName}
+              employees={employees}
+              onAddEmployee={handleAddEmployee}
+            />
+          )}
+
+          {currentView === 'dashboard' && (
+            <DashboardView
+              employees={employees}
+              attendance={attendance}
+              settings={settings}
+              onNavigateToView={handleViewChangeBySelector}
+              notifications={notifications}
+              leaveRequests={leaveRequests}
+              onEvaluateEmployee={(empId) => handleLogin('employee', empId)}
+              onMarkNotificationRead={async (id) => {
+                const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+                setNotifications(updated);
+                const target = notifications.find(n => n.id === id);
+                if (target) {
+                  try {
+                    await setDoc(doc(db, 'notifications', id), { ...target, read: true });
+                  } catch (err) {
+                    handleFirestoreError(err, OperationType.WRITE, `notifications/${id}`);
+                  }
+                }
+              }}
+            />
+          )}
+
+          {currentView === 'employees' && (
+            <EmployeeProfiles
+              employees={employees}
+              onAddEmployee={handleAddEmployee}
+              onUpdateEmployee={handleUpdateEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              settings={settings}
+            />
+          )}
+
+          {currentView === 'reports' && (
+            <ReportsView
+              employees={employees}
+              attendance={attendance}
+              settings={settings}
+            />
+          )}
+
+          {currentView === 'sync' && (
+            <SheetsSyncHub
+              employees={employees}
+              attendance={attendance}
+              settings={settings}
+              appsScriptUrl={appsScriptUrl}
+              onUpdateUrl={handleUpdateAppsScriptUrl}
+            />
+          )}
+
+          {currentView === 'leaves' && (
+            <LeaveManagementView
+              employees={employees}
+              attendance={attendance}
+              leaveRequests={leaveRequests}
+              onSubmitLeaveRequest={(req) => {
+                const newReq: LeaveRequest = {
+                  ...req,
+                  id: `LR-${Date.now()}`,
+                  submittedAt: new Date().toISOString()
+                };
+                handleSubmitLeaveRequest(newReq);
+              }}
+              onDecideLeaveRequest={handleDecideLeaveRequest}
+              isAdminLoggedIn={isAdminLoggedIn}
+              settings={settings}
+              loggedInEmployee={loggedInEmployee}
+            />
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}

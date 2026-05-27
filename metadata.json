@@ -1,0 +1,6 @@
+{
+  "name": "Employee Attendance Management",
+  "description": "A modern employee attendance and payroll management dashboard with live interactive sheets simulation, Google Sheets and Apps Script backend integration, report systems, and employee profile management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
