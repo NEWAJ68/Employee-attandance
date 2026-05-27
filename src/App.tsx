@@ -407,6 +407,9 @@ export default function App() {
     try {
       await setDoc(doc(db, 'employees', updatedEmp.id), updatedEmp);
       setEmployees((prev) => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+      if (loggedInEmployee && loggedInEmployee.id === updatedEmp.id) {
+        setLoggedInEmployee(updatedEmp);
+      }
       triggerRemoteSheetsSync('syncEmployees', { employees: employees.map((emp) => emp.id === updatedEmp.id ? updatedEmp : emp) });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `employees/${updatedEmp.id}`);
@@ -580,9 +583,9 @@ export default function App() {
     // View Guards
     if (isAdminLoggedIn) {
       setCurrentView(view);
-    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'sync' || view === 'my-attendance')) {
+    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'my-attendance')) {
       setCurrentView(view);
-    } else if (view === 'terminal' || view === 'sync' || view === 'admin-login' || view === 'my-attendance') {
+    } else if (view === 'terminal' || view === 'admin-login' || view === 'my-attendance') {
       setCurrentView(view);
     } else {
       setCurrentView('admin-login');
@@ -871,6 +874,7 @@ export default function App() {
               isAdminLoggedIn={isAdminLoggedIn}
               settings={settings}
               loggedInEmployee={loggedInEmployee}
+              onNavigateToView={handleViewChangeBySelector}
             />
           )}
 
@@ -879,6 +883,7 @@ export default function App() {
               loggedInEmployee={loggedInEmployee}
               attendance={attendance}
               onNavigateToView={handleViewChangeBySelector}
+              onUpdateEmployee={handleUpdateEmployee}
             />
           )}
         </main>

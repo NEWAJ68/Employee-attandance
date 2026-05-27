@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   FileSpreadsheet, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   Download, 
   Clock, 
   CheckCircle, 
@@ -10,21 +10,34 @@ import {
   Coffee,
   Search,
   Filter,
-  ArrowLeft
+  ArrowLeft,
+  Camera,
+  Layers,
+  List,
+  Upload,
+  User,
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
-import { Employee, AttendanceRecord } from '../types';
+import { Employee, AttendanceRecord, LeaveRequest } from '../types';
 
 interface MyAttendanceViewProps {
   loggedInEmployee: Employee;
   attendance: AttendanceRecord[];
   onNavigateToView?: (view: string) => void;
+  onUpdateEmployee?: (employee: Employee) => void;
 }
 
 export default function MyAttendanceView({
   loggedInEmployee,
   attendance,
-  onNavigateToView
+  onNavigateToView,
+  onUpdateEmployee
 }: MyAttendanceViewProps) {
+  // Toggle states
+  const [viewType, setViewType] = useState<'calendar' | 'table'>('calendar');
+  
   // Current month state format: 'YYYY-MM'
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -33,6 +46,7 @@ export default function MyAttendanceView({
   
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthStr);
   const [filterType, setFilterType] = useState<'All' | 'Present' | 'Absent' | 'Weekly Off'>('All');
+  const [uploadError, setUploadError] = useState('');
 
   // Filter attendance records specifically belonging to this logged in employee
   const myLogs = attendance.filter(record => record.employeeId === loggedInEmployee.id);
@@ -52,6 +66,32 @@ export default function MyAttendanceView({
 
   const datesInMonth = generateMonthDates(selectedMonth);
 
+  // Parse calendar structure for visual month grid
+  const getCalendarDays = (yearMonth: string) => {
+    const [year, month] = yearMonth.split('-').map(Number);
+    const firstDay = new Date(year, month - 1, 1);
+    const startDayOfWeek = firstDay.getDay(); // 0 is Sunday, 6 is Saturday
+    
+    const lastDay = new Date(year, month, 0);
+    const totalDays = lastDay.getDate();
+    
+    const cells: (Date | null)[] = [];
+    
+    // Add null cell spacers for preceding month offset
+    for (let i = 0; i < startDayOfWeek; i++) {
+      cells.push(null);
+    }
+    
+    // Add real dates
+    for (let d = 1; d <= totalDays; d++) {
+      cells.push(new Date(year, month - 1, d));
+    }
+    
+    return cells;
+  };
+
+  const calendarDays = getCalendarDays(selectedMonth);
+
   // Map calendar dates to attendance records
   const processedLogs = datesInMonth.map(date => {
     const year = date.getFullYear();
@@ -70,15 +110,17 @@ export default function MyAttendanceView({
     const matchedRecord = myLogs.find(log => log.date === dateStr);
     
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Customize weekend as Sat/Sun
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; 
 
-    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'Pending' | 'Future' = 'Absent';
+    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' = 'Absent';
     let detail = matchedRecord;
 
     if (isFuture) {
       status = 'Future';
     } else if (matchedRecord) {
-      if (matchedRecord.status === 'Late Entry') {
+      if (matchedRecord.status && matchedRecord.status.toLowerCase().includes('leave')) {
+        status = 'On Leave';
+      } else if (matchedRecord.status === 'Late Entry') {
         status = 'Late Entry';
       } else if (matchedRecord.status === 'Night Shift') {
         status = 'Night Shift';
@@ -103,13 +145,14 @@ export default function MyAttendanceView({
       lunchIn: detail?.lunchIn || '--:--',
       clockOut: detail?.exitTime || detail?.exitTime2 || '--:--',
       hours: detail?.totalHours || 0,
-      overtime: detail?.overtime || 0
+      overtime: detail?.overtime || 0,
+      notes: detail?.notes
     };
   });
 
   // Filter logs based on dropdown search
   const filteredLogs = processedLogs.filter(log => {
-    if (log.status === 'Future') return false; // Hide future dates from list
+    if (log.status === 'Future') return false; 
     if (filterType === 'All') return true;
     if (filterType === 'Present') return log.status === 'Present' || log.status === 'Late Entry' || log.status === 'Night Shift';
     if (filterType === 'Absent') return log.status === 'Absent' || log.status === 'Pending';
@@ -163,15 +206,39 @@ export default function MyAttendanceView({
     document.body.removeChild(link);
   };
 
+  // Profile Image Base64 Uploader Handler
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2.5 * 1024 * 1024) {
+      setUploadError('File size exceeds 2.5MB. Please choose a smaller profile photo.');
+      setTimeout(() => setUploadError(''), 6000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string' && onUpdateEmployee) {
+        onUpdateEmployee({
+          ...loggedInEmployee,
+          photoUrl: reader.result
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Compute metrics for selected month
   const totalDaysInSelection = processedLogs.filter(l => l.status !== 'Future').length;
   const presentDaysCount = processedLogs.filter(l => ['Present', 'Late Entry', 'Night Shift'].includes(l.status)).length;
   const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
-  const officialOffDaysCount = processedLogs.filter(l => l.status === 'Weekly Off').length;
+  const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
   const sumWorkHours = processedLogs.reduce((acc, current) => acc + current.hours, 0);
 
   return (
     <div className="space-y-6 animate-fadeIn font-sans" id="my-attendance-sheet">
+      
       {/* Page Back Link / Navigation Tabs */}
       {onNavigateToView && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white px-5 py-3.5 rounded-2xl border border-slate-150/75 shadow-3xs select-none">
@@ -189,13 +256,13 @@ export default function MyAttendanceView({
             <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Quick Switch:</span>
             <button
               onClick={() => onNavigateToView('terminal')}
-              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/90 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
+              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/95 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
             >
               My Punch Card
             </button>
             <button
               onClick={() => onNavigateToView('leaves')}
-              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/90 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
+              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/95 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
             >
               My Leave Requests
             </button>
@@ -203,244 +270,520 @@ export default function MyAttendanceView({
         </div>
       )}
 
-      {/* Top Welcome Title Widget */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center space-x-2">
-            <span className="bg-indigo-50 text-indigo-700 p-2 rounded-xl border border-indigo-100 flex items-center justify-center">
-              <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
-            </span>
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-widest leading-none">Attendance Statement</span>
-              <h1 className="text-lg font-black text-slate-9 tracking-tight leading-snug">My Attendance Logs</h1>
+      {/* Bento Grid Header Layout: Corporate ID Card & Section Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left: ID Card Widget & Profile Photo Upload */}
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-6 rounded-2xl text-white shadow-md border border-slate-800 flex flex-col justify-between relative overflow-hidden select-none">
+          <div className="absolute -top-4 -right-4 h-24 w-24 rounded-full bg-indigo-500/10 blur-xl"></div>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-850 pb-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-indigo-300 font-bold">
+                Corporate ID Badge
+              </span>
+              <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full font-mono uppercase animate-pulse">
+                Active Session
+              </span>
             </div>
+
+            <div className="flex items-center space-x-4">
+              {/* Photo Upload Container */}
+              <div className="relative group shrink-0">
+                <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-indigo-500/40 bg-slate-950/40 flex items-center justify-center relative shadow">
+                  {loggedInEmployee.photoUrl ? (
+                    <img 
+                      src={loggedInEmployee.photoUrl} 
+                      alt={loggedInEmployee.name} 
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <User className="w-8 h-8 text-slate-500 stroke-1" />
+                  )}
+                  
+                  {/* Camera overlay hover button */}
+                  <label 
+                    htmlFor="profile-badge-pic-uploader"
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-[8px] font-extrabold cursor-pointer uppercase text-white font-sans text-center px-1"
+                  >
+                    <Camera className="w-4 h-4 text-white mb-0.5" />
+                    <span>Upload</span>
+                  </label>
+                </div>
+                
+                <input 
+                  type="file" 
+                  id="profile-badge-pic-uploader"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden" 
+                />
+              </div>
+
+              {/* ID Details */}
+              <div className="space-y-1">
+                <h3 className="text-sm font-black tracking-tight text-white">{loggedInEmployee.name}</h3>
+                <p className="text-2xs text-slate-350 font-mono">{loggedInEmployee.id} • {loggedInEmployee.department}</p>
+                <div className="text-[10px] text-slate-400">
+                  <span className="font-mono">Joined:</span> <span>{loggedInEmployee.joinedDate}</span>
+                </div>
+              </div>
+            </div>
+
+            {uploadError && (
+              <p className="text-[10px] text-rose-400 font-medium font-mono">
+                ⚠ {uploadError}
+              </p>
+            )}
           </div>
-          <p className="text-xs text-slate-500 font-medium">
-            Review detailed, chronologically generated logs with automated presence assessments and download corporate spreadsheets.
-          </p>
-        </div>
 
-        {/* Month Selection controls */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative shrink-0">
-            <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              type="month" 
-              value={selectedMonth}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setSelectedMonth(e.target.value);
-                }
-              }}
-              className="appearance-none border border-slate-200 outline-none rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 bg-slate-50"
-            />
-          </div>
-
-          <button
-            onClick={handleDownloadCSV}
-            className="flex items-center space-x-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-750 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-            <span>Download CSV report</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Metrics Summary Rows */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Metric Card 1 */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block">Total WorkDays</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-slate-800 tracking-tight">{totalDaysInSelection}</span>
-            <span className="text-[10px] text-slate-400 font-medium">days in selection</span>
-          </div>
-        </div>
-
-        {/* Metric Card 2 */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-emerald-650 tracking-tight">{presentDaysCount}</span>
-            <span className="text-[10px] text-emerald-500 font-bold">({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%) Attendance rate</span>
-          </div>
-        </div>
-
-        {/* Metric Card 3 */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-rose-650 tracking-tight">{absentDaysCount}</span>
-            <span className="text-[10px] text-rose-450 font-bold">days missed</span>
+          <div className="pt-4 border-t border-slate-850 mt-4 flex items-center justify-between text-2xs text-slate-400 font-mono">
+            <span>Email Status:</span>
+            <span className="text-indigo-200 truncate max-w-[150px] font-sans">{loggedInEmployee.email}</span>
           </div>
         </div>
 
-        {/* Metric Card 4 */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
-          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-500 block">Log Book hours</span>
-          <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-black text-indigo-650 tracking-tight">{sumWorkHours.toFixed(1)}h</span>
-            <span className="text-[10px] text-slate-400 font-medium">total work timed</span>
+        {/* Right 2 Cols: Month pickers & Description summary */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <span className="bg-indigo-50 text-indigo-700 p-2 rounded-xl border border-indigo-100 flex items-center justify-center">
+                <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+              </span>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-widest leading-none block">Personal Board</span>
+                <h1 className="text-lg font-black text-slate-900 tracking-tight leading-snug">My Attendance Statement</h1>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              Review personal calendar boards and logs. Change your profile badge photo, examine monthly ratios of punch-ins, clock out margins, and export standard CSV spreadsheets.
+            </p>
           </div>
-        </div>
-      </div>
 
-      {/* Date-wise Table Sheet Container */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
-        {/* Filter controls bar */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
-          <span className="font-extrabold text-slate-700 font-mono uppercase tracking-wider">
-            Daily logs: {selectedMonth}
-          </span>
+          {/* Month Selection and Download Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4">
+            <div className="flex items-center space-x-3">
+              <div className="relative shrink-0">
+                <CalendarIcon className="w-4 h-4 text-slate-450 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="month" 
+                  value={selectedMonth}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedMonth(e.target.value);
+                    }
+                  }}
+                  className="appearance-none border border-slate-200 outline-none rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:ring-1 focus:ring-indigo-500 bg-slate-50 cursor-pointer"
+                />
+              </div>
 
-          <div className="flex items-center space-x-2">
-            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Filter view:</span>
-            <div className="flex space-x-1.5 bg-slate-200/50 p-1 rounded-lg">
-              {(['All', 'Present', 'Absent', 'Weekly Off'] as const).map(option => (
+              {/* View Switcher: Calendar vs Table list */}
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-150/40">
                 <button
-                  key={option}
-                  onClick={() => setFilterType(option)}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    filterType === option 
-                      ? 'bg-white text-indigo-600 shadow-2xs' 
-                      : 'text-slate-500 hover:text-slate-800'
+                  onClick={() => setViewType('calendar')}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    viewType === 'calendar' 
+                      ? 'bg-white text-indigo-700 shadow-2xs' 
+                      : 'text-slate-550 hover:text-slate-800'
                   }`}
                 >
-                  {option}
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Calendar Grid</span>
                 </button>
-              ))}
+                <button
+                  onClick={() => setViewType('table')}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    viewType === 'table' 
+                      ? 'bg-white text-indigo-700 shadow-2xs' 
+                      : 'text-slate-550 hover:text-slate-800'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Detailed Sheet</span>
+                </button>
+              </div>
             </div>
+
+            <button
+              onClick={handleDownloadCSV}
+              className="flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download CSV Report</span>
+            </button>
           </div>
         </div>
 
-        {/* Table itself */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/20 border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-widest select-none">
-                <th className="py-3 px-6">Calendar Date</th>
-                <th className="py-3 px-6">Attendance assessment</th>
-                <th className="py-3 px-4">Punch In</th>
-                <th className="py-3 px-4">Lunch Breakout</th>
-                <th className="py-3 px-4">Lunch return</th>
-                <th className="py-3 px-4">Punch Out</th>
-                <th className="py-3 px-4">Total clocked hours</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filteredLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center">
-                    <div className="max-w-xs mx-auto flex flex-col items-center">
-                      <Search className="w-8 h-8 text-slate-300 stroke-1 mb-2" />
-                      <p className="font-bold text-slate-805">No matches found</p>
-                      <p className="text-2xs text-slate-400 mt-0.5 leading-relaxed">
-                        Try changing your Filter View or pick a different Month input above.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredLogs.map((log) => {
-                  let statusBadgeStyle = '';
-                  let statusLabel = '';
-                  let StatusIcon = CheckCircle;
+      </div>
 
-                  if (log.status === 'Present') {
-                    statusBadgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/60';
-                    statusLabel = 'Present';
-                    StatusIcon = CheckCircle;
-                  } else if (log.status === 'Late Entry') {
-                    statusBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-100/60 animate-pulse';
-                    statusLabel = 'Late Entry';
-                    StatusIcon = AlertCircle;
-                  } else if (log.status === 'Night Shift') {
-                    statusBadgeStyle = 'bg-sky-50 text-sky-700 border-sky-100/60';
-                    statusLabel = 'Night Shift';
-                    StatusIcon = Clock;
-                  } else if (log.status === 'Weekly Off') {
-                    statusBadgeStyle = 'bg-slate-100 text-slate-400 border-slate-200/50';
-                    statusLabel = 'Weekly Off';
-                    StatusIcon = Coffee;
-                  } else if (log.status === 'Pending') {
-                    statusBadgeStyle = 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse';
-                    statusLabel = 'Awaiting Punch';
-                    StatusIcon = Clock;
-                  } else {
-                    // Absent
-                    statusBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-100';
-                    statusLabel = 'Absent';
-                    StatusIcon = XCircle;
-                  }
+      {/* Metrics Summary Panels */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block">Total Workdays</span>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-black text-slate-800 tracking-tight">{totalDaysInSelection}</span>
+            <span className="text-[10px] text-slate-400 font-medium">days logs</span>
+          </div>
+        </div>
 
-                  return (
-                    <tr 
-                      key={log.dateString} 
-                      className={`hover:bg-slate-50/50 border-slate-50 transition-colors ${
-                        log.isWeekend ? 'bg-slate-50/20' : ''
-                      }`}
-                    >
-                      {/* Date details */}
-                      <td className="py-3 px-6 h-12">
-                        <div className="flex items-center space-x-1">
-                          <span className="font-extrabold text-slate-800">{log.formattedDate}</span>
-                          <span className="text-[10px] text-slate-400 font-mono uppercase bg-slate-100 px-1 rounded">
-                            {log.dayLabel}
-                          </span>
-                        </div>
-                      </td>
+        <div className="bg-white p-5 rounded-2xl border border-emerald-50 shadow-2xs space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present (P)</span>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-black text-emerald-600 tracking-tight">{presentDaysCount}</span>
+            <span className="text-[10px] text-emerald-500 font-semibold font-mono">({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+          </div>
+        </div>
 
-                      {/* Status indicator assessment */}
-                      <td className="py-3 px-6 h-12">
-                        <span className={`inline-flex items-center gap-1 border text-[10px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded-full ${statusBadgeStyle}`}>
-                          <StatusIcon className="w-3 h-3 shrink-0" />
-                          <span>{statusLabel}</span>
-                        </span>
-                      </td>
+        <div className="bg-white p-5 rounded-2xl border border-rose-50 shadow-2xs space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent (A)</span>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-black text-rose-650 tracking-tight">{absentDaysCount}</span>
+            <span className="text-[10px] text-rose-450 font-bold">{leavesCount} on leaves</span>
+          </div>
+        </div>
 
-                      {/* Clock details */}
-                      <td className={`py-3 px-4 font-mono font-bold text-slate-650 h-12`}>
-                        {log.clockIn}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-slate-500 h-12">
-                        {log.lunchOut}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-slate-500 h-12">
-                        {log.lunchIn}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono font-bold text-slate-650 h-12">
-                        {log.clockOut}
-                      </td>
-
-                      {/* Log Hours */}
-                      <td className="py-3 px-4 h-12">
-                        {log.hours > 0 ? (
-                          <div className="flex items-center space-x-1">
-                            <span className="font-mono font-bold text-slate-805 bg-indigo-50/30 text-indigo-755 border border-indigo-100 px-1.5 py-0.5 rounded">
-                              {log.hours.toFixed(2)} hrs
-                            </span>
-                            {log.overtime > 0 && (
-                              <span className="text-[10px] font-mono text-emerald-600 font-bold">
-                                (+{log.overtime.toFixed(1)} OT)
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="font-mono text-slate-350">--</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="bg-white p-5 rounded-2xl border border-indigo-50 shadow-2xs space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-500 block">Log Book Hours</span>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-black text-indigo-650 tracking-tight">{sumWorkHours.toFixed(1)}h</span>
+            <span className="text-[10px] text-slate-400 font-medium font-mono">accumulated</span>
+          </div>
         </div>
       </div>
+
+      {/* CORE DISPLAY SWITCH: Calendar View vs Table View */}
+      {viewType === 'calendar' ? (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden p-6 space-y-6 animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-slate-150/50 pb-3">
+            <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono flex items-center gap-1.5">
+              <CalendarIcon className="w-4 h-4 text-indigo-600" />
+              <span>Personal Month Calendar Sheet: {selectedMonth}</span>
+            </h3>
+
+            {/* Quick Status Legends */}
+            <div className="flex flex-wrap items-center gap-3 text-3xs font-bold leading-none select-none">
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-emerald-150 border border-emerald-300 text-emerald-850 flex items-center justify-center font-mono text-[9px] font-black">P</span>
+                <span className="text-slate-500 font-sans uppercase">Present</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center font-mono text-[9px] font-black">L</span>
+                <span className="text-slate-500 font-sans uppercase">Late Entry</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-sky-100 border border-sky-300 text-sky-850 flex items-center justify-center font-mono text-[9px] font-black">N</span>
+                <span className="text-slate-500 font-sans uppercase">Night Shift</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-rose-150 border border-rose-350 text-rose-800 flex items-center justify-center font-mono text-[9px] font-black">A</span>
+                <span className="text-slate-500 font-sans uppercase">Absent</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-teal-100 border border-teal-300 text-teal-800 flex items-center justify-center font-mono text-[9px] font-black">OL</span>
+                <span className="text-slate-500 font-sans uppercase">Leave</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center font-mono text-[9px] font-black">WO</span>
+                <span className="text-slate-500 font-sans uppercase">Off</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid Layout definition */}
+          <div className="grid grid-cols-7 gap-2">
+            {/* Calendar Weekday titles */}
+            {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => (
+              <div key={day} className="text-center py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                <span className="hidden sm:inline">{day}</span>
+                <span className="sm:hidden">{day.slice(0, 3)}</span>
+              </div>
+            ))}
+
+            {/* Render padded spaces & real day blocks */}
+            {calendarDays.map((cellDate, idx) => {
+              if (cellDate === null) {
+                return (
+                  <div 
+                    key={`empty-${idx}`} 
+                    className="min-h-[92px] bg-slate-50/20 rounded-xl border border-dashed border-slate-100/60"
+                  />
+                );
+              }
+
+              const dateNum = cellDate.getDate();
+              const year = cellDate.getFullYear();
+              const month = String(cellDate.getMonth() + 1).padStart(2, '0');
+              const dayStr = String(dateNum).padStart(2, '0');
+              const dateStringVal = `${year}-${month}-${dayStr}`;
+
+              // Match processed log details
+              const logMatch = processedLogs.find(l => l.dateString === dateStringVal);
+              const isToday = new Date().toISOString().split('T')[0] === dateStringVal;
+
+              // Styles map based on status
+              let containerStyle = 'bg-white border-slate-150 text-slate-705';
+              let badgeStyle = '';
+              let badgeChar = '';
+
+              if (logMatch) {
+                switch (logMatch.status) {
+                  case 'Present':
+                    containerStyle = 'bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50';
+                    badgeStyle = 'bg-emerald-600 text-white border-emerald-500 shadow-3xs';
+                    badgeChar = 'P';
+                    break;
+                  case 'Late Entry':
+                    containerStyle = 'bg-amber-50/40 border-amber-205 hover:bg-amber-55';
+                    badgeStyle = 'bg-amber-500 text-white border-amber-450';
+                    badgeChar = 'L';
+                    break;
+                  case 'Night Shift':
+                    containerStyle = 'bg-sky-50/40 border-sky-200 hover:bg-sky-50';
+                    badgeStyle = 'bg-sky-650 text-white border-sky-600';
+                    badgeChar = 'N';
+                    break;
+                  case 'Weekly Off':
+                    containerStyle = 'bg-slate-50/60 border-slate-150 text-slate-400';
+                    badgeStyle = 'bg-slate-205 text-slate-500 border-slate-300';
+                    badgeChar = 'WO';
+                    break;
+                  case 'On Leave':
+                    containerStyle = 'bg-teal-50/40 border-teal-200 text-teal-700 hover:bg-teal-50';
+                    badgeStyle = 'bg-teal-600 text-white border-teal-500';
+                    badgeChar = 'OL';
+                    break;
+                  case 'Pending':
+                    containerStyle = 'bg-indigo-50/20 border-indigo-150 shadow-3xs border-dashed text-slate-400';
+                    badgeStyle = 'bg-indigo-100 text-indigo-750 font-medium text-[8px] tracking-tight p-0.5';
+                    badgeChar = 'Awaiting';
+                    break;
+                  case 'Future':
+                    containerStyle = 'bg-slate-50/20 border-slate-100 text-slate-300';
+                    badgeStyle = '';
+                    badgeChar = '';
+                    break;
+                  default: // Absent
+                    containerStyle = 'bg-rose-50/30 border-rose-150 hover:bg-rose-50';
+                    badgeStyle = 'bg-rose-600 text-white border-rose-505 font-black shrink-0';
+                    badgeChar = 'A';
+                    break;
+                }
+              }
+
+              return (
+                <div 
+                  key={dateStringVal}
+                  className={`min-h-[92px] p-2 rounded-xl border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
+                    isToday ? 'ring-2 ring-indigo-500 border-indigo-500' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
+                      {dateNum}
+                      {isToday && <span className="text-[7px] text-indigo-655 uppercase ml-1 block sm:inline font-bold">Today</span>}
+                    </span>
+                    {badgeChar && (
+                      <span className={`inline-flex h-5 items-center justify-center text-[10px] font-black rounded-lg border px-1.5 uppercase leading-none font-mono ${badgeStyle}`}>
+                        {badgeChar}
+                      </span>
+                    )}
+                  </div>
+
+                  {logMatch && logMatch.status !== 'Future' && logMatch.status !== 'Weekly Off' && logMatch.status !== 'On Leave' && (
+                    <div className="mt-1 space-y-0.5 select-none font-mono text-[9px] text-slate-500 flex flex-col">
+                      {logMatch.hours > 0 ? (
+                        <>
+                          <span className="font-bold text-slate-700 block truncate">In: {logMatch.clockIn}</span>
+                          <span className="font-bold text-slate-700 block truncate">Out: {logMatch.clockOut}</span>
+                          <span className="text-indigo-655 font-extrabold font-mono mt-0.5 leading-tight">{logMatch.hours.toFixed(1)} hrs</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-350 italic text-[8px]">No clocks logged</span>
+                      )}
+                    </div>
+                  )}
+
+                  {logMatch && logMatch.status === 'Weekly Off' && (
+                    <div className="text-[10px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5">
+                      <Coffee className="w-3 h-3 text-slate-405" />
+                      <span>OFF DAY</span>
+                    </div>
+                  )}
+
+                  {logMatch && logMatch.status === 'On Leave' && (
+                    <div className="text-[9px] uppercase tracking-wider font-mono text-teal-600 font-black">
+                      Excused Out
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* TABLE VIEW FALLBACK LIST */
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
+          {/* Filter controls bar */}
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+            <span className="font-extrabold text-slate-700 font-mono uppercase tracking-wider">
+              Daily Logs: {selectedMonth}
+            </span>
+
+            <div className="flex items-center space-x-2">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Filter View:</span>
+              <div className="flex space-x-1.5 bg-slate-200/50 p-1 rounded-lg">
+                {(['All', 'Present', 'Absent', 'Weekly Off'] as const).map(option => (
+                  <button
+                    key={option}
+                    onClick={() => setFilterType(option)}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                      filterType === option 
+                        ? 'bg-white text-indigo-600 shadow-2xs' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Table itself */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/20 border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-widest select-none">
+                  <th className="py-3 px-6">Calendar Date</th>
+                  <th className="py-3 px-6">Attendance Assessment</th>
+                  <th className="py-3 px-4">Punch In</th>
+                  <th className="py-3 px-4">Lunch Breakout</th>
+                  <th className="py-3 px-4">Lunch Return</th>
+                  <th className="py-3 px-4">Punch Out</th>
+                  <th className="py-3 px-4">Total Clocked Hours</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                {filteredLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center">
+                      <div className="max-w-xs mx-auto flex flex-col items-center">
+                        <Search className="w-8 h-8 text-slate-300 stroke-1 mb-2" />
+                        <p className="font-bold text-slate-805">No matches found</p>
+                        <p className="text-2xs text-slate-400 mt-0.5 leading-relaxed">
+                          Try changing your Filter View or pick a different Month input above.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLogs.map((log) => {
+                    let statusBadgeStyle = '';
+                    let statusLabel = '';
+                    let StatusIcon = CheckCircle;
+
+                    if (log.status === 'Present') {
+                      statusBadgeStyle = 'bg-emerald-55 text-emerald-755 border-emerald-150/60 font-black';
+                      statusLabel = 'Present';
+                      StatusIcon = CheckCircle;
+                    } else if (log.status === 'Late Entry') {
+                      statusBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-100/60 font-bold';
+                      statusLabel = 'Late Entry';
+                      StatusIcon = AlertCircle;
+                    } else if (log.status === 'Night Shift') {
+                      statusBadgeStyle = 'bg-sky-50 text-sky-700 border-sky-100/60 font-bold';
+                      statusLabel = 'Night Shift';
+                      StatusIcon = Clock;
+                    } else if (log.status === 'Weekly Off') {
+                      statusBadgeStyle = 'bg-slate-100 text-slate-400 border-slate-200/55 font-bold';
+                      statusLabel = 'Weekly Off';
+                      StatusIcon = Coffee;
+                    } else if (log.status === 'On Leave') {
+                      statusBadgeStyle = 'bg-teal-50 text-teal-700 border-teal-150/60 font-bold';
+                      statusLabel = 'Excused Leave';
+                      StatusIcon = Coffee;
+                    } else if (log.status === 'Pending') {
+                      statusBadgeStyle = 'bg-amber-50 text-amber-600 border-amber-100 font-bold animate-pulse';
+                      statusLabel = 'Awaiting Punch';
+                      StatusIcon = Clock;
+                    } else {
+                      // Absent
+                      statusBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-100 font-black';
+                      statusLabel = 'Absent';
+                      StatusIcon = XCircle;
+                    }
+
+                    return (
+                      <tr 
+                        key={log.dateString} 
+                        className={`hover:bg-slate-50/50 border-slate-50 transition-colors ${
+                          log.isWeekend ? 'bg-slate-50/20' : ''
+                        }`}
+                      >
+                        {/* Date details */}
+                        <td className="py-3 px-6 h-12">
+                          <div className="flex items-center space-x-1">
+                            <span className="font-extrabold text-slate-805">{log.formattedDate}</span>
+                            <span className="text-[10px] text-slate-400 font-mono uppercase bg-slate-100 px-1 rounded">
+                              {log.dayLabel}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Status indicator assessment */}
+                        <td className="py-3 px-6 h-12">
+                          <span className={`inline-flex items-center gap-1 border text-[10px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded-full ${statusBadgeStyle}`}>
+                            <StatusIcon className="w-3 h-3 shrink-0" />
+                            <span>{statusLabel}</span>
+                          </span>
+                        </td>
+
+                        {/* Clock details */}
+                        <td className="py-3 px-4 font-mono font-bold text-slate-650 h-12">
+                          {log.clockIn}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono text-slate-500 h-12">
+                          {log.lunchOut}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono text-slate-500 h-12">
+                          {log.lunchIn}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono font-bold text-slate-655 h-12">
+                          {log.clockOut}
+                        </td>
+
+                        {/* Log Hours */}
+                        <td className="py-3 px-4 h-12">
+                          {log.hours > 0 ? (
+                            <div className="flex items-center space-x-1">
+                              <span className="font-mono font-bold text-slate-850 bg-indigo-50/30 text-indigo-755 border border-indigo-100 px-1.5 py-0.5 rounded">
+                                {log.hours.toFixed(2)} hrs
+                              </span>
+                              {log.overtime > 0 && (
+                                <span className="text-[10px] font-mono text-emerald-600 font-bold">
+                                  (+{log.overtime.toFixed(1)} OT)
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="font-mono text-slate-350">--</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

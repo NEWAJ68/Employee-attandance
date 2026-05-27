@@ -13,7 +13,8 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   TrendingUp,
-  Briefcase
+  Briefcase,
+  ArrowLeft
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, LeaveRequest } from '../types';
 
@@ -26,6 +27,7 @@ interface LeaveManagementViewProps {
   isAdminLoggedIn: boolean;
   settings: Settings;
   loggedInEmployee?: Employee | null;
+  onNavigateToView?: (view: string) => void;
 }
 
 export default function LeaveManagementView({
@@ -37,6 +39,7 @@ export default function LeaveManagementView({
   isAdminLoggedIn,
   settings,
   loggedInEmployee,
+  onNavigateToView,
 }: LeaveManagementViewProps) {
   // Employee Workspace States
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -140,11 +143,42 @@ export default function LeaveManagementView({
   const contextEmployeeStats = selectedRequestForContext ? getSelectedEmployeeStats(selectedRequestForContext.employeeId) : null;
 
   return (
-    <div className="space-y-8 animate-fadeIn" id="leave-management-container">
+    <div className="space-y-8 animate-fadeIn font-sans" id="leave-management-container">
+      {/* Page Back Link / Navigation Tabs */}
+      {onNavigateToView && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white px-5 py-3.5 rounded-2xl border border-slate-150/75 shadow-3xs select-none">
+          <button 
+            type="button"
+            id="btn-back-to-terminal-leaves"
+            onClick={() => onNavigateToView('terminal')}
+            className="inline-flex items-center space-x-2 text-indigo-700 hover:text-indigo-900 bg-indigo-50/70 hover:bg-indigo-50 py-2 px-3.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4 shrink-0 text-indigo-650 animate-pulse" />
+            <span>Go Back to Punch Card / Terminal</span>
+          </button>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Quick Switch:</span>
+            <button
+              onClick={() => onNavigateToView('terminal')}
+              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/95 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
+            >
+              My Punch Card
+            </button>
+            <button
+              onClick={() => onNavigateToView('my-attendance')}
+              className="text-[10px] font-bold text-slate-650 hover:bg-slate-100/95 hover:text-indigo-650 px-2.5 py-1.5 rounded-lg border border-slate-100 transition-all cursor-pointer font-sans"
+            >
+              My Attendance Logs
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Title block */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-          <Calendar className="w-6 h-6 text-indigo-600" />
+        <h1 className="text-2xl font-black tracking-tight text-slate-900 flex items-center gap-2">
+          <Calendar className="w-6 h-6 text-indigo-600 animate-pulse" />
           <span>Leave Request & Verification Hub</span>
         </h1>
         <p className="text-xs text-slate-500 mt-1">
@@ -152,9 +186,9 @@ export default function LeaveManagementView({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className={isAdminLoggedIn ? "grid grid-cols-1 lg:grid-cols-3 gap-8" : "grid grid-cols-1 md:grid-cols-2 gap-8"}>
         {/* Left Column: Register Request Bento Box */}
-        <div className="space-y-6">
+        <div className={isAdminLoggedIn ? "space-y-6" : "space-y-6 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 space-y-0"}>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 mb-4 flex items-center gap-2">
@@ -364,222 +398,224 @@ export default function LeaveManagementView({
         </div>
 
         {/* Center Screen: Admin Master Table for Reviews */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Reviews list card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col justify-between">
-              <div>
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">
-                      Master Requests Log
-                    </h3>
-                    <p className="text-3xs text-slate-400 font-mono uppercase mt-0.5">
-                      Review employee time-off requests
-                    </p>
+        {isAdminLoggedIn && (
+          <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Reviews list card */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col justify-between">
+                <div>
+                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Master Requests Log
+                      </h3>
+                      <p className="text-3xs text-slate-400 font-mono uppercase mt-0.5">
+                        Review employee time-off requests
+                      </p>
+                    </div>
+
+                    {/* Filter tabs */}
+                    <select
+                      value={adminFilter}
+                      onChange={(e) => setAdminFilter(e.target.value as any)}
+                      className="text-xs p-1.5 border border-slate-200/60 rounded-lg outline-none cursor-pointer bg-slate-50 font-semibold"
+                    >
+                      <option value="all">All Request Statuses</option>
+                      <option value="Pending">Pending Review</option>
+                      <option value="Approved">Approved Log</option>
+                      <option value="Rejected">Rejected Log</option>
+                    </select>
                   </div>
 
-                  {/* Filter tabs */}
-                  <select
-                    value={adminFilter}
-                    onChange={(e) => setAdminFilter(e.target.value as any)}
-                    className="text-xs p-1.5 border border-slate-200/60 rounded-lg outline-none cursor-pointer bg-slate-50 font-semibold"
-                  >
-                    <option value="all">All Request Statuses</option>
-                    <option value="Pending">Pending Review</option>
-                    <option value="Approved">Approved Log</option>
-                    <option value="Rejected">Rejected Log</option>
-                  </select>
-                </div>
-
-                {/* Submissions list */}
-                <div className="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
-                  {adminFilteredRequests.length === 0 ? (
-                    <p className="py-16 text-center text-slate-400 text-2xs font-mono">
-                      No matching requests under query filter '{adminFilter}'.
-                    </p>
-                  ) : (
-                    adminFilteredRequests.map((req) => {
-                      const isSelected = selectedRequestForContext?.id === req.id;
-                      return (
-                        <div
-                          key={req.id}
-                          onClick={() => setSelectedRequestForContext(req)}
-                          className={`p-4 transition-all cursor-pointer text-xs space-y-2 text-slate-700 hover:bg-slate-50/50 ${
-                            isSelected ? 'bg-indigo-50/60 border-l-4 border-indigo-600' : 'border-l-4 border-transparent'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-slate-800">{req.employeeName}</h4>
-                            <span className="text-[10px] font-mono text-slate-400 font-semibold">{req.submittedAt ? req.submittedAt.split('T')[0] : ''}</span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-slate-500 font-mono text-2xs uppercase">
-                              Type: <strong className="text-indigo-600 font-bold">{req.leaveType}</strong>
-                            </span>
-                            <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
-                              req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                              req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                              'bg-amber-50 text-amber-700 border border-amber-100 animate-pulse'
-                            }`}>
-                              {req.status}
-                            </span>
-                          </div>
-
-                          <div className="text-[11px] text-slate-600">
-                            <strong>Date Span:</strong> {req.startDate} to {req.endDate}
-                          </div>
-
-                          {/* Quick Admin Decision Actions if Pending */}
-                          {isAdminLoggedIn && req.status === 'Pending' && (
-                            <div className="flex items-center space-x-2 pt-1.5 select-none" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={() => onDecideLeaveRequest(req.id, 'Approved')}
-                                className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 text-emerald-700 hover:text-white text-3xs font-bold transition-all cursor-pointer"
-                              >
-                                <Check className="w-3 h-3" />
-                                <span>APPROVE</span>
-                              </button>
-                              <button
-                                onClick={() => onDecideLeaveRequest(req.id, 'Rejected')}
-                                className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 text-rose-700 hover:text-white text-3xs font-bold transition-all cursor-pointer"
-                              >
-                                <X className="w-3 h-3" />
-                                <span>REJECT</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 border-t border-slate-100 text-[10px] font-mono text-slate-400 uppercase tracking-widest text-center">
-                Total Requests Catalogued: {leaveRequests.length}
-              </div>
-            </div>
-
-            {/* Admin context evaluation box */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">
-                  Employee Context Hub
-                </h3>
-                <p className="text-3xs text-slate-400 font-mono uppercase mt-0.5">
-                  Automated background data verification
-                </p>
-              </div>
-
-              {!selectedRequestForContext ? (
-                <div className="py-24 text-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
-                  <User className="w-8 h-8 mx-auto text-slate-300 stroke-1 mb-2" />
-                  <p className="text-2xs font-mono">
-                    Select a request on the left grid to generate background context audit.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4 text-xs">
-                  {/* Selected Request Target Profile */}
-                  <div className="p-4 rounded-xl bg-indigo-50/40 border border-indigo-150/40 space-y-2">
-                    <p className="text-[10px] font-bold uppercase font-mono text-indigo-500">Currently Selecting</p>
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-extrabold text-slate-900">{selectedRequestForContext.employeeName}</h4>
-                      <span className="font-mono text-xs font-semibold bg-white px-2 py-0.5 rounded shadow-3xs text-slate-600">{selectedRequestForContext.employeeId}</span>
-                    </div>
-                    {selectedRequestForContext.notes && (
-                      <p className="text-2xs text-slate-600 italic leading-relaxed bg-white p-2.5 rounded border border-slate-100">
-                        <strong>Reason:</strong> "{selectedRequestForContext.notes}"
+                  {/* Submissions list */}
+                  <div className="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
+                    {adminFilteredRequests.length === 0 ? (
+                      <p className="py-16 text-center text-slate-400 text-2xs font-mono">
+                        No matching requests under query filter '{adminFilter}'.
                       </p>
+                    ) : (
+                      adminFilteredRequests.map((req) => {
+                        const isSelected = selectedRequestForContext?.id === req.id;
+                        return (
+                          <div
+                            key={req.id}
+                            onClick={() => setSelectedRequestForContext(req)}
+                            className={`p-4 transition-all cursor-pointer text-xs space-y-2 text-slate-700 hover:bg-slate-50/50 ${
+                              isSelected ? 'bg-indigo-50/60 border-l-4 border-indigo-600' : 'border-l-4 border-transparent'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-slate-800">{req.employeeName}</h4>
+                              <span className="text-[10px] font-mono text-slate-400 font-semibold">{req.submittedAt ? req.submittedAt.split('T')[0] : ''}</span>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-slate-500 font-mono text-2xs uppercase">
+                                Type: <strong className="text-indigo-600 font-bold">{req.leaveType}</strong>
+                              </span>
+                              <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                                req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                                'bg-amber-50 text-amber-700 border border-amber-100 animate-pulse'
+                              }`}>
+                                {req.status}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] text-slate-600">
+                              <strong>Date Span:</strong> {req.startDate} to {req.endDate}
+                            </div>
+
+                            {/* Quick Admin Decision Actions if Pending */}
+                            {isAdminLoggedIn && req.status === 'Pending' && (
+                              <div className="flex items-center space-x-2 pt-1.5 select-none" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => onDecideLeaveRequest(req.id, 'Approved')}
+                                  className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 text-emerald-700 hover:text-white text-3xs font-bold transition-all cursor-pointer"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>APPROVE</span>
+                                </button>
+                                <button
+                                  onClick={() => onDecideLeaveRequest(req.id, 'Rejected')}
+                                  className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 text-rose-700 hover:text-white text-3xs font-bold transition-all cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                  <span>REJECT</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-
-                  {/* Analysis Metrics */}
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Historical Statistics</h4>
-                    
-                    <div className="grid grid-cols-2 gap-3 font-mono text-2xs text-slate-600">
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
-                        <span>Total Records</span>
-                        <strong className="text-xs text-slate-800 mt-1">{contextEmployeeStats?.totalDays} Active Shifts</strong>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
-                        <span>Punctual Rate</span>
-                        <strong className="text-xs text-slate-800 mt-1">
-                          {contextEmployeeStats?.totalDays && contextEmployeeStats.totalDays > 0 
-                            ? `${Math.round(((contextEmployeeStats.presents - contextEmployeeStats.lates) / contextEmployeeStats.presents) * 100) || 100}%` 
-                            : '100%'}
-                        </strong>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
-                        <span>Late Clock-ins</span>
-                        <strong className={`text-xs mt-1 ${contextEmployeeStats?.lates && contextEmployeeStats.lates > 0 ? 'text-amber-600 font-bold' : 'text-slate-800'}`}>
-                          {contextEmployeeStats?.lates} Flags
-                        </strong>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
-                        <span>Early Departures</span>
-                        <strong className={`text-xs mt-1 ${contextEmployeeStats?.earlyExits && contextEmployeeStats.earlyExits > 0 ? 'text-amber-600 font-bold' : 'text-slate-800'}`}>
-                          {contextEmployeeStats?.earlyExits} Flags
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                      <div className="flex justify-between text-[11px] text-slate-500">
-                        <span>Dept & Segment</span>
-                        <span className="font-bold text-slate-700">{contextEmployeeStats?.department}</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] text-slate-500">
-                        <span>Hourly Wage Rate</span>
-                        <span className="font-bold text-indigo-600">{settings.currency} {contextEmployeeStats?.hourlyRate}/hr</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] text-slate-500">
-                        <span>Previous Excused Leaves</span>
-                        <span className="font-bold text-slate-700">{contextEmployeeStats?.onLeavesCount} Approved</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Micro Attendance History Table */}
-                  <div className="space-y-2">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Recent Logs Feed</h4>
-                    <div className="border border-slate-100 rounded-xl overflow-hidden">
-                      <table className="w-full text-left text-3xs font-mono">
-                        <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold">
-                          <tr>
-                            <th className="p-2">Date</th>
-                            <th className="p-2">Punches</th>
-                            <th className="p-2 text-right">Raw Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-slate-650">
-                          {contextEmployeeStats?.recentRecords.length === 0 ? (
-                            <tr>
-                              <td colSpan={3} className="p-4 text-center text-slate-400">No shifts recorded yet.</td>
-                            </tr>
-                          ) : (
-                            contextEmployeeStats?.recentRecords.map((rec) => (
-                              <tr key={rec.date} className="hover:bg-slate-50/20">
-                                <td className="p-2 font-bold">{rec.date}</td>
-                                <td className="p-2">
-                                  {rec.entryTime ? `${rec.entryTime} → ${rec.exitTime || '--:--'}` : 'Excused / Paid'}
-                                </td>
-                                <td className="p-2 text-right font-bold text-indigo-600 uppercase">{rec.status}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </div>
-              )}
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 text-[10px] font-mono text-slate-400 uppercase tracking-widest text-center">
+                  Total Requests Catalogued: {leaveRequests.length}
+                </div>
+              </div>
+
+              {/* Admin context evaluation box */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Employee Context Hub
+                  </h3>
+                  <p className="text-3xs text-slate-400 font-mono uppercase mt-0.5">
+                    Automated background data verification
+                  </p>
+                </div>
+
+                {!selectedRequestForContext ? (
+                  <div className="py-24 text-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
+                    <User className="w-8 h-8 mx-auto text-slate-300 stroke-1 mb-2" />
+                    <p className="text-2xs font-mono">
+                      Select a request on the left grid to generate background context audit.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 text-xs">
+                    {/* Selected Request Target Profile */}
+                    <div className="p-4 rounded-xl bg-indigo-50/40 border border-indigo-150/40 space-y-2">
+                      <p className="text-[10px] font-bold uppercase font-mono text-indigo-500">Currently Selecting</p>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-extrabold text-slate-900">{selectedRequestForContext.employeeName}</h4>
+                        <span className="font-mono text-xs font-semibold bg-white px-2 py-0.5 rounded shadow-3xs text-slate-600">{selectedRequestForContext.employeeId}</span>
+                      </div>
+                      {selectedRequestForContext.notes && (
+                        <p className="text-2xs text-slate-600 italic leading-relaxed bg-white p-2.5 rounded border border-slate-100">
+                          <strong>Reason:</strong> "{selectedRequestForContext.notes}"
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Analysis Metrics */}
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Historical Statistics</h4>
+                      
+                      <div className="grid grid-cols-2 gap-3 font-mono text-2xs text-slate-600">
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
+                          <span>Total Days Logs</span>
+                          <strong className="text-xs text-slate-800 mt-1">{contextEmployeeStats?.totalDays} Active Shifts</strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
+                          <span>Punctual Rate</span>
+                          <strong className="text-xs text-slate-800 mt-1">
+                            {contextEmployeeStats?.totalDays && contextEmployeeStats.totalDays > 0 
+                              ? `${Math.round(((contextEmployeeStats.presents - contextEmployeeStats.lates) / contextEmployeeStats.presents) * 100) || 100}%` 
+                              : '100%'}
+                          </strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
+                          <span>Late Clock-ins</span>
+                          <strong className={`text-xs mt-1 ${contextEmployeeStats?.lates && contextEmployeeStats.lates > 0 ? 'text-amber-600 font-bold' : 'text-slate-800'}`}>
+                            {contextEmployeeStats?.lates} Flags
+                          </strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
+                          <span>Early Departures</span>
+                          <strong className={`text-xs mt-1 ${contextEmployeeStats?.earlyExits && contextEmployeeStats.earlyExits > 0 ? 'text-amber-600 font-bold' : 'text-slate-800'}`}>
+                            {contextEmployeeStats?.earlyExits} Flags
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                          <span>Dept & Segment</span>
+                          <span className="font-bold text-slate-705">{contextEmployeeStats?.department}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                          <span>Hourly Wage Rate</span>
+                          <span className="font-bold text-indigo-650">{settings.currency} {contextEmployeeStats?.hourlyRate}/hr</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                          <span>Previous Excused Leaves</span>
+                          <span className="font-bold text-slate-705">{contextEmployeeStats?.onLeavesCount} Approved</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Micro Attendance History Table */}
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Recent Logs Feed</h4>
+                      <div className="border border-slate-100 rounded-xl overflow-hidden">
+                        <table className="w-full text-left text-3xs font-mono">
+                          <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold">
+                            <tr>
+                              <th className="p-2">Date</th>
+                              <th className="p-2">Punches</th>
+                              <th className="p-2 text-right">Raw Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-650">
+                            {contextEmployeeStats?.recentRecords.length === 0 ? (
+                              <tr>
+                                <td colSpan={3} className="p-4 text-center text-slate-400">No shifts recorded yet.</td>
+                              </tr>
+                            ) : (
+                              contextEmployeeStats?.recentRecords.map((rec) => (
+                                <tr key={rec.date} className="hover:bg-slate-50/20">
+                                  <td className="p-2 font-bold">{rec.date}</td>
+                                  <td className="p-2">
+                                    {rec.entryTime ? `${rec.entryTime} → ${rec.exitTime || '--:--'}` : 'Excused / Paid'}
+                                  </td>
+                                  <td className="p-2 text-right font-bold text-indigo-600 uppercase">{rec.status}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

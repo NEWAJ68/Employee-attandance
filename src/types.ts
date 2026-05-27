@@ -7,6 +7,7 @@ export interface Employee {
   joinedDate: string;
   status: 'Active' | 'Inactive';
   password?: string; // custom employee login passcode / PIN for privacy protection
+  photoUrl?: string; // Base64 or image URL for profile photo
 }
 
 export interface AttendanceRecord {

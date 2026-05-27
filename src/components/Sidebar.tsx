@@ -88,7 +88,7 @@ export default function Sidebar({
       name: 'Google Sheets Integration',
       icon: FileSpreadsheet,
       description: 'Google Suite configuration',
-      adminOnly: false,
+      adminOnly: true,
     },
   ];
 
@@ -126,9 +126,28 @@ export default function Sidebar({
         <div className="p-4 mx-4 mt-4 mb-2 rounded-xl bg-[#1f2937]/50 border border-gray-800/60">
           <div className="flex items-center space-x-3">
             <div className="relative">
-              <span className="inline-block h-9 w-9 overflow-hidden rounded-full bg-[#111827] flex items-center justify-center text-xs font-bold text-gray-300 border border-gray-700">
-                {isAdminLoggedIn ? 'AD' : loggedInEmployee ? loggedInEmployee.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase() : 'KS'}
-              </span>
+              {isAdminLoggedIn ? (
+                <span className="inline-block h-9 w-9 overflow-hidden rounded-full bg-[#111827] flex items-center justify-center text-xs font-bold text-gray-300 border border-gray-700">
+                  AD
+                </span>
+              ) : loggedInEmployee ? (
+                loggedInEmployee.photoUrl ? (
+                  <img 
+                    src={loggedInEmployee.photoUrl} 
+                    alt={loggedInEmployee.name} 
+                    className="h-9 w-9 rounded-full object-cover border border-gray-700" 
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="inline-block h-9 w-9 overflow-hidden rounded-full bg-[#111827] flex items-center justify-center text-xs font-bold text-gray-300 border border-gray-700">
+                    {loggedInEmployee.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+                  </span>
+                )
+              ) : (
+                <span className="inline-block h-9 w-9 overflow-hidden rounded-full bg-[#111827] flex items-center justify-center text-xs font-bold text-gray-300 border border-gray-700">
+                  KS
+                </span>
+              )}
               <span className={`absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-gray-905 ${
                 isAdminLoggedIn ? 'bg-indigo-500' : loggedInEmployee ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`} />

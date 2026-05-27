@@ -505,12 +505,24 @@ export default function AttendanceTerminal({
                   Identify Profile
                 </label>
                 {loggedInEmployee ? (
-                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2 animate-fadeIn">
-                    <div className="flex items-center space-x-2">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                      <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider font-mono">My Account Active</span>
-                    </div>
+                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3.5 animate-fadeIn">
+                    {loggedInEmployee.photoUrl ? (
+                      <img 
+                        src={loggedInEmployee.photoUrl} 
+                        alt={loggedInEmployee.name} 
+                        className="h-12 w-12 rounded-full object-cover border border-indigo-200 shadow-sm" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-full bg-indigo-250 flex items-center justify-center font-bold text-xs text-indigo-750">
+                        {loggedInEmployee.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+                      </div>
+                    )}
                     <div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                        <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-widest font-mono">Cabin Active</span>
+                      </div>
                       <h4 className="font-extrabold text-sm text-slate-850">{loggedInEmployee.name}</h4>
                       <p className="text-3xs text-slate-500 font-mono mt-0.5">{loggedInEmployee.id} • {loggedInEmployee.department}</p>
                     </div>
@@ -535,86 +547,108 @@ export default function AttendanceTerminal({
                 )}
               </div>
 
-              {selectedEmpId && (
-                <div className="p-4 bg-slate-50 border border-slate-100/80 rounded-xl space-y-2.5 animate-fadeIn">
-                  <span className="text-2xs font-mono uppercase tracking-wider font-bold text-indigo-600">
-                    Live Shift Balance
-                  </span>
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span>Registered Status:</span>
-                    <span className="font-semibold text-slate-800">
-                      {selectedEmpStatus === 'not-entered' && 'Not Entered'}
-                      {selectedEmpStatus === 'active-working' && 'Day Shift Active'}
-                      {selectedEmpStatus === 'on-lunch' && 'On Lunch Break'}
-                      {selectedEmpStatus === 'exited' && 'Day Shift Concluded'}
-                      {selectedEmpStatus === 'active-working-shift2' && 'Night Shift Active'}
-                      {selectedEmpStatus === 'on-dinner' && 'On Dinner Break'}
-                      {selectedEmpStatus === 'fully-exited' && 'Night Shift Concluded'}
-                    </span>
-                  </div>
-                  
-                  <div className="border-t border-slate-200/60 my-2 pt-2 space-y-1.5">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">Shift 1 (Day / Early Duty)</span>
-                    <div className="flex justify-between text-xs text-slate-600">
-                      <span>Clock In:</span>
-                      <span className="font-mono text-slate-800 font-semibold">
-                        {currentRecord?.entryTime || '--:--'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs text-slate-600">
-                      <span>Lunch Break:</span>
-                      <span className="font-mono text-slate-800">
-                        {currentRecord?.lunchOut ? `${currentRecord.lunchOut} - ${currentRecord.lunchIn || 'Active'}` : 'Not Taken'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs text-slate-600">
-                      <span>Clock Out:</span>
-                      <span className="font-mono text-slate-800 font-semibold">
-                        {currentRecord?.exitTime || '--:--'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {(currentRecord?.entryTime2 || selectedEmpStatus === 'exited' || selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' || selectedEmpStatus === 'fully-exited') && (
-                    <div className="border-t border-slate-200/60 my-2 pt-2 space-y-1.5 animate-fadeIn">
-                      <span className="text-[10px] uppercase font-bold text-indigo-500 block font-mono">Shift 2 (Night Duty / OT)</span>
-                      <div className="flex justify-between text-xs text-slate-600">
-                        <span>Clock In (S2):</span>
-                        <span className="font-mono text-indigo-600 font-semibold">
-                          {currentRecord?.entryTime2 || '--:--'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs text-slate-600">
-                        <span>Dinner Break:</span>
-                        <span className="font-mono text-slate-805">
-                          {currentRecord?.dinnerOut ? `${currentRecord.dinnerOut} - ${currentRecord.dinnerIn || 'Active'}` : 'Not Taken'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs text-slate-600">
-                        <span>Clock Out (S2):</span>
-                        <span className="font-mono text-indigo-600 font-semibold">
-                          {currentRecord?.exitTime2 || '--:--'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentRecord && (currentRecord.totalHours > 0) && (
-                    <div className="border-t border-indigo-100 bg-indigo-50/40 p-2 rounded-lg text-xs space-y-1 mt-2">
-                      <div className="flex justify-between text-slate-700">
-                        <span>Cumulative Hours:</span>
-                        <span className="font-bold text-slate-900 font-mono">{currentRecord.totalHours} hrs</span>
-                      </div>
-                      {currentRecord.overtime > 0 && (
-                        <div className="flex justify-between text-amber-805 font-semibold">
-                          <span>Overtime Credit:</span>
-                          <span className="font-black font-mono">+{currentRecord.overtime} hrs</span>
+              {selectedEmpId && (() => {
+                const selectedEmp = employees.find(e => e.id === selectedEmpId);
+                return (
+                  <div className="p-4 bg-slate-50 border border-slate-100/80 rounded-xl space-y-2.5 animate-fadeIn">
+                    <div className="flex items-center gap-3 border-b border-slate-200/50 pb-2 mb-2">
+                      {selectedEmp?.photoUrl ? (
+                        <img 
+                          src={selectedEmp.photoUrl} 
+                          alt={selectedEmp.name} 
+                          className="h-10 w-10 rounded-full object-cover border border-slate-200 shadow-3xs" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 bg-slate-200 rounded-full flex items-center justify-center text-xs font-bold text-slate-500">
+                          {selectedEmp?.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
                         </div>
                       )}
+                      <div>
+                        <h4 className="font-extrabold text-xs text-slate-850 leading-none">{selectedEmp?.name}</h4>
+                        <span className="text-[9px] font-mono text-slate-400 mt-1 block">{selectedEmp?.id} • {selectedEmp?.department}</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    <span className="text-2xs font-mono uppercase tracking-wider font-bold text-indigo-600 block">
+                      Live Shift Balance
+                    </span>
+                    <div className="flex justify-between text-xs text-slate-600">
+                      <span>Registered Status:</span>
+                      <span className="font-semibold text-slate-800">
+                        {selectedEmpStatus === 'not-entered' && 'Not Entered'}
+                        {selectedEmpStatus === 'active-working' && 'Day Shift Active'}
+                        {selectedEmpStatus === 'on-lunch' && 'On Lunch Break'}
+                        {selectedEmpStatus === 'exited' && 'Day Shift Concluded'}
+                        {selectedEmpStatus === 'active-working-shift2' && 'Night Shift Active'}
+                        {selectedEmpStatus === 'on-dinner' && 'On Dinner Break'}
+                        {selectedEmpStatus === 'fully-exited' && 'Night Shift Concluded'}
+                      </span>
+                    </div>
+                    
+                    <div className="border-t border-slate-200/60 my-2 pt-2 space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">Shift 1 (Day / Early Duty)</span>
+                      <div className="flex justify-between text-xs text-slate-600">
+                        <span>Clock In:</span>
+                        <span className="font-mono text-slate-800 font-semibold">
+                          {currentRecord?.entryTime || '--:--'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-600">
+                        <span>Lunch Break:</span>
+                        <span className="font-mono text-slate-800">
+                          {currentRecord?.lunchOut ? `${currentRecord.lunchOut} - ${currentRecord.lunchIn || 'Active'}` : 'Not Taken'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-600">
+                        <span>Clock Out:</span>
+                        <span className="font-mono text-slate-800 font-semibold">
+                          {currentRecord?.exitTime || '--:--'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {(currentRecord?.entryTime2 || selectedEmpStatus === 'exited' || selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' || selectedEmpStatus === 'fully-exited') && (
+                      <div className="border-t border-slate-200/60 my-2 pt-2 space-y-1.5 animate-fadeIn">
+                        <span className="text-[10px] uppercase font-bold text-indigo-500 block font-mono">Shift 2 (Night Duty / OT)</span>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>Clock In (S2):</span>
+                          <span className="font-mono text-indigo-600 font-semibold">
+                            {currentRecord?.entryTime2 || '--:--'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>Dinner Break:</span>
+                          <span className="font-mono text-slate-805">
+                            {currentRecord?.dinnerOut ? `${currentRecord.dinnerOut} - ${currentRecord.dinnerIn || 'Active'}` : 'Not Taken'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>Clock Out (S2):</span>
+                          <span className="font-mono text-indigo-600 font-semibold">
+                            {currentRecord?.exitTime2 || '--:--'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {currentRecord && (currentRecord.totalHours > 0) && (
+                      <div className="border-t border-indigo-100 bg-indigo-50/40 p-2 rounded-lg text-xs space-y-1 mt-2">
+                        <div className="flex justify-between text-slate-700">
+                          <span>Cumulative Hours:</span>
+                          <span className="font-bold text-slate-900 font-mono">{currentRecord.totalHours} hrs</span>
+                        </div>
+                        {currentRecord.overtime > 0 && (
+                          <div className="flex justify-between text-amber-805 font-semibold">
+                            <span>Overtime Credit:</span>
+                            <span className="font-black font-mono">+{currentRecord.overtime} hrs</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
