@@ -93,7 +93,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
   {
     id: 'NT-102',
     title: 'System Active Reminders',
-    message: 'Weekly payroll calculations synchronized to browser local state.',
+    message: 'Monthly payroll calculations synchronized once the month is completed (महीना पूरा होने पर मासिक पेरोल गणनाएं सिंक की जाएंगी).',
     type: 'success',
     timestamp: '08:00 AM',
     read: true,
