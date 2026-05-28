@@ -633,6 +633,27 @@ export default function App() {
     }
   };
 
+  const handleClearAllAttendance = async () => {
+    try {
+      // Delete all records currently present in state from Firestore
+      const deletePromises = attendance.map(rec => {
+        const docId = `${rec.date}_${rec.employeeId}`;
+        return deleteDoc(doc(db, 'attendance', docId));
+      });
+      await Promise.all(deletePromises);
+      setAttendance([]);
+      handleRaiseNotification(
+        'Database Cleared',
+        'All entry-exit attendance punch records have been deleted successfully.',
+        'info'
+      );
+    } catch (err) {
+      console.error('Error clearing Firestore attendance logs:', err);
+      // fallback local clear
+      setAttendance([]);
+    }
+  };
+
   const handleManualSyncAll = async () => {
     if (!appsScriptUrl) return;
     setIsSyncing(true);
@@ -981,6 +1002,7 @@ export default function App() {
               settings={settings}
               onAddAttendance={handleAddAttendance}
               onUpdateAttendance={handleUpdateAttendance}
+              onClearAttendance={handleClearAllAttendance}
             />
           )}
 

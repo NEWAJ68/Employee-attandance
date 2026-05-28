@@ -47,7 +47,7 @@ export default function EmployeeProfiles({
   const [nameInput, setNameInput] = useState('');
   const [deptInput, setDeptInput] = useState('Engineering');
   const [emailInput, setEmailInput] = useState('');
-  const [hourlyRateInput, setHourlyRateInput] = useState(25);
+  const [hourlyRateInput, setHourlyRateInput] = useState<number | string>(25);
   const [statusInput, setStatusInput] = useState<'Active' | 'Inactive'>('Active');
 
   const openAddModal = () => {
@@ -426,9 +426,10 @@ export default function EmployeeProfiles({
                     type="number"
                     min="1"
                     max="500"
+                    step="0.01"
                     required
                     value={hourlyRateInput}
-                    onChange={(e) => setHourlyRateInput(Number(e.target.value))}
+                    onChange={(e) => setHourlyRateInput(e.target.value)}
                     className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl font-bold font-mono text-slate-750 focus:ring-1 focus:ring-indigo-505 outline-none"
                   />
                 </div>

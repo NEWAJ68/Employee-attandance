@@ -688,7 +688,7 @@ function saveSettings(configs) {
                               <td className="py-2 px-3 border-r text-slate-800 font-sans font-semibold">{emp.name}</td>
                               <td className="py-2 px-3 border-r font-sans">{emp.department}</td>
                               <td className="py-2 px-3 border-r text-slate-500">{emp.email}</td>
-                              <td className="py-2 px-3 border-r font-bold text-slate-900">{emp.hourlyRate}</td>
+                              <td className="py-2 px-3 border-r font-bold text-slate-900">₹{emp.hourlyRate?.toFixed(2)}</td>
                               <td className="py-2 px-3 border-r">{emp.joinedDate}</td>
                               <td className="py-2 px-3 uppercase font-bold text-indigo-500">{emp.status}</td>
                             </tr>

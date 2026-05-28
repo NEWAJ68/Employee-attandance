@@ -569,7 +569,7 @@ export default function LeaveManagementView({
                         </div>
                         <div className="flex justify-between text-[11px] text-slate-500">
                           <span>Hourly Wage Rate</span>
-                          <span className="font-bold text-indigo-650">₹{contextEmployeeStats?.hourlyRate}/hr</span>
+                          <span className="font-bold text-indigo-650">₹{contextEmployeeStats?.hourlyRate ? Number(contextEmployeeStats.hourlyRate).toFixed(2) : '0.00'}/hr</span>
                         </div>
                         <div className="flex justify-between text-[11px] text-slate-500">
                           <span>Previous Excused Leaves</span>

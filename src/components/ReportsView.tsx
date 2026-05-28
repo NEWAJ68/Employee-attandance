@@ -14,7 +14,8 @@ import {
   DownloadCloud,
   Plus,
   Pencil,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 import { calculateEarnings, calculateAttendanceMetrics } from '../utils/calculations';
@@ -25,6 +26,7 @@ interface ReportsViewProps {
   settings: Settings;
   onAddAttendance: (record: AttendanceRecord) => void;
   onUpdateAttendance: (record: AttendanceRecord) => void;
+  onClearAttendance?: () => Promise<void>;
 }
 
 export default function ReportsView({
@@ -33,6 +35,7 @@ export default function ReportsView({
   settings,
   onAddAttendance,
   onUpdateAttendance,
+  onClearAttendance,
 }: ReportsViewProps) {
   // Filters states
   const [filterType, setFilterType] = useState<'daily' | 'weekly' | 'monthly' | 'employee' | 'custom'>('monthly');
@@ -52,6 +55,10 @@ export default function ReportsView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+
+  // Clear confirmation state
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   
   // Form fields
   const [formEmployeeId, setFormEmployeeId] = useState('');
@@ -69,6 +76,20 @@ export default function ReportsView({
   const [formDinnerIn, setFormDinnerIn] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState('');
+
+  const handlePerformClearAll = async () => {
+    if (onClearAttendance) {
+      setIsClearing(true);
+      try {
+        await onClearAttendance();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsClearing(false);
+        setIsConfirmClearOpen(false);
+      }
+    }
+  };
 
   const openAddModal = () => {
     setModalMode('add');
@@ -319,6 +340,17 @@ export default function ReportsView({
             <Printer className="w-4 h-4 text-indigo-200 shrink-0" />
             <span>Export / Print PDF</span>
           </button>
+          {onClearAttendance && (
+            <button
+              type="button"
+              onClick={() => setIsConfirmClearOpen(true)}
+              id="btn-clear-attendance-records"
+              className="flex items-center space-x-1 px-4 py-2 text-white bg-rose-600 hover:bg-rose-700 rounded-xl text-xs font-bold cursor-pointer shadow-sm shadow-rose-500/15 transition-all"
+            >
+              <Trash2 className="w-4 h-4 text-rose-150 shrink-0" />
+              <span>Clear All Logs</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -879,6 +911,72 @@ export default function ReportsView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM CLEAR ATTENDANCE MODAL */}
+      {isConfirmClearOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col space-y-5 animate-scaleUp">
+            
+            {/* Warning Alert Icon Header */}
+            <div className="flex items-center space-x-3 pb-3 border-b border-rose-50">
+              <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100/50">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-850 tracking-tight">
+                  Clear All Attendance Logs?
+                </h3>
+                <p className="text-2xs font-bold text-rose-600 uppercase tracking-wider font-mono">
+                  Destructive Action
+                </p>
+              </div>
+            </div>
+
+            {/* Bilingual Explanatory Notice */}
+            <div className="space-y-3">
+              <p className="text-xs text-slate-650 leading-relaxed font-semibold">
+                This will permanently delete <span className="text-rose-600 underline font-black">{attendance.length}</span> recorded entry/exit punch logs across all employees. New entries will start fresh.
+              </p>
+              <div className="bg-rose-50/50 rounded-2xl p-3.5 border border-rose-100/40 text-rose-800 text-[11px] leading-relaxed font-semibold space-y-1">
+                <p className="font-extrabold flex items-center gap-1">
+                  <span>ℹ️</span> <span>Hindi Notice:</span>
+                </p>
+                <p>
+                  इससे सभी entry और exit records हमेशा के लिए डिलीट हो जायेंगे। सभी कर्मचारी नए सिरे से अपनी Attendance (Entry/Exit) दर्ज कर सकेंगे।
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={() => setIsConfirmClearOpen(false)}
+                className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-205 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancel (Cancel करें)
+              </button>
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={handlePerformClearAll}
+                className="flex-1 py-2.5 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-lg shadow-rose-600/10 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                {isClearing ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span>
+                    <span>Clearing...</span>
+                  </>
+                ) : (
+                  <span>Yes, Clear All (हां, डिलीट करें)</span>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, 
   LogIn, 
@@ -53,6 +54,11 @@ export default function AttendanceTerminal({
     message: string;
   }>({ type: null, message: '' });
   const [isAutoPunchModalOpen, setIsAutoPunchModalOpen] = useState(false);
+  const [punchAnimation, setPunchAnimation] = useState<{
+    type: 'entry' | 'exit' | 'lunch_in' | 'lunch_out' | 'dinner_in' | 'dinner_out';
+    name: string;
+    time: string;
+  } | null>(null);
 
   // Selfie camera state management
   const [selfieState, setSelfieState] = useState<{
@@ -549,6 +555,11 @@ export default function AttendanceTerminal({
       'success', 
       `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}.`
     );
+    setPunchAnimation({
+      type: 'entry',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleLunchOut = async (selfiePhoto?: string) => {
@@ -580,6 +591,11 @@ export default function AttendanceTerminal({
     updatedRecord = checkProximityAndFlag(coords, 'lunch departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}.`);
+    setPunchAnimation({
+      type: 'lunch_out',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleLunchIn = async (selfiePhoto?: string) => {
@@ -610,6 +626,11 @@ export default function AttendanceTerminal({
     updatedRecord = checkProximityAndFlag(coords, 'lunch return', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}. Welcome back!`);
+    setPunchAnimation({
+      type: 'lunch_in',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleDinnerOut = async (selfiePhoto?: string) => {
@@ -640,6 +661,11 @@ export default function AttendanceTerminal({
     updatedRecord = checkProximityAndFlag(coords, 'dinner departure', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}. Enjoy your meal!`);
+    setPunchAnimation({
+      type: 'dinner_out',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleDinnerIn = async (selfiePhoto?: string) => {
@@ -669,6 +695,11 @@ export default function AttendanceTerminal({
     updatedRecord = checkProximityAndFlag(coords, 'dinner return', updatedRecord);
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}. Welcome back to work!`);
+    setPunchAnimation({
+      type: 'dinner_in',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleEntry2CheckIn = async (selfiePhoto?: string) => {
@@ -709,6 +740,11 @@ export default function AttendanceTerminal({
       newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
       onAddAttendance(newRecord);
       triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}.`);
+      setPunchAnimation({
+        type: 'entry',
+        name: selectedEmpName,
+        time: timeStr
+      });
     } else {
       let updatedRecord: AttendanceRecord = {
         ...currentRecord,
@@ -723,6 +759,11 @@ export default function AttendanceTerminal({
       updatedRecord = checkProximityAndFlag(coords, 'second shift entry', updatedRecord);
       onUpdateAttendance(updatedRecord);
       triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
+      setPunchAnimation({
+        type: 'entry',
+        name: selectedEmpName,
+        time: timeStr
+      });
     }
   };
 
@@ -774,6 +815,11 @@ export default function AttendanceTerminal({
       'success', 
       `${selectedEmpName} checked out of Shift 1 at ${timeStr}. Total logged: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
+    setPunchAnimation({
+      type: 'exit',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   const handleExit2CheckOut = async (selfiePhoto?: string) => {
@@ -822,6 +868,11 @@ export default function AttendanceTerminal({
       'success', 
       `${selectedEmpName} completed Shift 2 at ${timeStr}. Cumulative today: ${totalHours} hrs (Overtime: ${overtime} hrs)`
     );
+    setPunchAnimation({
+      type: 'exit',
+      name: selectedEmpName,
+      time: timeStr
+    });
   };
 
   return (
@@ -1663,6 +1714,118 @@ export default function AttendanceTerminal({
           </div>
         </div>
       )}
+
+      {/* SUCCESS PUNCH ANIMATION MODAL */}
+      <AnimatePresence>
+        {punchAnimation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-md"
+            onClick={() => setPunchAnimation(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.82, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: -20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl border border-emerald-100 flex flex-col items-center text-center space-y-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Animated Scale Up success checkmark circle wrapper */}
+              <div className="relative">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0, 1.2, 1] }}
+                  transition={{ delay: 0.1, duration: 0.5, ease: 'easeOut' }}
+                  className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center border border-emerald-100 shadow-sm"
+                >
+                  <motion.svg
+                    className="w-10 h-10 text-emerald-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <motion.path
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ delay: 0.3, duration: 0.45, ease: 'easeOut' }}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </motion.svg>
+                </motion.div>
+                
+                {/* Floating particle animations around the circle */}
+                {[...Array(6)].map((_, i) => {
+                  const angle = (i * 360) / 6;
+                  const rad = (angle * Math.PI) / 180;
+                  const dist = 48;
+                  const x = Math.cos(rad) * dist;
+                  const y = Math.sin(rad) * dist;
+                  return (
+                    <motion.div
+                      key={i}
+                      initial={{ scale: 0, x: 0, y: 0 }}
+                      animate={{ scale: [0, 1, 0], x: [0, x], y: [0, y] }}
+                      transition={{ delay: 0.4, duration: 0.6, ease: 'easeOut' }}
+                      className="absolute left-1/2 top-1/2 -ml-1 -mt-1 w-2.5 h-2.5 bg-emerald-400 rounded-full"
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2">
+                <span className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+                  Verified & Logged ✓
+                </span>
+                <h3 className="text-xl font-black text-slate-850 tracking-tight">
+                  Punch Successful
+                </h3>
+                <p className="text-sm text-slate-500 font-medium">
+                  {punchAnimation.name}
+                </p>
+              </div>
+
+              {/* Punch Card Receipt Style detail box */}
+              <div className="w-full bg-slate-50 border border-slate-100/80 rounded-2xl p-4.5 space-y-3 relative overflow-hidden">
+                {/* Left/Right dotted holes pattern to simulate punch card receipt */}
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-4 bg-white border-r border-slate-100/80 rounded-r-full"></div>
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-4 bg-white border-l border-slate-100/80 rounded-l-full"></div>
+                
+                <div className="flex justify-between items-center text-xs text-slate-500 border-b border-dashed border-slate-200 pb-2">
+                  <span className="font-medium">Stamp Status:</span>
+                  <span className="font-black uppercase tracking-wider text-indigo-650 font-sans text-[11px]">
+                    {punchAnimation.type === 'entry' && 'ENTRY PUNCH'}
+                    {punchAnimation.type === 'exit' && 'EXIT PUNCH'}
+                    {punchAnimation.type === 'lunch_out' && 'LUNCH DEPART'}
+                    {punchAnimation.type === 'lunch_in' && 'LUNCH RETURN'}
+                    {punchAnimation.type === 'dinner_out' && 'DINNER DEPART'}
+                    {punchAnimation.type === 'dinner_in' && 'DINNER RETURN'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs text-slate-500">
+                  <span className="font-medium">Clock Registered:</span>
+                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                    {punchAnimation.time}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPunchAnimation(null)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
