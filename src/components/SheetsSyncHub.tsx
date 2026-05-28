@@ -23,6 +23,9 @@ interface SheetsSyncHubProps {
   settings: Settings;
   appsScriptUrl: string;
   onUpdateUrl: (url: string) => void;
+  onUpdateSettings?: (updatedSettings: Settings) => void;
+  isSyncing?: boolean;
+  onManualSyncAll?: () => void;
 }
 
 export default function SheetsSyncHub({
@@ -31,12 +34,30 @@ export default function SheetsSyncHub({
   settings,
   appsScriptUrl,
   onUpdateUrl,
+  onUpdateSettings,
+  isSyncing = false,
+  onManualSyncAll,
 }: SheetsSyncHubProps) {
   const [activeSheetTab, setActiveSheetTab] = useState<'employees' | 'attendance' | 'settings'>('attendance');
   const [inputUrl, setInputUrl] = useState(appsScriptUrl);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [testConnectionStatus, setTestConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResponseMsg, setTestResponseMsg] = useState('');
+
+  const handleToggleAutoSync = () => {
+    if (onUpdateSettings) {
+      onUpdateSettings({
+        ...settings,
+        autoSyncSheets: !settings.autoSyncSheets,
+      });
+    }
+  };
+
+  const handleManualSyncAll = () => {
+    if (onManualSyncAll) {
+      onManualSyncAll();
+    }
+  };
 
   const triggerCopyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -418,6 +439,78 @@ function saveSettings(configs) {
               <span>
                 If no URL is saved, the application relies on full **client-side LocalStorage simulation** automatically! You can completely run the app, add/edit staff, clock in/out, and compile salaries with zero setup constraints.
               </span>
+            </div>
+          </div>
+
+          {/* Sync Preferences & Auto-Sensing Panel */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                <span>Sync Preferences</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase">
+                Settings
+              </span>
+            </div>
+
+            <div className="space-y-3.5">
+              {/* Toggle component */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5 max-w-[70%]">
+                  <span className="block text-xs font-bold text-slate-800">Auto-Sync Logs</span>
+                  <span className="block text-[10px] text-slate-500 leading-tight">
+                    Automatically trigger background data push to Google Sheets every time a new attendance record is created or updated.
+                  </span>
+                </div>
+                <button
+                  id="btn-toggle-auto-sync"
+                  type="button"
+                  onClick={handleToggleAutoSync}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    settings.autoSyncSheets ? 'bg-indigo-650' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      settings.autoSyncSheets ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Manual Backup Trigger block */}
+              <div className="p-3 bg-indigo-55/30 rounded-xl border border-indigo-120/15 space-y-2">
+                <div className="space-y-0.5">
+                  <span className="block text-xs font-bold text-slate-800">Manual Force Sync</span>
+                  <span className="block text-[10px] text-slate-500 leading-tight">
+                    Manually push all {employees.length} employee profiles, settings and active attendance logs to Google Sheets immediately.
+                  </span>
+                </div>
+                
+                <button
+                  id="btn-manual-sync-now"
+                  type="button"
+                  onClick={handleManualSyncAll}
+                  disabled={isSyncing || !appsScriptUrl}
+                  className="w-full flex items-center justify-center space-x-1.5 py-2 px-3 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-xl active:scale-98 transition-all shadow-3xs cursor-pointer"
+                >
+                  {isSyncing ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Synchronizing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Server className="w-3.5 h-3.5 text-indigo-600 font-bold" />
+                      <span>Sync Entire Database Now</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 

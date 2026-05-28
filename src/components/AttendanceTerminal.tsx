@@ -20,7 +20,9 @@ import {
   Soup,
   MapPin,
   Navigation,
-  Trash2
+  Trash2,
+  X,
+  Camera
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS } from '../utils/calculations';
@@ -51,6 +53,135 @@ export default function AttendanceTerminal({
     message: string;
   }>({ type: null, message: '' });
   const [isAutoPunchModalOpen, setIsAutoPunchModalOpen] = useState(false);
+
+  // Selfie camera state management
+  const [selfieState, setSelfieState] = useState<{
+    isOpen: boolean;
+    actionLabel: string;
+    onCapture: (photoBase64: string) => void;
+  } | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+
+
+
+  // Direct webcam stream control and photo capturing methods
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  const startCamera = async () => {
+    setCameraError(null);
+    setCapturedPhoto(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 485 } },
+        audio: false
+      });
+      setCameraStream(stream);
+      setTimeout(() => {
+        const videoElement = document.getElementById('selfie-video-preview') as HTMLVideoElement;
+        if (videoElement) {
+          videoElement.srcObject = stream;
+        }
+      }, 150);
+    } catch (err) {
+      console.warn('Direct camera stream failed:', err);
+      setCameraError('Direct camera feed unavailable. You can take a photo utilizing your standard device camera popup by using the button below.');
+    }
+  };
+
+  useEffect(() => {
+    if (selfieState?.isOpen) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [selfieState?.isOpen]);
+
+  const captureSnapshot = () => {
+    const video = document.getElementById('selfie-video-preview') as HTMLVideoElement;
+    if (!video) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      const videoHeight = video.videoHeight || 480;
+      const videoWidth = video.videoWidth || 640;
+      
+      // Calculate 3:4 height and width for vertical portrait
+      const portraitHeight = videoHeight;
+      const portraitWidth = Math.round(videoHeight * 0.75); // e.g., 360 wide if 480 tall
+      
+      canvas.width = portraitWidth;
+      canvas.height = portraitHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Crop the landscape video stream center to achieve portrait mode
+        const sx = Math.max(0, (videoWidth - portraitWidth) / 2);
+        const sy = 0;
+        
+        // Mirror horizontally for instinctive user coordination
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        
+        ctx.drawImage(
+          video,
+          sx, 
+          sy, 
+          portraitWidth, 
+          portraitHeight,
+          0, 
+          0, 
+          portraitWidth, 
+          portraitHeight
+        );
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        setCapturedPhoto(dataUrl);
+        playBeep(true);
+      }
+    } catch (e) {
+      console.error('Failed snapshot capture:', e);
+      setCameraError('Camera capture interface failed. Please utilize the standard selfie file uploader.');
+    }
+  };
+
+  const handleFileCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setCapturedPhoto(base64);
+      playBeep(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerSelfieAndPunch = (actionLabel: string, onPunchConfirmed: (selfieBase64: string) => void) => {
+    setCapturedPhoto(null);
+    setCameraError(null);
+    setSelfieState({
+      isOpen: true,
+      actionLabel,
+      onCapture: (base64) => {
+        onPunchConfirmed(base64);
+        setSelfieState(null);
+      }
+    });
+  };
 
 
 
@@ -155,18 +286,18 @@ export default function AttendanceTerminal({
       return false;
     }
 
-    const { isWithinRange, distance } = verifyProximityToOffice(coords);
+    const { isWithinRange, distance, matchedLocationName } = verifyProximityToOffice(coords);
     if (!isWithinRange) {
       triggerNotification(
         'error', 
-        `PUNCH DENIED! You are ${distance}m away. You must be within 100m of Calitech Office Guwahati to punch.`
+        `PUNCH DENIED! You are ${distance}m away from the nearest authorized site. Under company rules, you must be close to any of our certified service sites: Calitech HQ, Ajanta Pharma, Natco Pharma, or Hetero Pharma (Hudumpur) to punch.`
       );
       playBeep(false);
 
       if (onRaiseNotification) {
         onRaiseNotification(
           'BLOCKED Out-of-Range Punch',
-          `❌ SECURITY BLOCK: ${selectedEmpName || 'Unidentified'} tried punching from ${distance}m away (Limit: 100m). Coordinate: ${coords}`,
+          `❌ SECURITY BLOCK: ${selectedEmpName || 'Unidentified'} tried punching from ${distance}m away (nearest: ${matchedLocationName}). Coordinate: ${coords}`,
           'alert',
           selectedEmpId
         );
@@ -183,7 +314,7 @@ export default function AttendanceTerminal({
       ? `${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}` 
       : coords;
 
-    const { isWithinRange, distance } = verifyProximityToOffice(resolvedCoords);
+    const { isWithinRange, distance, matchedLocationName } = verifyProximityToOffice(resolvedCoords);
     if (!isWithinRange) {
       record.isOutOfRange = true;
       record.distanceFromHq = distance;
@@ -191,7 +322,7 @@ export default function AttendanceTerminal({
       if (onRaiseNotification) {
         onRaiseNotification(
           'Out-of-Range Punch Alert',
-          `🚨 ${selectedEmpName || record.employeeName || 'Employee'} punched during ${actionName} from ${distance}m away (Limit: 100m). Coords: ${resolvedCoords}`,
+          `🚨 ${selectedEmpName || record.employeeName || 'Employee'} punched during ${actionName} from ${distance}m away. Coords: ${resolvedCoords}`,
           'alert',
           selectedEmpId || record.employeeId
         );
@@ -199,6 +330,14 @@ export default function AttendanceTerminal({
     } else {
       record.isOutOfRange = false;
       record.distanceFromHq = distance;
+      
+      // Dynamic automatic site mapping log inside notes
+      const siteTag = `[Matched Site: ${matchedLocationName}]`;
+      if (!record.notes) {
+        record.notes = siteTag;
+      } else if (!record.notes.includes(matchedLocationName)) {
+        record.notes = `${record.notes} ${siteTag}`;
+      }
     }
     return record;
   };
@@ -365,12 +504,17 @@ export default function AttendanceTerminal({
     }, 4500);
   };
 
-  const handleEntryCheckIn = async () => {
+  const handleEntryCheckIn = async (selfiePhoto?: string) => {
     if (!selectedEmpId) return;
     
     // Prevent duplicate ENTRY on same day
     if (selectedEmpStatus !== 'not-entered') {
       triggerNotification('error', 'This employee has already checked in for today.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Day Shift Check-In', (photo) => handleEntryCheckIn(photo));
       return;
     }
 
@@ -395,6 +539,8 @@ export default function AttendanceTerminal({
       status: isNightShift ? 'Night Shift' : (settings.workStartHour && timeStr > settings.workStartHour ? 'Late Entry' : 'Present'),
       locationIn: isNightShift ? '' : coords,
       locationEntry2: isNightShift ? coords : '',
+      photoIn: isNightShift ? '' : selfiePhoto,
+      photoEntry2: isNightShift ? selfiePhoto : '',
     };
 
     newRecord = checkProximityAndFlag(coords, 'initial entry check-in', newRecord);
@@ -405,12 +551,17 @@ export default function AttendanceTerminal({
     );
   };
 
-  const handleLunchOut = async () => {
+  const handleLunchOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Flexible mode: Check-in is required, but they can go to lunch anytime before exiting
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'fully-exited') {
       triggerNotification('error', 'Employee must be checked in and active before departing for lunch.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Lunch Departure', (photo) => handleLunchOut(photo));
       return;
     }
 
@@ -423,6 +574,7 @@ export default function AttendanceTerminal({
       lunchIn: '', // Clear previous return stamp to allow flexible multiple breaks
       status: 'On Lunch',
       locationLunchOut: coords,
+      photoLunchOut: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch departure', updatedRecord);
@@ -430,12 +582,17 @@ export default function AttendanceTerminal({
     triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}.`);
   };
 
-  const handleLunchIn = async () => {
+  const handleLunchIn = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Flexible mode: Can return from lunch anytime they are checked in and have a departed stamp
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'fully-exited' || !currentRecord.lunchOut) {
       triggerNotification('error', 'Employee has no active lunch departure registered to return from.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Lunch Return', (photo) => handleLunchIn(photo));
       return;
     }
 
@@ -447,6 +604,7 @@ export default function AttendanceTerminal({
       lunchIn: timeStr,
       status: 'Present',
       locationLunchIn: coords,
+      photoLunchIn: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch return', updatedRecord);
@@ -454,11 +612,16 @@ export default function AttendanceTerminal({
     triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}. Welcome back!`);
   };
 
-  const handleDinnerOut = async () => {
+  const handleDinnerOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'exited' || selectedEmpStatus === 'fully-exited') {
       triggerNotification('error', 'Employee must be working in an active shift to go for dinner.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Dinner Departure', (photo) => handleDinnerOut(photo));
       return;
     }
 
@@ -471,6 +634,7 @@ export default function AttendanceTerminal({
       dinnerIn: '', // Clear previous return stamp to allow multiple breaks
       status: 'On Dinner',
       locationDinnerOut: coords,
+      photoDinnerOut: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner departure', updatedRecord);
@@ -478,11 +642,16 @@ export default function AttendanceTerminal({
     triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}. Enjoy your meal!`);
   };
 
-  const handleDinnerIn = async () => {
+  const handleDinnerIn = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'fully-exited' || !currentRecord.dinnerOut) {
       triggerNotification('error', 'Employee has no active dinner departure registered to return from.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Dinner Return', (photo) => handleDinnerIn(photo));
       return;
     }
 
@@ -494,6 +663,7 @@ export default function AttendanceTerminal({
       dinnerIn: timeStr,
       status: 'Present',
       locationDinnerIn: coords,
+      photoDinnerIn: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner return', updatedRecord);
@@ -501,11 +671,16 @@ export default function AttendanceTerminal({
     triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}. Welcome back to work!`);
   };
 
-  const handleEntry2CheckIn = async () => {
+  const handleEntry2CheckIn = async (selfiePhoto?: string) => {
     if (!selectedEmpId) return;
 
     if (currentRecord && currentRecord.entryTime) {
       triggerNotification('error', 'Night shift is disabled for employees who completed Day Shift today.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Night Shift Entry', (photo) => handleEntry2CheckIn(photo));
       return;
     }
 
@@ -529,6 +704,7 @@ export default function AttendanceTerminal({
         overtime: 0,
         status: 'Night Shift',
         locationEntry2: coords,
+        photoEntry2: selfiePhoto,
       };
       newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
       onAddAttendance(newRecord);
@@ -542,6 +718,7 @@ export default function AttendanceTerminal({
         exitTime2: '',
         status: 'Night Shift Active',
         locationEntry2: coords,
+        photoEntry2: selfiePhoto,
       };
       updatedRecord = checkProximityAndFlag(coords, 'second shift entry', updatedRecord);
       onUpdateAttendance(updatedRecord);
@@ -549,7 +726,7 @@ export default function AttendanceTerminal({
     }
   };
 
-  const handleExitCheckOut = async () => {
+  const handleExitCheckOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
     // Prevent duplicate EXIT before ENTRY
@@ -560,6 +737,11 @@ export default function AttendanceTerminal({
 
     if (selectedEmpStatus === 'exited' || selectedEmpStatus === 'fully-exited') {
       triggerNotification('error', 'Employee has already checked out of this shift for today.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Day Shift Departure', (photo) => handleExitCheckOut(photo));
       return;
     }
 
@@ -583,6 +765,7 @@ export default function AttendanceTerminal({
       overtime,
       status: statusFlags.join(', '),
       locationOut: coords,
+      photoOut: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'shift exit check-out', updatedRecord);
@@ -593,11 +776,16 @@ export default function AttendanceTerminal({
     );
   };
 
-  const handleExit2CheckOut = async () => {
+  const handleExit2CheckOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord || !currentRecord.entryTime2) return;
 
     if (selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner') {
       triggerNotification('error', 'Employee is not actively working on Shift 2.');
+      return;
+    }
+
+    if (typeof selfiePhoto !== 'string') {
+      triggerSelfieAndPunch('Night Shift Departure', (photo) => handleExit2CheckOut(photo));
       return;
     }
 
@@ -625,6 +813,7 @@ export default function AttendanceTerminal({
       overtime,
       status: statusFlags.join(', '),
       locationExit2: coords,
+      photoExit2: selfiePhoto,
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'night shift departure', updatedRecord);
@@ -671,12 +860,16 @@ export default function AttendanceTerminal({
       </div>
 
       {settings.strictGeofencing && (
-        <div className="bg-indigo-50/70 border border-indigo-120/45 p-4 rounded-xl flex items-start space-x-3 text-slate-700 animate-fadeIn" id="strict-geo-banner">
+        <div className="bg-indigo-55/90 border border-indigo-100 p-4 rounded-xl flex items-start space-x-3 text-slate-700 animate-fadeIn" id="strict-geo-banner">
           <MapPin className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5 animate-pulse" />
           <div className="text-xs">
-            <span className="font-bold text-indigo-950 block">🔒 Strict Office Geofencing Protection Active</span>
+            <span className="font-bold text-indigo-950 block">🔒 Multi-Site Geofencing Protection Enabled</span>
             <p className="mt-0.5 text-slate-550 leading-relaxed font-sans">
-              This terminal is strictly locked to <strong>{OFFICE_COORDS.name} Guwahati Campus</strong>. Employee punches are audited in real-time using secure browser GPS: you must be within 100 meters of the central office to check in or out.
+              Employees can register punches from Calitech HQ Guwahati or directly from our authorized partner pharma sites: 
+              <strong className="text-slate-900 ml-1">Ajanta Pharma (Guwahati)</strong>, 
+              <strong className="text-slate-900 ml-1">Natco Pharma (Guwahati)</strong>, or 
+              <strong className="text-slate-900 ml-1">Hetero Pharma (Guwahati, Hudumpur)</strong>. 
+              Punches are verified in real-time using secure browser GPS: please snap your verification photo with the office/plant building or gate in your background.
             </p>
           </div>
         </div>
@@ -1327,6 +1520,145 @@ export default function AttendanceTerminal({
 
             <div className="text-[9px] text-slate-400 font-mono uppercase tracking-widest pt-1">
               Apex Workforce Suite • Live
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Selfie Capture Modal */}
+      {selfieState?.isOpen && (
+        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 relative text-center space-y-4 animate-scaleIn">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-slate-900 flex items-center space-x-2">
+                <span className="h-2 w-2 rounded-full bg-indigo-600 animate-ping"></span>
+                <span>Selfie Verification Required</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setSelfieState(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-lg cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 font-medium font-sans leading-normal">
+              To verify your check-in integrity, snap a live selfie. Please ensure the background of your location is clear and visible.
+            </p>
+
+            <div className="relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] max-w-[275px] mx-auto flex items-center justify-center border-4 border-slate-100 shadow-inner">
+              {capturedPhoto ? (
+                <img 
+                  src={capturedPhoto} 
+                  alt="Captured Selfie" 
+                  className="w-full h-full object-cover" 
+                />
+              ) : (
+                <>
+                  <video
+                    id="selfie-video-preview"
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover scale-x-[-1]"
+                  />
+                  {/* Portrait face contour masking aligner */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4">
+                    <div className="w-11/12 h-5/6 border-2 border-dashed border-white/50 rounded-[120px]/[160px] flex flex-col items-center justify-center animate-pulse bg-slate-900/10">
+                      <div className="text-[8px] text-white/80 uppercase tracking-widest font-mono select-none px-2 py-1 bg-slate-950/40 rounded backdrop-blur-[1px] mt-auto mb-6">
+                        Align Face Here
+                      </div>
+                    </div>
+                  </div>
+                  {cameraError && (
+                    <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3">
+                      <AlertTriangle className="w-8 h-8 text-amber-500" />
+                      <p className="text-[10px] text-amber-100 font-mono leading-relaxed">{cameraError}</p>
+                      <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-md transition-all uppercase">
+                        Take Photo Using Phone
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="user"
+                          onChange={handleFileCapture}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              {capturedPhoto ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCapturedPhoto(null)}
+                    className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer font-sans"
+                  >
+                    Retake Selfie
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selfieState.onCapture(capturedPhoto);
+                      stopCamera();
+                    }}
+                    className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-600/10 cursor-pointer flex items-center justify-center space-x-1.5 font-sans"
+                  >
+                    <span>Confirm & Punch</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      setSelfieState(null);
+                    }}
+                    className="flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-xl transition-all cursor-pointer font-sans"
+                  >
+                    Cancel
+                  </button>
+                  
+                  {!cameraError && (
+                    <button
+                      type="button"
+                      onClick={captureSnapshot}
+                      className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Take Selfie</span>
+                    </button>
+                  )}
+                  
+                  {cameraError && (
+                    <label className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Upload Photo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="user"
+                        onChange={handleFileCapture}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+            
+            <div className="text-[9px] text-slate-400 font-mono uppercase tracking-widest pt-1 border-t border-slate-50">
+              Face verification active
             </div>
           </div>
         </div>

@@ -18,7 +18,9 @@ import {
   Bell,
   ShieldAlert,
   AlertTriangle,
-  MapPin
+  MapPin,
+  Megaphone,
+  Send
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, AppNotification, LeaveRequest } from '../types';
 
@@ -31,6 +33,12 @@ interface DashboardViewProps {
   leaveRequests: LeaveRequest[];
   onMarkNotificationRead?: (id: string) => void;
   onEvaluateEmployee?: (id: string) => void;
+  onSendNotification?: (
+    title: string,
+    message: string,
+    type: 'info' | 'warning' | 'alert' | 'success',
+    employeeId?: string
+  ) => void;
 }
 
 export default function DashboardView({
@@ -42,10 +50,48 @@ export default function DashboardView({
   leaveRequests,
   onMarkNotificationRead,
   onEvaluateEmployee,
+  onSendNotification,
 }: DashboardViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshKey, setRefreshKey] = useState(0); // For mock real-time dashboard refresh click!
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [activeSelfieUrl, setActiveSelfieUrl] = useState<{ url: string; label: string; name: string } | null>(null);
+
+  // States for Administrative Memo / Notification dispatcher
+  const [targetEmployeeId, setTargetEmployeeId] = useState('');
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifType, setNotifType] = useState<'info' | 'warning' | 'alert' | 'success'>('info');
+  const [notifSuccessText, setNotifSuccessText] = useState('');
+
+  const handleDispatchNotification = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onSendNotification) return;
+
+    if (!notifTitle.trim() || !notifMessage.trim()) {
+      alert('Please fill in the notification Title and Message before sending.');
+      return;
+    }
+
+    onSendNotification(
+      notifTitle.trim(),
+      notifMessage.trim(),
+      notifType,
+      targetEmployeeId || undefined // empty = broadcast
+    );
+
+    // Reset inputs
+    setNotifTitle('');
+    setNotifMessage('');
+    setTargetEmployeeId('');
+    
+    setNotifSuccessText(
+      targetEmployeeId 
+        ? `Successfully sent Memo to ${employees.find(emp => emp.id === targetEmployeeId)?.name || targetEmployeeId}!`
+        : 'Broadcast announcement successfully published, all active employee noticeboards updated!'
+    );
+    setTimeout(() => setNotifSuccessText(''), 5500);
+  };
 
   // Triggering visual refresh
   const triggerRefresh = () => {
@@ -116,6 +162,14 @@ export default function DashboardView({
       locationDinnerIn: todayRec?.locationDinnerIn || '',
       locationEntry2: todayRec?.locationEntry2 || '',
       locationExit2: todayRec?.locationExit2 || '',
+      photoIn: todayRec?.photoIn || '',
+      photoOut: todayRec?.photoOut || '',
+      photoLunchOut: todayRec?.photoLunchOut || '',
+      photoLunchIn: todayRec?.photoLunchIn || '',
+      photoDinnerOut: todayRec?.photoDinnerOut || '',
+      photoDinnerIn: todayRec?.photoDinnerIn || '',
+      photoEntry2: todayRec?.photoEntry2 || '',
+      photoExit2: todayRec?.photoExit2 || '',
     };
   });
 
@@ -304,14 +358,24 @@ export default function DashboardView({
                         <td className="py-3 px-4 text-slate-500">{item.department}</td>
                         <td className="py-3 px-4 font-mono text-slate-800">
                           <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-semibold">{item.entryTime}</span>
+                              {item.photoIn && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoIn, label: 'Day Shift Entry', name: item.name })}
+                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Check-In Selfie"
+                                >
+                                  <img src={item.photoIn} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
                               {item.locationIn && (
                                 <a
                                   href={`https://www.google.com/maps?q=${item.locationIn}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-150 transition-colors shrink-0"
                                   title="Check In GPS Location"
                                 >
                                   <MapPin className="w-2 h-2" />
@@ -319,14 +383,24 @@ export default function DashboardView({
                               )}
                             </div>
                             {item.entryTime2 !== '--:--' && (
-                              <div className="flex items-center gap-1 mt-0.5">
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                 <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.entryTime2}</span>
+                                {item.photoEntry2 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveSelfieUrl({ url: item.photoEntry2, label: 'Night Shift Entry', name: item.name })}
+                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                    title="View Shift 2 Entry Selfie"
+                                  >
+                                    <img src={item.photoEntry2} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  </button>
+                                )}
                                 {item.locationEntry2 && (
                                   <a
                                     href={`https://www.google.com/maps?q=${item.locationEntry2}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-150 transition-colors shrink-0"
                                     title="Shift 2 GPS Location"
                                   >
                                     <MapPin className="w-2 h-2" />
@@ -339,9 +413,19 @@ export default function DashboardView({
                         <td className="py-3 px-4 font-mono text-slate-600 text-2xs space-y-1">
                           {item.lunchOut !== '--:--' ? (
                             <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap text-slate-700">
                                 <span className="font-bold text-slate-400 uppercase text-[9px]">L:</span> 
                                 <span>{item.lunchOut}</span> 
+                                {item.photoLunchOut && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveSelfieUrl({ url: item.photoLunchOut, label: 'Lunch Out', name: item.name })}
+                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                    title="View Lunch Out Selfie"
+                                  >
+                                    <img src={item.photoLunchOut} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  </button>
+                                )}
                                 {item.locationLunchOut && (
                                   <a
                                     href={`https://www.google.com/maps?q=${item.locationLunchOut}`}
@@ -355,6 +439,16 @@ export default function DashboardView({
                                 )}
                                 <span>→</span>
                                 <span>{item.lunchIn !== '--:--' ? item.lunchIn : <span className="text-amber-500 font-black uppercase text-[9px] font-mono">On Break</span>}</span>
+                                {item.lunchIn !== '--:--' && item.photoLunchIn && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveSelfieUrl({ url: item.photoLunchIn, label: 'Lunch In', name: item.name })}
+                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                    title="View Lunch Return Selfie"
+                                  >
+                                    <img src={item.photoLunchIn} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  </button>
+                                )}
                                 {item.lunchIn !== '--:--' && item.locationLunchIn && (
                                   <a
                                     href={`https://www.google.com/maps?q=${item.locationLunchIn}`}
@@ -372,9 +466,19 @@ export default function DashboardView({
                             <div className="text-slate-350">L: --:--</div>
                           )}
                           {item.dinnerOut !== '--:--' && (
-                            <div className="flex items-center gap-1 flex-wrap text-indigo-900">
+                            <div className="flex items-center gap-1.5 flex-wrap text-indigo-900 mt-1">
                               <span className="font-bold text-indigo-500 uppercase text-[9px]">D:</span> 
                               <span>{item.dinnerOut}</span>
+                              {item.photoDinnerOut && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoDinnerOut, label: 'Dinner Out', name: item.name })}
+                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Dinner Out Selfie"
+                                >
+                                  <img src={item.photoDinnerOut} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
                               {item.locationDinnerOut && (
                                 <a
                                   href={`https://www.google.com/maps?q=${item.locationDinnerOut}`}
@@ -388,6 +492,16 @@ export default function DashboardView({
                               )}
                               <span>→</span>
                               <span>{item.dinnerIn !== '--:--' ? item.dinnerIn : <span className="text-rose-500 font-black uppercase text-[9px] font-mono animate-pulse">On Dinner</span>}</span>
+                              {item.dinnerIn !== '--:--' && item.photoDinnerIn && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoDinnerIn, label: 'Dinner In', name: item.name })}
+                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Dinner Return Selfie"
+                                >
+                                  <img src={item.photoDinnerIn} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
                               {item.dinnerIn !== '--:--' && item.locationDinnerIn && (
                                 <a
                                   href={`https://www.google.com/maps?q=${item.locationDinnerIn}`}
@@ -404,14 +518,24 @@ export default function DashboardView({
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-800">
                           <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-semibold">{item.exitTime}</span>
+                              {item.photoOut && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoOut, label: 'Day Shift Exit', name: item.name })}
+                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Day Shift Exit Selfie"
+                                >
+                                  <img src={item.photoOut} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
                               {item.locationOut && (
                                 <a
                                   href={`https://www.google.com/maps?q=${item.locationOut}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                  className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-150 transition-colors shrink-0"
                                   title="Check Out GPS Location"
                                 >
                                   <MapPin className="w-2 h-2" />
@@ -419,14 +543,24 @@ export default function DashboardView({
                               )}
                             </div>
                             {item.exitTime2 !== '--:--' && (
-                              <div className="flex items-center gap-1 mt-0.5">
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                 <span className="text-[10px] text-indigo-600 font-bold font-mono uppercase">S2: {item.exitTime2}</span>
+                                {item.photoExit2 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveSelfieUrl({ url: item.photoExit2, label: 'Night Shift Exit', name: item.name })}
+                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                    title="View Shift 2 Exit Selfie"
+                                  >
+                                    <img src={item.photoExit2} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  </button>
+                                )}
                                 {item.locationExit2 && (
                                   <a
                                     href={`https://www.google.com/maps?q=${item.locationExit2}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded border border-teal-150 transition-colors shrink-0"
+                                    className="inline-flex items-center text-[8px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-1 py-0.5 rounded border border-teal-150 transition-colors shrink-0"
                                     title="Shift 2 Exit GPS Location"
                                   >
                                     <MapPin className="w-2 h-2" />
@@ -466,6 +600,101 @@ export default function DashboardView({
 
         {/* Right Column: Visual Shift Insights & Schedule rules */}
         <div className="space-y-6">
+          {/* Bento Panel: Send Official Memo / Alert Note (NEW) */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Megaphone className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Send Employee Memo / alert</span>
+              </h3>
+              <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase">
+                Notice Board
+              </span>
+            </div>
+
+            {notifSuccessText && (
+              <div className="p-3 bg-emerald-50 border border-emerald-100 text-[#065f46] rounded-xl text-3xs font-medium leading-relaxed">
+                ✓ {notifSuccessText}
+              </div>
+            )}
+
+            <form onSubmit={handleDispatchNotification} className="space-y-3.5 text-xs">
+              {/* Target Selector */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-450 mb-1 font-mono tracking-wide">
+                  Receipt Target
+                </label>
+                <select
+                  value={targetEmployeeId}
+                  onChange={(e) => setTargetEmployeeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 text-xs font-medium"
+                >
+                  <option value="">📢 All Employees (Broadcast)</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>
+                      👤 {emp.name} ({emp.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Title Input */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-450 mb-1 font-mono tracking-wide">
+                  Memo Title
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Mandatory Gate Selfie Alert"
+                  value={notifTitle}
+                  onChange={(e) => setNotifTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none text-xs font-medium bg-white"
+                  required
+                />
+              </div>
+
+              {/* Message Description Input */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-450 mb-1 font-mono tracking-wide">
+                  Detailed Message Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Write clear instructions for the noticeboard alert..."
+                  value={notifMessage}
+                  onChange={(e) => setNotifMessage(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none text-xs font-medium bg-white resize-none"
+                  required
+                />
+              </div>
+
+              {/* Color/Priority Type selection */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-450 mb-1 font-mono tracking-wide">
+                  Priority Style / Flag
+                </label>
+                <select
+                  value={notifType}
+                  onChange={(e) => setNotifType(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 text-xs font-medium"
+                >
+                  <option value="info">🔵 Info (Blue Memo)</option>
+                  <option value="warning">🟡 Warning (Amber Alert)</option>
+                  <option value="alert">🔴 Urgent (Rose Notice)</option>
+                  <option value="success">🟢 OK (Green Pass)</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full flex items-center justify-center space-x-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-emerald-500/25 cursor-pointer"
+              >
+                <Send className="w-4 h-4 shrink-0 animate-bounce" />
+                <span>Send Now</span>
+              </button>
+            </form>
+          </div>
+
           {/* Bento Panel: Real-time Shift Alerts */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center justify-between pb-2 border-b border-rose-50/60 mb-4">
@@ -650,6 +879,52 @@ export default function DashboardView({
           </div>
         </div>
       </div>
+
+      {activeSelfieUrl && (
+        <div 
+          onClick={() => setActiveSelfieUrl(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn cursor-pointer"
+        >
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 relative text-center space-y-4 cursor-default animate-scaleIn" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <span className="text-[10px] font-bold font-mono text-indigo-650 uppercase tracking-widest block">{activeSelfieUrl.label} Verification</span>
+              <button 
+                onClick={() => setActiveSelfieUrl(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold font-sans text-xs cursor-pointer p-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="text-left">
+              <span className="text-sm font-black text-slate-800 block">{activeSelfieUrl.name}</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Punch verification photo captures precise location backdrop.</span>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden aspect-[3/4] max-w-[240px] mx-auto border border-slate-100 shadow-sm bg-slate-950 flex items-center justify-center">
+              <img 
+                src={activeSelfieUrl.url} 
+                alt="Selfie Backdrop Verification" 
+                className="w-full h-full object-cover" 
+              />
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setActiveSelfieUrl(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-3xs uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Close Audit
+              </button>
+            </div>
+
+            <p className="text-3xs text-slate-400 font-mono uppercase tracking-widest pt-1 border-t border-slate-50">
+              Secure Punch Verification Protocol
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

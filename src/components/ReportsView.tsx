@@ -11,21 +11,28 @@ import {
   User, 
   Download,
   Receipt,
-  DownloadCloud
+  DownloadCloud,
+  Plus,
+  Pencil,
+  X
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateEarnings } from '../utils/calculations';
+import { calculateEarnings, calculateAttendanceMetrics } from '../utils/calculations';
 
 interface ReportsViewProps {
   employees: Employee[];
   attendance: AttendanceRecord[];
   settings: Settings;
+  onAddAttendance: (record: AttendanceRecord) => void;
+  onUpdateAttendance: (record: AttendanceRecord) => void;
 }
 
 export default function ReportsView({
   employees,
   attendance,
   settings,
+  onAddAttendance,
+  onUpdateAttendance,
 }: ReportsViewProps) {
   // Filters states
   const [filterType, setFilterType] = useState<'daily' | 'weekly' | 'monthly' | 'employee' | 'custom'>('monthly');
@@ -40,6 +47,125 @@ export default function ReportsView({
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Manual add/edit modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  
+  // Form fields
+  const [formEmployeeId, setFormEmployeeId] = useState('');
+  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formEntryTime, setFormEntryTime] = useState('09:00');
+  const [formLunchOut, setFormLunchOut] = useState('13:00');
+  const [formLunchIn, setFormLunchIn] = useState('14:00');
+  const [formExitTime, setFormExitTime] = useState('18:00');
+  
+  // Double shift form fields
+  const [formHasShift2, setFormHasShift2] = useState(false);
+  const [formEntryTime2, setFormEntryTime2] = useState('');
+  const [formExitTime2, setFormExitTime2] = useState('');
+  const [formDinnerOut, setFormDinnerOut] = useState('');
+  const [formDinnerIn, setFormDinnerIn] = useState('');
+  const [formNotes, setFormNotes] = useState('');
+  const [formError, setFormError] = useState('');
+
+  const openAddModal = () => {
+    setModalMode('add');
+    setSelectedRecordId(null);
+    setFormEmployeeId(employees[0]?.id || '');
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormEntryTime('09:00');
+    setFormLunchOut('13:00');
+    setFormLunchIn('14:00');
+    setFormExitTime('18:00');
+    setFormHasShift2(false);
+    setFormEntryTime2('18:30');
+    setFormExitTime2('22:00');
+    setFormDinnerOut('');
+    setFormDinnerIn('');
+    setFormNotes('Manual entry by administrator');
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (rec: AttendanceRecord) => {
+    setModalMode('edit');
+    setSelectedRecordId(`${rec.date}_${rec.employeeId}`);
+    setFormEmployeeId(rec.employeeId);
+    setFormDate(rec.date);
+    setFormEntryTime(rec.entryTime || '');
+    setFormLunchOut(rec.lunchOut || '');
+    setFormLunchIn(rec.lunchIn || '');
+    setFormExitTime(rec.exitTime || '');
+    
+    const hasShift2 = !!rec.entryTime2;
+    setFormHasShift2(hasShift2);
+    setFormEntryTime2(rec.entryTime2 || '18:30');
+    setFormExitTime2(rec.exitTime2 || '22:00');
+    setFormDinnerOut(rec.dinnerOut || '');
+    setFormDinnerIn(rec.dinnerIn || '');
+    setFormNotes(rec.notes || 'Timecard override by admin');
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const handleSavePunch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formEmployeeId) {
+      setFormError('Please select a valid employee.');
+      return;
+    }
+    if (!formDate) {
+      setFormError('Please select a date.');
+      return;
+    }
+
+    const emp = employees.find(e => e.id === formEmployeeId);
+    if (!emp) {
+      setFormError('Selected employee record not found.');
+      return;
+    }
+
+    // Dynamic metrics computation
+    const metrics = calculateAttendanceMetrics(
+      formEntryTime,
+      formExitTime,
+      formLunchOut,
+      formLunchIn,
+      settings,
+      formHasShift2 ? formEntryTime2 : '',
+      formHasShift2 ? formExitTime2 : '',
+      formDinnerOut,
+      formDinnerIn
+    );
+
+    const recordPayload: AttendanceRecord = {
+      date: formDate,
+      employeeId: formEmployeeId,
+      employeeName: emp.name,
+      entryTime: formEntryTime,
+      lunchOut: formLunchOut,
+      lunchIn: formLunchIn,
+      exitTime: formExitTime,
+      entryTime2: formHasShift2 ? formEntryTime2 : '',
+      exitTime2: formHasShift2 ? formExitTime2 : '',
+      dinnerOut: formDinnerOut,
+      dinnerIn: formDinnerIn,
+      totalHours: metrics.totalHours,
+      overtime: metrics.overtime,
+      status: metrics.statusFlags.join(', ') || 'Present',
+      notes: formNotes || `${modalMode === 'add' ? 'Manual entry' : 'Manually edited'} by administrator`,
+    };
+
+    if (modalMode === 'add') {
+      onAddAttendance(recordPayload);
+    } else {
+      onUpdateAttendance(recordPayload);
+    }
+
+    setIsModalOpen(false);
+  };
 
   // Calculations range selector logic
   const getFilteredRecords = (): AttendanceRecord[] => {
@@ -168,6 +294,15 @@ export default function ReportsView({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openAddModal}
+            id="btn-add-manual-punch"
+            className="flex items-center space-x-1 px-4 py-2 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-bold cursor-pointer shadow-sm shadow-emerald-500/15 transition-all"
+          >
+            <Plus className="w-4 h-4 text-emerald-100 shrink-0" />
+            <span>Manually Add Missed Punch</span>
+          </button>
           <button
             onClick={handleExportToExcel}
             id="btn-export-excel"
@@ -405,6 +540,7 @@ export default function ReportsView({
                 <th className="py-3 px-4 text-center">Overtime</th>
                 <th className="py-3 px-4 text-center font-mono">Hourly Rate</th>
                 <th className="py-3 px-6 text-right">Computed Pay</th>
+                <th className="py-3 px-6 text-center print:hidden">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-750 text-xs">
@@ -489,6 +625,17 @@ export default function ReportsView({
                           )}
                         </div>
                       </td>
+                      <td className="py-3 px-6 text-center print:hidden">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(rec)}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/80 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Missed Punch Log"
+                        >
+                          <Pencil className="w-2.5 h-2.5 shrink-0" />
+                          <span>Edit</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -497,6 +644,244 @@ export default function ReportsView({
           </table>
         </div>
       </div>
+
+      {/* Manual Punch Form Modal Dialog */}
+      {isModalOpen && (
+        <div id="manual-punch-modal-backdrop" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 relative space-y-4 max-h-[90vh] overflow-y-auto animate-scaleIn">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${modalMode === 'add' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></span>
+                  <span>{modalMode === 'add' ? 'Manually Add Missed Punch' : 'Edit Missed Punch Log'}</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {modalMode === 'add' ? 'Add missing attendance row record with custom times' : 'Modify registered time clock segments and update totals'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-lg cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSavePunch} className="space-y-4">
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-3xs font-mono">
+                  {formError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Employee Selector */}
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-450 mb-1 font-mono">
+                    Staff Member
+                  </label>
+                  <select
+                    disabled={modalMode === 'edit'}
+                    value={formEmployeeId}
+                    onChange={(e) => setFormEmployeeId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 font-medium disabled:opacity-60 disabled:bg-slate-150"
+                  >
+                    <option value="">-- Choose employee --</option>
+                    {employees.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name} ({e.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Date Input */}
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-450 mb-1 font-mono">
+                    Punch Date
+                  </label>
+                  <input
+                    type="date"
+                    disabled={modalMode === 'edit'}
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 font-mono disabled:opacity-60 disabled:bg-slate-150"
+                  />
+                </div>
+              </div>
+
+              {/* Shift 1 Times */}
+              <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
+                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block border-b border-slate-100 pb-1 font-mono">
+                  Shift 1 Duration Parameters
+                </span>
+
+                <div className="grid grid-cols-2 gap-3 pb-1">
+                  <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
+                      S1 In (Check-In)
+                    </label>
+                    <input
+                      type="time"
+                      value={formEntryTime}
+                      onChange={(e) => setFormEntryTime(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-200 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
+                      S1 Out (Check-Out)
+                    </label>
+                    <input
+                      type="time"
+                      value={formExitTime}
+                      onChange={(e) => setFormExitTime(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-200 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100/60">
+                  <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
+                      S1 Lunch Out
+                    </label>
+                    <input
+                      type="time"
+                      value={formLunchOut}
+                      onChange={(e) => setFormLunchOut(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-200 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
+                      S1 Lunch In
+                    </label>
+                    <input
+                      type="time"
+                      value={formLunchIn}
+                      onChange={(e) => setFormLunchIn(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-200 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Shift 2 / Double Shift Toggle Checkbox */}
+              <div className="flex items-center space-x-2 px-1">
+                <input
+                  type="checkbox"
+                  id="formHasShift2"
+                  checked={formHasShift2}
+                  onChange={(e) => setFormHasShift2(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="formHasShift2" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                  Include Double Shift (Shift 2) Parameters
+                </label>
+              </div>
+
+              {/* Shift 2 Times */}
+              {formHasShift2 && (
+                <div className="border border-indigo-100 rounded-2xl p-4 bg-indigo-50/20 space-y-3 animate-fadeIn">
+                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block border-b border-indigo-100/50 pb-1 font-mono">
+                    Shift 2 (Double Shift) Parameters
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-3 pb-1">
+                    <div>
+                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
+                        S2 In (Check-In)
+                      </label>
+                      <input
+                        type="time"
+                        value={formEntryTime2}
+                        onChange={(e) => setFormEntryTime2(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-indigo-200/50 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
+                        S2 Out (Check-Out)
+                      </label>
+                      <input
+                        type="time"
+                        value={formExitTime2}
+                        onChange={(e) => setFormExitTime2(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-indigo-200/50 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1 border-t border-indigo-100/40">
+                    <div>
+                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
+                        Dinner Out (Break)
+                      </label>
+                      <input
+                        type="time"
+                        value={formDinnerOut}
+                        onChange={(e) => setFormDinnerOut(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-indigo-200/50 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
+                        Dinner In (Return)
+                      </label>
+                      <input
+                        type="time"
+                        value={formDinnerIn}
+                        onChange={(e) => setFormDinnerIn(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-indigo-200/50 bg-white text-xs rounded-lg focus:outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-450 mb-1 font-mono">
+                  Administrative Notes / Overriding Reason
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., missed card swipe, swipe device connection failure"
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 text-xs rounded-xl focus:outline-none"
+                />
+              </div>
+
+              {/* Actions Footer */}
+              <div className="flex space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`flex-1 py-2.5 text-xs font-extrabold text-white rounded-xl shadow-lg cursor-pointer ${
+                    modalMode === 'add' 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/10' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/10'
+                  }`}
+                >
+                  {modalMode === 'add' ? 'Save New Punch' : 'Update Punch Logs'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

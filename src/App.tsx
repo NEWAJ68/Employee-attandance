@@ -512,7 +512,9 @@ export default function App() {
         );
       }
 
-      triggerRemoteSheetsSync('syncAttendance', { record: newRecord });
+      if (settings.autoSyncSheets) {
+        triggerRemoteSheetsSync('syncAttendance', { record: newRecord });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
     }
@@ -541,7 +543,9 @@ export default function App() {
         }
       }
 
-      triggerRemoteSheetsSync('syncAttendance', { record: updatedRecord });
+      if (settings.autoSyncSheets) {
+        triggerRemoteSheetsSync('syncAttendance', { record: updatedRecord });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
     }
@@ -629,6 +633,50 @@ export default function App() {
     }
   };
 
+  const handleManualSyncAll = async () => {
+    if (!appsScriptUrl) return;
+    setIsSyncing(true);
+    setSyncStatus('synced');
+
+    try {
+      if (appsScriptUrl.includes('DemoGoogleSheetsSyncIntegrationActive') || appsScriptUrl.includes('demo') || appsScriptUrl.includes('mock')) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return;
+      }
+
+      // 1. Sync Settings Configuration
+      await fetch(appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'syncSettings', settings })
+      });
+
+      // 2. Sync Employees List
+      await fetch(appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'syncEmployees', employees })
+      });
+
+      // 3. Sync Each Attendance Record
+      for (const record of attendance) {
+        await fetch(appsScriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'syncAttendance', record })
+        });
+      }
+    } catch (err) {
+      console.error('Full manual database force sync failed:', err);
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleViewChangeBySelector = (view: string) => {
     // View Guards
     if (isAdminLoggedIn) {
@@ -649,8 +697,16 @@ export default function App() {
 
   // Filter notifications for logged-in employee privacy
   const filteredNotifications = loggedInEmployee 
-    ? notifications.filter(n => !n.employeeId || n.employeeId === loggedInEmployee.id)
+    ? notifications.filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id)
     : notifications;
+
+  const isNotificationRead = (n: AppNotification) => {
+    if (!loggedInEmployee) return n.read;
+    if (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast") {
+      return (n.readByEmployees || []).includes(loggedInEmployee.id);
+    }
+    return n.read;
+  };
 
   if (!isAdminLoggedIn && !loggedInEmployee) {
     return (
@@ -762,9 +818,9 @@ export default function App() {
                 className="p-2 md:p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
               >
                 <Bell className="w-4 h-4 text-slate-600" />
-                {filteredNotifications.filter(u => !u.read).length > 0 && (
+                {filteredNotifications.filter(u => !isNotificationRead(u)).length > 0 && (
                   <span className="absolute top-1 right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center animate-pulse shadow">
-                    {filteredNotifications.filter(u => !u.read).length}
+                    {filteredNotifications.filter(u => !isNotificationRead(u)).length}
                   </span>
                 )}
               </button>
@@ -776,17 +832,39 @@ export default function App() {
                       <Bell className="w-3.5 h-3.5 text-indigo-500" />
                       <span>{loggedInEmployee ? 'My Personal Alerts' : 'Administrative Shifts Alerts'}</span>
                     </h3>
-                    {filteredNotifications.filter(n => !n.read).length > 0 && (
+                    {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
                       <button
                         onClick={async () => {
                           try {
-                            const unreadFilteredNotifs = filteredNotifications.filter(n => !n.read);
-                            const updated = notifications.map(n => 
-                              unreadFilteredNotifs.some(ufn => ufn.id === n.id) ? { ...n, read: true } : n
-                            );
+                            const unreadFilteredNotifs = filteredNotifications.filter(n => !isNotificationRead(n));
+                            const updated = notifications.map(n => {
+                              const match = unreadFilteredNotifs.find(ufn => ufn.id === n.id);
+                              if (match) {
+                                if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
+                                  const currentReadBy = n.readByEmployees || [];
+                                  const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
+                                    ? currentReadBy
+                                    : [...currentReadBy, loggedInEmployee.id];
+                                  return { ...n, readByEmployees: nextReadBy };
+                                } else {
+                                  return { ...n, read: true };
+                                }
+                              }
+                              return n;
+                            });
                             setNotifications(updated);
                             for (const n of unreadFilteredNotifs) {
-                              await setDoc(doc(db, 'notifications', n.id), { ...n, read: true });
+                              let updatedN: AppNotification;
+                              if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
+                                const currentReadBy = n.readByEmployees || [];
+                                const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
+                                  ? currentReadBy
+                                  : [...currentReadBy, loggedInEmployee.id];
+                                updatedN = { ...n, readByEmployees: nextReadBy };
+                              } else {
+                                updatedN = { ...n, read: true };
+                              }
+                              await setDoc(doc(db, 'notifications', n.id), updatedN);
                             }
                             setIsNotificationDropdownOpen(false);
                           } catch (err) {
@@ -804,15 +882,18 @@ export default function App() {
                     {filteredNotifications.length === 0 ? (
                       <p className="text-[10px] text-slate-400 font-mono text-center py-6">No notifications collected today.</p>
                     ) : (
-                      filteredNotifications.slice(0, 5).map(notif => (
-                        <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${notif.read ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
-                          <div className="flex items-center justify-between font-bold text-slate-800">
-                            <span>{notif.title}</span>
-                            <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
+                      filteredNotifications.slice(0, 5).map(notif => {
+                        const hasBeenRead = isNotificationRead(notif);
+                        return (
+                          <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${hasBeenRead ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
+                            <div className="flex items-center justify-between font-bold text-slate-800">
+                              <span>{notif.title}</span>
+                              <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-650 leading-normal font-sans">{notif.message}</p>
                           </div>
-                          <p className="text-[10px] text-slate-600 leading-normal font-sans">{notif.message}</p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 
@@ -867,6 +948,7 @@ export default function App() {
               notifications={notifications}
               leaveRequests={leaveRequests}
               onEvaluateEmployee={(empId) => handleLogin('employee', empId)}
+              onSendNotification={handleRaiseNotification}
               onMarkNotificationRead={async (id) => {
                 const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
                 setNotifications(updated);
@@ -897,6 +979,8 @@ export default function App() {
               employees={employees}
               attendance={attendance}
               settings={settings}
+              onAddAttendance={handleAddAttendance}
+              onUpdateAttendance={handleUpdateAttendance}
             />
           )}
 
@@ -907,6 +991,9 @@ export default function App() {
               settings={settings}
               appsScriptUrl={appsScriptUrl}
               onUpdateUrl={handleUpdateAppsScriptUrl}
+              onUpdateSettings={handleUpdateSettings}
+              isSyncing={isSyncing}
+              onManualSyncAll={handleManualSyncAll}
             />
           )}
 
@@ -938,6 +1025,31 @@ export default function App() {
               onNavigateToView={handleViewChangeBySelector}
               onUpdateEmployee={handleUpdateEmployee}
               settings={settings}
+              notifications={notifications}
+              onMarkNotificationRead={async (id) => {
+                const target = notifications.find(n => n.id === id);
+                if (target) {
+                  let updatedTarget: AppNotification;
+                  if (!target.employeeId || target.employeeId === "" || target.employeeId === "all" || target.employeeId === "broadcast") {
+                    const currentReadBy = target.readByEmployees || [];
+                    const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
+                      ? currentReadBy
+                      : [...currentReadBy, loggedInEmployee.id];
+                    updatedTarget = { ...target, readByEmployees: nextReadBy };
+                  } else {
+                    updatedTarget = { ...target, read: true };
+                  }
+
+                  const updated = notifications.map(n => n.id === id ? updatedTarget : n);
+                  setNotifications(updated);
+
+                  try {
+                    await setDoc(doc(db, 'notifications', id), updatedTarget);
+                  } catch (err) {
+                    handleFirestoreError(err, OperationType.WRITE, `notifications/${id}`);
+                  }
+                }
+              }}
             />
           )}
         </main>

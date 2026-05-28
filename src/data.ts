@@ -39,6 +39,7 @@ export const INITIAL_SETTINGS: Settings = {
   workEndHour: '17:00',
   currency: 'INR',
   strictGeofencing: true,
+  autoSyncSheets: true,
 };
 
 // Generates some sensible attendance logs spanning the last few days

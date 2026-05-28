@@ -201,12 +201,41 @@ export const calculateEarnings = (
   };
 };
 
-export const OFFICE_COORDS = {
-  lat: 26.1185573,
-  lng: 91.5396016,
-  name: "Calitech Engineering Solutions pvt.ltd",
-  radiusMeters: 100
-};
+export interface AllowedLocation {
+  lat: number;
+  lng: number;
+  name: string;
+  radiusMeters: number;
+}
+
+export const ALLOWED_LOCATIONS: AllowedLocation[] = [
+  {
+    lat: 26.1185573,
+    lng: 91.5396016,
+    name: "Calitech Engineering Solutions pvt.ltd",
+    radiusMeters: 100
+  },
+  {
+    lat: 26.1158,
+    lng: 91.4932,
+    name: "Ajanta Pharma, Guwahati",
+    radiusMeters: 200
+  },
+  {
+    lat: 26.1030,
+    lng: 91.5173,
+    name: "Natco Pharma, Guwahati",
+    radiusMeters: 200
+  },
+  {
+    lat: 26.1124,
+    lng: 91.4880,
+    name: "Hetero Pharma, Guwahati, Hudumpur",
+    radiusMeters: 200
+  }
+];
+
+export const OFFICE_COORDS = ALLOWED_LOCATIONS[0];
 
 /**
  * Calculates distance between two latitude/longitude points in meters using Haversine formula
@@ -230,18 +259,34 @@ export function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lo
 export function verifyProximityToOffice(coordStr: string): {
   isWithinRange: boolean;
   distance: number;
+  matchedLocationName: string;
 } {
   if (!coordStr) {
-    return { isWithinRange: false, distance: Infinity };
+    return { isWithinRange: false, distance: Infinity, matchedLocationName: "Unknown" };
   }
   const parts = coordStr.split(',').map(v => v.trim()).map(Number);
   if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
-    return { isWithinRange: false, distance: Infinity };
+    return { isWithinRange: false, distance: Infinity, matchedLocationName: "Unknown" };
   }
   const [lat, lng] = parts;
-  const distance = getDistanceInMeters(lat, lng, OFFICE_COORDS.lat, OFFICE_COORDS.lng);
+
+  let closestLocation = ALLOWED_LOCATIONS[0];
+  let minDistance = Infinity;
+
+  // Find the closest allowed site/office
+  for (const loc of ALLOWED_LOCATIONS) {
+    const dist = getDistanceInMeters(lat, lng, loc.lat, loc.lng);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestLocation = loc;
+    }
+  }
+
+  const isWithinRange = minDistance <= closestLocation.radiusMeters;
+
   return {
-    isWithinRange: distance <= OFFICE_COORDS.radiusMeters,
-    distance: Math.round(distance)
+    isWithinRange,
+    distance: Math.round(minDistance),
+    matchedLocationName: closestLocation.name
   };
 }

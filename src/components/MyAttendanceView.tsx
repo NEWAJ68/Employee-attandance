@@ -21,9 +21,12 @@ import {
   ChevronRight,
   MapPin,
   Wallet,
-  TrendingUp
+  TrendingUp,
+  Megaphone,
+  Bell,
+  ShieldAlert
 } from 'lucide-react';
-import { Employee, AttendanceRecord, LeaveRequest, Settings } from '../types';
+import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
 import { calculateEarnings } from '../utils/calculations';
 
 interface MyAttendanceViewProps {
@@ -32,6 +35,8 @@ interface MyAttendanceViewProps {
   onNavigateToView?: (view: string) => void;
   onUpdateEmployee?: (employee: Employee) => void;
   settings?: Settings;
+  notifications: AppNotification[];
+  onMarkNotificationRead?: (id: string) => void;
 }
 
 export default function MyAttendanceView({
@@ -39,7 +44,9 @@ export default function MyAttendanceView({
   attendance,
   onNavigateToView,
   onUpdateEmployee,
-  settings
+  settings,
+  notifications = [],
+  onMarkNotificationRead
 }: MyAttendanceViewProps) {
   // Toggle states
   const [viewType, setViewType] = useState<'calendar' | 'table'>('calendar');
@@ -472,6 +479,104 @@ export default function MyAttendanceView({
             <span className="text-xl sm:text-2xl font-black text-indigo-650 tracking-tight">{sumWorkHours.toFixed(1)}h</span>
             <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium font-mono">accumulated</span>
           </div>
+        </div>
+      </div>
+
+      {/* 📢 PERSISTENT EMPLOYEE NOTICE BOARD & MEMOS */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100/80">
+          <div className="flex items-center space-x-2">
+            <Megaphone className="w-5 h-5 text-indigo-600 animate-bounce" />
+            <div>
+              <h2 className="text-sm font-black text-slate-950 tracking-tight">My Notice Board & Alerts</h2>
+              <p className="text-[10px] text-slate-400 font-medium">Personal assignments, shift warnings, and administrative memos.</p>
+            </div>
+          </div>
+          {notifications.filter(n => (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id) && !(n.employeeId && n.employeeId !== "" && n.employeeId !== "all" && n.employeeId !== "broadcast" ? n.read : (n.readByEmployees || []).includes(loggedInEmployee.id))).length > 0 && (
+            <span className="bg-rose-150 text-rose-800 border border-rose-200/50 text-[10px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
+              {notifications.filter(n => (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id) && !(n.employeeId && n.employeeId !== "" && n.employeeId !== "all" && n.employeeId !== "broadcast" ? n.read : (n.readByEmployees || []).includes(loggedInEmployee.id))).length} New Message(s)
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[280px] overflow-y-auto pr-1">
+          {notifications.filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id).length === 0 ? (
+            <div className="col-span-1 md:col-span-2 py-10 text-center flex flex-col items-center justify-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-150">
+              <span className="p-2 sm:p-3 bg-slate-100 text-slate-450 rounded-full">
+                <Bell className="w-5 h-5 opacity-40" />
+              </span>
+              <p className="text-2xs font-extrabold text-slate-400 uppercase tracking-widest">Noticeboard is Clear</p>
+              <p className="text-3xs text-slate-400 max-w-[240px]">No administrative broadcasts or warning notifications have been logged to your ID.</p>
+            </div>
+          ) : (
+            notifications
+              .filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id)
+              // Sort newest first
+              .sort((a, b) => b.id.localeCompare(a.id))
+              .map((notif) => {
+                let priorityBorder = 'border-slate-100 bg-slate-50/40';
+                let priorityTitle = 'text-slate-800';
+                let priorityIcon = <Bell className="w-4 h-4 text-slate-500" />;
+
+                if (notif.type === 'warning') {
+                  priorityBorder = 'border-amber-200 bg-amber-50/20';
+                  priorityTitle = 'text-amber-955';
+                  priorityIcon = <AlertCircle className="w-4 h-4 text-amber-500" />;
+                } else if (notif.type === 'alert') {
+                  priorityBorder = 'border-rose-200 bg-rose-50/20';
+                  priorityTitle = 'text-rose-955';
+                  priorityIcon = <ShieldAlert className="w-4 h-4 text-rose-500" />;
+                } else if (notif.type === 'success') {
+                  priorityBorder = 'border-emerald-200 bg-emerald-50/10';
+                  priorityTitle = 'text-emerald-950';
+                  priorityIcon = <CheckCircle className="w-4 h-4 text-emerald-500" />;
+                } else {
+                  priorityBorder = 'border-indigo-150 bg-indigo-50/20';
+                  priorityTitle = 'text-indigo-950';
+                  priorityIcon = <Megaphone className="w-4 h-4 text-indigo-650" />;
+                }
+
+                const hasBeenRead = (notif.employeeId && notif.employeeId !== "" && notif.employeeId !== "all" && notif.employeeId !== "broadcast")
+                  ? notif.read
+                  : (notif.readByEmployees || []).includes(loggedInEmployee.id);
+
+                return (
+                  <div 
+                    key={notif.id}
+                    className={`p-4 rounded-2xl border transition-all flex gap-3 items-start ${
+                      hasBeenRead ? 'opacity-60 bg-slate-50/40 border-slate-100' : `${priorityBorder}`
+                    }`}
+                  >
+                    <div className="shrink-0 p-1.5 bg-white/70 rounded-xl shadow-3xs">{priorityIcon}</div>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className={`text-xs font-black ${priorityTitle} flex items-center gap-1.5`}>
+                          <span>{notif.title}</span>
+                          {(!notif.employeeId || notif.employeeId === "" || notif.employeeId === "all" || notif.employeeId === "broadcast") && (
+                            <span className="bg-indigo-100 text-indigo-700 text-[8px] font-bold px-1 rounded font-sans uppercase">
+                              ALL STAFF
+                            </span>
+                          )}
+                        </h4>
+                        <span className="text-[9px] font-mono text-slate-400">{notif.timestamp}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-650 leading-relaxed font-medium">{notif.message}</p>
+                      
+                      {!hasBeenRead && onMarkNotificationRead && (
+                        <button
+                          type="button"
+                          onClick={() => onMarkNotificationRead(notif.id)}
+                          className="inline-flex items-center gap-1 text-[9px] text-indigo-700 hover:text-indigo-900 font-extrabold uppercase mt-2 hover:underline cursor-pointer"
+                        >
+                          <Check className="w-3 h-3 text-indigo-650" />
+                          <span>Acknowledge Message</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+          )}
         </div>
       </div>
 

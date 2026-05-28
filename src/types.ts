@@ -36,6 +36,14 @@ export interface AttendanceRecord {
   locationExit2?: string;
   isOutOfRange?: boolean;
   distanceFromHq?: number;
+  photoIn?: string;
+  photoOut?: string;
+  photoLunchOut?: string;
+  photoLunchIn?: string;
+  photoDinnerOut?: string;
+  photoDinnerIn?: string;
+  photoEntry2?: string;
+  photoExit2?: string;
 }
 
 export interface Settings {
@@ -47,6 +55,7 @@ export interface Settings {
   workEndHour: string; // e.g., "17:00" for early exit calculations
   currency: string; // Indian Rupee (₹) by default
   strictGeofencing?: boolean; // if true, blocks punches outside 100m of Calitech HQ
+  autoSyncSheets?: boolean; // if true, automatically triggers background push on attendance create
 }
 
 export interface LeaveRequest {
@@ -70,6 +79,7 @@ export interface AppNotification {
   read: boolean;
   isAdmin: boolean;
   employeeId?: string; // relevant employee record
+  readByEmployees?: string[]; // track which employees read a broadcast notification
 }
 
 export interface AppState {
