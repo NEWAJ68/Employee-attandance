@@ -13,7 +13,11 @@ import {
   Terminal,
   ArrowRight,
   Info,
-  Server
+  Server,
+  Link,
+  Link2,
+  Unlink,
+  RefreshCw
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 
@@ -26,6 +30,12 @@ interface SheetsSyncHubProps {
   onUpdateSettings?: (updatedSettings: Settings) => void;
   isSyncing?: boolean;
   onManualSyncAll?: () => void;
+  googleAccessToken?: string | null;
+  googleSpreadsheetId?: string | null;
+  onUpdateSpreadsheetId?: (id: string | null) => void;
+  onGoogleSignIn?: () => Promise<void>;
+  onDisconnectGoogle?: () => void;
+  onCreateNewSpreadsheet?: (title: string) => Promise<string>;
 }
 
 export default function SheetsSyncHub({
@@ -37,12 +47,53 @@ export default function SheetsSyncHub({
   onUpdateSettings,
   isSyncing = false,
   onManualSyncAll,
+  googleAccessToken = null,
+  googleSpreadsheetId = null,
+  onUpdateSpreadsheetId,
+  onGoogleSignIn,
+  onDisconnectGoogle,
+  onCreateNewSpreadsheet,
 }: SheetsSyncHubProps) {
   const [activeSheetTab, setActiveSheetTab] = useState<'employees' | 'attendance' | 'settings'>('attendance');
   const [inputUrl, setInputUrl] = useState(appsScriptUrl);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [testConnectionStatus, setTestConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResponseMsg, setTestResponseMsg] = useState('');
+
+  // Direct Google Sheets Integration local states
+  const [newSheetTitle, setNewSheetTitle] = useState('CES Attendance Database');
+  const [customSheetId, setCustomSheetId] = useState('');
+  const [isCreatingSheet, setIsCreatingSheet] = useState(false);
+  const [spreadsheetError, setSpreadsheetError] = useState('');
+
+  const handleCreateSheetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreateNewSpreadsheet || !newSheetTitle.trim()) return;
+    setIsCreatingSheet(true);
+    setSpreadsheetError('');
+    try {
+      await onCreateNewSpreadsheet(newSheetTitle.trim());
+    } catch (err: any) {
+      setSpreadsheetError(err.message || 'Error occurred while creating spreadsheet.');
+    } finally {
+      setIsCreatingSheet(false);
+    }
+  };
+
+  const handleLinkExistingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateSpreadsheetId || !customSheetId.trim()) return;
+    
+    // Auto extract spreadsheet token ID if full URL is pasted
+    let finalId = customSheetId.trim();
+    const urlMatches = finalId.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (urlMatches && urlMatches[1]) {
+      finalId = urlMatches[1];
+    }
+    
+    onUpdateSpreadsheetId(finalId);
+    setCustomSheetId('');
+  };
 
   const handleToggleAutoSync = () => {
     if (onUpdateSettings) {
@@ -364,6 +415,135 @@ function saveSettings(configs) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column: Setup guides & Connection endpoint config */}
         <div className="space-y-6 lg:col-span-1">
+          {/* Direct Google Sheets (OAUTH) Connection panel */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 select-none">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Direct Google Account Sync</span>
+              </div>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${googleAccessToken ? 'bg-emerald-55/80 text-emerald-800 border border-emerald-100/50' : 'bg-slate-50 text-slate-450 border border-slate-100'}`}>
+                {googleAccessToken ? 'Connected' : 'Offline'}
+              </span>
+            </div>
+
+            {!googleAccessToken ? (
+              <div className="space-y-3">
+                <p className="text-2xs text-slate-500 leading-relaxed font-mono">
+                  Sign in using Google Secure OAuth to directly manage, create, and append staff logs to a live spreadsheet in your Google Drive.
+                </p>
+                <button
+                  id="btn-google-oauth-signin"
+                  onClick={onGoogleSignIn}
+                  className="w-full flex items-center justify-center space-x-2.5 py-2 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl active:scale-98 transition-all shadow-3xs cursor-pointer"
+                >
+                  <svg className="w-4 h-4 translate-y-0.5" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                  </svg>
+                  <span>Connect with Google Account</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-2xs p-2 bg-emerald-50 rounded-xl border border-emerald-100/40">
+                  <span className="font-semibold text-emerald-800">✓ Auth Session Active</span>
+                  <button
+                    onClick={onDisconnectGoogle}
+                    className="text-[10px] text-rose-600 hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                  >
+                    <Unlink className="w-3 h-3" />
+                    <span>Disconnect</span>
+                  </button>
+                </div>
+
+                {!googleSpreadsheetId ? (
+                  <div className="space-y-4 pt-1 border-t border-slate-100">
+                    <form onSubmit={handleCreateSheetSubmit} className="space-y-2">
+                      <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450">
+                        Create New Google Sheet
+                      </label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={newSheetTitle}
+                          onChange={(e) => setNewSheetTitle(e.target.value)}
+                          placeholder="Spreadsheet Title"
+                          className="flex-1 px-3 py-1.5 border border-slate-200 bg-slate-50 font-sans text-xs rounded-xl focus:ring-1 focus:ring-emerald-500 text-slate-700"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isCreatingSheet}
+                          className="py-1.5 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-md shadow-emerald-650/10 cursor-pointer flex items-center justify-center min-w-[70px]"
+                        >
+                          {isCreatingSheet ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <span>Create</span>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+
+                    <div className="text-center font-mono text-[9px] text-slate-400">— OR —</div>
+
+                    <form onSubmit={handleLinkExistingSubmit} className="space-y-2">
+                      <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450">
+                        Link Existing Spreadsheet ID / URL
+                      </label>
+                      <input
+                        type="text"
+                        value={customSheetId}
+                        onChange={(e) => setCustomSheetId(e.target.value)}
+                        placeholder="Paste Spreadsheet URL or ID"
+                        className="w-full px-3 py-1.5 border border-slate-200 bg-slate-50 font-mono text-xs rounded-xl focus:ring-1 focus:ring-emerald-500 text-slate-700 select-all"
+                      />
+                      <button
+                        type="submit"
+                        className="w-full py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                      >
+                        Link Spreadsheet
+                      </button>
+                    </form>
+
+                    {spreadsheetError && (
+                      <p className="text-[10px] text-rose-600 font-mono mt-2">{spreadsheetError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3 pt-2 border-t border-slate-100">
+                    <div>
+                      <span className="block text-3xs font-mono font-bold text-slate-450 uppercase mb-0.5">Linked Spreadsheet ID</span>
+                      <span className="block font-mono text-[10px] bg-slate-50 p-2 rounded-lg border border-slate-100 truncate select-all" title={googleSpreadsheetId}>
+                        {googleSpreadsheetId}
+                      </span>
+                    </div>
+
+                    <div className="flex space-x-2 pt-1">
+                      <a
+                        href={`https://docs.google.com/spreadsheets/d/${googleSpreadsheetId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-1.5 text-center text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-650/10 flex items-center justify-center space-x-1 cursor-pointer transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Sheet</span>
+                      </a>
+                      <button
+                        onClick={() => onUpdateSpreadsheetId && onUpdateSpreadsheetId(null)}
+                        className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                      >
+                        Unlink
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Connection form block */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm pb-2 border-b border-slate-100">

@@ -682,6 +682,11 @@ export default function AttendanceTerminal({
   const handleDinnerOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
+    if (currentRecord.dinnerOut) {
+      triggerNotification('error', 'Dinner Break has already been taken today (डिनर ब्रेक पहले ही लिया जा चुका है).');
+      return;
+    }
+
     if (selectedEmpStatus === 'not-entered' || selectedEmpStatus === 'exited' || selectedEmpStatus === 'fully-exited') {
       triggerNotification('error', 'Employee must be working in an active shift to go for dinner.');
       return;
@@ -1373,9 +1378,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-dinnerout"
                     onClick={handleDinnerOut}
-                    disabled={selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'active-working'}
+                    disabled={(selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'active-working') || !!currentRecord?.dinnerOut}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working'
+                      (selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working') && !currentRecord?.dinnerOut
                         ? 'border-rose-100 bg-rose-50/45 hover:bg-rose-50 text-rose-900 shadow-sm cursor-pointer hover:border-rose-200'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -1388,7 +1393,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Night shift dinner break.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working' ? 'bg-rose-500 text-white group-hover:scale-[1.02] shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working') && !currentRecord?.dinnerOut ? 'bg-rose-500 text-white group-hover:scale-[1.02] shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <UtensilsCrossed className="w-4 h-4" />
                     </div>
@@ -1721,15 +1726,18 @@ export default function AttendanceTerminal({
 
             {/* Quality Check Checklist during Preview */}
             {capturedPhoto && (
-              <div className="bg-slate-50 rounded-xl p-2.5 text-left border border-slate-100 space-y-1">
-                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Selfie Checklist (स्वयं-जांच सूचि)</span>
-                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px]">
-                  <span className="text-emerald-500 font-bold">✓</span>
-                  <span>Face is clearly visible & in focus (चेहरा साफ दिख रहा है)</span>
+              <div className="bg-amber-50 rounded-xl p-2.5 text-left border border-amber-200/60 space-y-2">
+                <div className="flex items-center space-x-1 border-b border-amber-200/40 pb-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-bounce" />
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">Clarity Alert</span>
                 </div>
-                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px]">
-                  <span className="text-emerald-500 font-bold">✓</span>
-                  <span>Background lighting is clear (रोशनी पर्याप्त है)</span>
+                
+                <p className="text-[10px] text-amber-950 leading-relaxed font-sans font-medium">
+                  यदि आपकी फ़ोटो या बैकग्राउंड <strong className="text-red-600">साफ नहीं है (NOT CLEAR)</strong> तो तुरंत नीचे दिए गए <strong className="text-indigo-700">Retake (फिर से लें)</strong> बटन को दबाकर दोबारा फ़ोटो लें!
+                </p>
+                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px] pt-0.5">
+                  <span className="text-amber-500 font-bold">⚠️</span>
+                  <span>Face light & background must be visible and clear.</span>
                 </div>
               </div>
             )}

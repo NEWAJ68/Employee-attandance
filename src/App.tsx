@@ -28,9 +28,18 @@ import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from '
 import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
 
 // Firebase imports
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth, OperationType, handleFirestoreError, testConnection } from './firebase';
+import { db, auth, googleProvider, OperationType, handleFirestoreError, testConnection } from './firebase';
+
+// Google Sheets Service Imports
+import {
+  createSpreadsheet,
+  syncEmployeesToSheet,
+  syncSettingsToSheet,
+  syncAttendanceRecordToSheet,
+  syncAllAttendanceToSheet
+} from './utils/googleSheetsService';
 
 // Component Imports
 import Sidebar from './components/Sidebar';
@@ -102,6 +111,14 @@ export default function App() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
   const [appsScriptUrl, setAppsScriptUrl] = useState<string>('https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec');
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [googleSpreadsheetId, setGoogleSpreadsheetId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('google_spreadsheet_id') || null;
+    } catch {
+      return null;
+    }
+  });
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
   const [loggedInEmployee, setLoggedInEmployee] = useState<Employee | null>(null);
 
@@ -378,8 +395,31 @@ export default function App() {
 
   // Google Sheets Remote Sync Trigger Action
   const triggerRemoteSheetsSync = async (actionType: 'syncAttendance' | 'syncEmployees' | 'syncSettings', payload: any) => {
-    if (!appsScriptUrl) return;
     setIsSyncing(true);
+
+    // 1. Direct API Google Sheets Sync using OAuth Access Token
+    if (googleAccessToken && googleSpreadsheetId) {
+      try {
+        if (actionType === 'syncAttendance' && payload.record) {
+          await syncAttendanceRecordToSheet(googleAccessToken, googleSpreadsheetId, payload.record);
+        } else if (actionType === 'syncEmployees' && payload.employees) {
+          await syncEmployeesToSheet(googleAccessToken, googleSpreadsheetId, payload.employees);
+        } else if (actionType === 'syncSettings' && payload.settings) {
+          await syncSettingsToSheet(googleAccessToken, googleSpreadsheetId, payload.settings);
+        }
+        setSyncStatus('synced');
+        setIsSyncing(false);
+        return; // Direct sync succeeded!
+      } catch (err) {
+        console.error('Direct Google Sheets sync failed, seeking Apps Script fallback:', err);
+      }
+    }
+
+    // 2. Apps Script Hook (if configured)
+    if (!appsScriptUrl) {
+      setIsSyncing(false);
+      return;
+    }
 
     try {
       if (appsScriptUrl.includes('DemoGoogleSheetsSyncIntegrationActive') || appsScriptUrl.includes('demo') || appsScriptUrl.includes('mock')) {
@@ -389,7 +429,7 @@ export default function App() {
         return;
       }
 
-      const response = await fetch(appsScriptUrl, {
+      await fetch(appsScriptUrl, {
         method: 'POST',
         mode: 'no-cors', // standard Apps Script POST targets operate on redirecting forms/no-cors safely
         headers: {
@@ -665,8 +705,27 @@ export default function App() {
   };
 
   const handleManualSyncAll = async () => {
-    if (!appsScriptUrl) return;
     setIsSyncing(true);
+
+    // 1. Direct API Google Sheets Sync using OAuth Access Token
+    if (googleAccessToken && googleSpreadsheetId) {
+      try {
+        await syncSettingsToSheet(googleAccessToken, googleSpreadsheetId, settings);
+        await syncEmployeesToSheet(googleAccessToken, googleSpreadsheetId, employees);
+        await syncAllAttendanceToSheet(googleAccessToken, googleSpreadsheetId, attendance);
+        setSyncStatus('synced');
+        setIsSyncing(false);
+        return; // Direct manual sync succeeded!
+      } catch (err) {
+        console.error('Direct Google Sheets manual full sync failed, reverting to Apps Script:', err);
+      }
+    }
+
+    // 2. Apps Script Sync Fallback
+    if (!appsScriptUrl) {
+      setIsSyncing(false);
+      return;
+    }
     setSyncStatus('synced');
 
     try {
@@ -706,6 +765,78 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+    provider.addScope('https://www.googleapis.com/auth/drive.file');
+    
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential && credential.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+        handleRaiseNotification(
+          'Google Account Connected',
+          'Successfully linked Google Sheets and Google Drive to sync attendance records.',
+          'success'
+        );
+      }
+    } catch (error: any) {
+      console.error('Google alignment OAuth scope failure: ', error);
+      handleRaiseNotification(
+        'Google Authentication Failed',
+        error.message || 'An error occurred during authentication.',
+        'alert'
+      );
+    }
+  };
+
+  const handleDisconnectGoogle = () => {
+    setGoogleAccessToken(null);
+    handleRaiseNotification(
+      'Google Account Disconnected',
+      'Direct Google Sheets sync has been disabled.',
+      'info'
+    );
+  };
+
+  const handleCreateNewSpreadsheet = async (title: string): Promise<string> => {
+    if (!googleAccessToken) {
+      throw new Error('Please sign in to Google first.');
+    }
+    try {
+      const spreadsheetId = await createSpreadsheet(googleAccessToken, title);
+      localStorage.setItem('google_spreadsheet_id', spreadsheetId);
+      setGoogleSpreadsheetId(spreadsheetId);
+      handleRaiseNotification(
+        'New Spreadsheet Created',
+        `Successfully created Google Sheet: "${title}" in your Google Drive.`,
+        'success'
+      );
+      // Run initial background sync to populate data immediately
+      try {
+        await syncSettingsToSheet(googleAccessToken, spreadsheetId, settings);
+        await syncEmployeesToSheet(googleAccessToken, spreadsheetId, employees);
+        await syncAllAttendanceToSheet(googleAccessToken, spreadsheetId, attendance);
+      } catch (syncErr) {
+        console.error('Initial bulk sync to new spreadsheet failed:', syncErr);
+      }
+      return spreadsheetId;
+    } catch (err: any) {
+      console.error('Failed to create new spreadsheet:', err);
+      throw err;
+    }
+  };
+
+  const handleUpdateSpreadsheetId = (id: string | null) => {
+    if (id) {
+      localStorage.setItem('google_spreadsheet_id', id);
+    } else {
+      localStorage.removeItem('google_spreadsheet_id');
+    }
+    setGoogleSpreadsheetId(id);
   };
 
   const handleViewChangeBySelector = (view: string) => {
@@ -1026,6 +1157,12 @@ export default function App() {
               onUpdateSettings={handleUpdateSettings}
               isSyncing={isSyncing}
               onManualSyncAll={handleManualSyncAll}
+              googleAccessToken={googleAccessToken}
+              googleSpreadsheetId={googleSpreadsheetId}
+              onUpdateSpreadsheetId={handleUpdateSpreadsheetId}
+              onGoogleSignIn={handleGoogleSignIn}
+              onDisconnectGoogle={handleDisconnectGoogle}
+              onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
             />
           )}
 

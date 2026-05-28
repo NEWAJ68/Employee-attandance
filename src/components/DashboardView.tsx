@@ -333,7 +333,10 @@ export default function DashboardView({
                     <th className="py-3 px-6">ID & Staff Name</th>
                     <th className="py-3 px-4">Dept</th>
                     <th className="py-3 px-4">Punch In</th>
-                    <th className="py-3 px-4">Lunch (Out/In)</th>
+                    <th className="py-3 px-4 text-amber-700 bg-amber-50/20">Lunch Out</th>
+                    <th className="py-3 px-4 text-teal-700 bg-teal-50/20">Lunch In</th>
+                    <th className="py-3 px-4 text-rose-700 bg-rose-50/20">Dinner Out</th>
+                    <th className="py-3 px-4 text-emerald-700 bg-emerald-50/20">Dinner In</th>
                     <th className="py-3 px-4">Exit</th>
                     <th className="py-3 px-4">Hours</th>
                     <th className="py-3 px-6 text-right">Status</th>
@@ -342,7 +345,7 @@ export default function DashboardView({
                 <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
                   {filteredFeed.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 text-2xs font-mono">
+                      <td colSpan={10} className="py-12 text-center text-slate-400 text-2xs font-mono">
                         No workers match search criteria.
                       </td>
                     </tr>
@@ -410,73 +413,90 @@ export default function DashboardView({
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-mono text-slate-600 text-2xs space-y-1">
+                        {/* Lunch Out Column */}
+                        <td className="py-3 px-4 font-mono text-xs">
                           {item.lunchOut !== '--:--' ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1.5 flex-wrap text-slate-700">
-                                <span className="font-bold text-slate-400 uppercase text-[9px]">L:</span> 
-                                <span>{item.lunchOut}</span> 
-                                {item.photoLunchOut && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveSelfieUrl({ url: item.photoLunchOut, label: 'Lunch Out', name: item.name })}
-                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
-                                    title="View Lunch Out Selfie"
-                                  >
-                                    <img src={item.photoLunchOut} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
-                                  </button>
-                                )}
-                                {item.locationLunchOut && (
-                                  <a
-                                    href={`https://www.google.com/maps?q=${item.locationLunchOut}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center text-[7px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded transition-colors"
-                                    title="Lunch Out GPS"
-                                  >
-                                    <MapPin className="w-1.5 h-1.5" />
-                                  </a>
-                                )}
-                                <span>→</span>
-                                <span>{item.lunchIn !== '--:--' ? item.lunchIn : <span className="text-amber-500 font-black uppercase text-[9px] font-mono">On Break</span>}</span>
-                                {item.lunchIn !== '--:--' && item.photoLunchIn && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveSelfieUrl({ url: item.photoLunchIn, label: 'Lunch In', name: item.name })}
-                                    className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
-                                    title="View Lunch Return Selfie"
-                                  >
-                                    <img src={item.photoLunchIn} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
-                                  </button>
-                                )}
-                                {item.lunchIn !== '--:--' && item.locationLunchIn && (
-                                  <a
-                                    href={`https://www.google.com/maps?q=${item.locationLunchIn}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center text-[7px] text-teal-600 bg-teal-50 hover:bg-teal-100 px-0.5 rounded transition-colors"
-                                    title="Lunch Return GPS"
-                                  >
-                                    <MapPin className="w-1.5 h-1.5" />
-                                  </a>
-                                )}
-                              </div>
+                            <div className="flex items-center gap-1 flex-wrap text-amber-700 bg-amber-50 border border-amber-100/50 rounded-lg px-2 py-1 w-fit shadow-3xs">
+                              <span className="font-bold text-amber-600 text-[9px] uppercase font-sans">Out</span>
+                              <span className="font-semibold">{item.lunchOut}</span>
+                              {item.photoLunchOut && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoLunchOut, label: 'Lunch Out', name: item.name })}
+                                  className="inline-flex items-center text-[8px] p-0.5 rounded-full border border-amber-200 bg-white hover:bg-amber-100 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Lunch Out Selfie"
+                                >
+                                  <img src={item.photoLunchOut} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
+                              {item.locationLunchOut && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationLunchOut}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center p-0.5 text-teal-600 bg-white hover:bg-teal-50 rounded border border-teal-150 transition-colors shrink-0"
+                                  title="Lunch Out GPS"
+                                >
+                                  <MapPin className="w-2.5 h-2.5" />
+                                </a>
+                              )}
                             </div>
                           ) : (
-                            <div className="text-slate-350">L: --:--</div>
+                            <span className="text-slate-300 font-normal">--:--</span>
                           )}
-                          {item.dinnerOut !== '--:--' && (
-                            <div className="flex items-center gap-1.5 flex-wrap text-indigo-900 mt-1">
-                              <span className="font-bold text-indigo-500 uppercase text-[9px]">D:</span> 
-                              <span>{item.dinnerOut}</span>
+                        </td>
+
+                        {/* Lunch In Column */}
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {item.lunchIn !== '--:--' ? (
+                            <div className="flex items-center gap-1 flex-wrap text-teal-700 bg-teal-50 border border-teal-100/50 rounded-lg px-2 py-1 w-fit shadow-3xs">
+                              <span className="font-bold text-teal-600 text-[9px] uppercase font-sans">In</span>
+                              <span className="font-semibold">{item.lunchIn}</span>
+                              {item.photoLunchIn && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSelfieUrl({ url: item.photoLunchIn, label: 'Lunch In', name: item.name })}
+                                  className="inline-flex items-center text-[8px] p-0.5 rounded-full border border-teal-200 bg-white hover:bg-teal-100 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  title="View Lunch Return Selfie"
+                                >
+                                  <img src={item.photoLunchIn} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                </button>
+                              )}
+                              {item.locationLunchIn && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${item.locationLunchIn}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center p-0.5 text-teal-600 bg-white hover:bg-teal-50 rounded border border-teal-150 transition-colors shrink-0"
+                                  title="Lunch Return GPS"
+                                >
+                                  <MapPin className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                            </div>
+                          ) : item.lunchOut !== '--:--' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase bg-amber-500 text-white animate-pulse font-sans">
+                              On Break (लंच पर)
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-normal">--:--</span>
+                          )}
+                        </td>
+
+                        {/* Dinner Out Column */}
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {item.dinnerOut !== '--:--' ? (
+                            <div className="flex items-center gap-1 flex-wrap text-rose-700 bg-rose-50 border border-rose-100/50 rounded-lg px-2 py-1 w-fit shadow-3xs">
+                              <span className="font-bold text-rose-600 text-[9px] uppercase font-sans">Out</span>
+                              <span className="font-semibold">{item.dinnerOut}</span>
                               {item.photoDinnerOut && (
                                 <button
                                   type="button"
                                   onClick={() => setActiveSelfieUrl({ url: item.photoDinnerOut, label: 'Dinner Out', name: item.name })}
-                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  className="inline-flex items-center text-[8px] p-0.5 rounded-full border border-rose-200 bg-white hover:bg-rose-100 transition-all shrink-0 cursor-pointer shadow-3xs"
                                   title="View Dinner Out Selfie"
                                 >
-                                  <img src={item.photoDinnerOut} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  <img src={item.photoDinnerOut} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
                                 </button>
                               )}
                               {item.locationDinnerOut && (
@@ -484,36 +504,52 @@ export default function DashboardView({
                                   href={`https://www.google.com/maps?q=${item.locationDinnerOut}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[7px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-0.5 rounded transition-colors"
+                                  className="inline-flex items-center p-0.5 text-teal-600 bg-white hover:bg-teal-50 rounded border border-teal-150 transition-colors shrink-0"
                                   title="Dinner Out GPS"
                                 >
-                                  <MapPin className="w-1.5 h-1.5" />
+                                  <MapPin className="w-2.5 h-2.5" />
                                 </a>
                               )}
-                              <span>→</span>
-                              <span>{item.dinnerIn !== '--:--' ? item.dinnerIn : <span className="text-rose-500 font-black uppercase text-[9px] font-mono animate-pulse">On Dinner</span>}</span>
-                              {item.dinnerIn !== '--:--' && item.photoDinnerIn && (
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 font-normal">--:--</span>
+                          )}
+                        </td>
+
+                        {/* Dinner In Column */}
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {item.dinnerIn !== '--:--' ? (
+                            <div className="flex items-center gap-1 flex-wrap text-emerald-700 bg-emerald-50 border border-emerald-100/50 rounded-lg px-2 py-1 w-fit shadow-3xs">
+                              <span className="font-bold text-emerald-600 text-[9px] uppercase font-sans">In</span>
+                              <span className="font-semibold">{item.dinnerIn}</span>
+                              {item.photoDinnerIn && (
                                 <button
                                   type="button"
                                   onClick={() => setActiveSelfieUrl({ url: item.photoDinnerIn, label: 'Dinner In', name: item.name })}
-                                  className="inline-flex items-center text-[8px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-0.5 rounded-full border border-indigo-150 transition-all shrink-0 cursor-pointer shadow-3xs"
+                                  className="inline-flex items-center text-[8px] p-0.5 rounded-full border border-emerald-200 bg-white hover:bg-emerald-150 transition-all shrink-0 cursor-pointer shadow-3xs"
                                   title="View Dinner Return Selfie"
                                 >
-                                  <img src={item.photoDinnerIn} className="w-3.5 h-3.5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                  <img src={item.photoDinnerIn} className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
                                 </button>
                               )}
-                              {item.dinnerIn !== '--:--' && item.locationDinnerIn && (
+                              {item.locationDinnerIn && (
                                 <a
                                   href={`https://www.google.com/maps?q=${item.locationDinnerIn}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[7px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-0.5 rounded transition-colors"
+                                  className="inline-flex items-center p-0.5 text-teal-600 bg-white hover:bg-teal-50 rounded border border-teal-150 transition-colors shrink-0"
                                   title="Dinner Return GPS"
                                 >
-                                  <MapPin className="w-1.5 h-1.5" />
+                                  <MapPin className="w-2.5 h-2.5" />
                                 </a>
                               )}
                             </div>
+                          ) : item.dinnerOut !== '--:--' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase bg-rose-500 text-white animate-pulse font-sans">
+                              On Dinner (डिनर पर)
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-normal">--:--</span>
                           )}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-800">
