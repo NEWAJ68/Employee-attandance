@@ -48,6 +48,9 @@ export default function AttendanceTerminal({
   loggedInEmployee,
 }: AttendanceTerminalProps) {
   const [selectedEmpId, setSelectedEmpId] = useState('');
+  const cachedLocationRef = React.useRef<string | null>(null);
+  const lastLocationFetchTimeRef = React.useRef<number>(0);
+
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | null;
@@ -68,6 +71,23 @@ export default function AttendanceTerminal({
   } | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+
+  // Background warmed pre-fetch of the GPS coords so they are ready before user punches
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          cachedLocationRef.current = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+          lastLocationFetchTimeRef.current = Date.now();
+        },
+        (error) => {
+          console.warn('Silent warm-up pre-fetch of geolocation failed:', error);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+      );
+    }
+  }, [selectedEmpId, selfieState?.isOpen]);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
 
 
@@ -247,19 +267,43 @@ export default function AttendanceTerminal({
         resolve("NOT_SUPPORTED");
         return;
       }
+
+      // If we have a cached coordinate that is less than 3 minutes (180,000 ms) old, return it instantly!
+      const now = Date.now();
+      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 180000)) {
+        console.log('Using optimized zero-latency cached GPS coordinate:', cachedLocationRef.current);
+        
+        // Asynchronously update the cache in the background for next time
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            cachedLocationRef.current = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+            lastLocationFetchTimeRef.current = Date.now();
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+        );
+        
+        resolve(cachedLocationRef.current);
+        return;
+      }
+
       setIsFetchingLocation(true);
       
       const options = {
         enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0
+        timeout: 3000, // Reduced from 5000 for faster fallback resolution
+        maximumAge: 60000 // Allow up to 1-minute-old cached position to resolve instantly
       };
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setIsFetchingLocation(false);
           const { latitude, longitude } = position.coords;
-          resolve(`${latitude.toFixed(6)},${longitude.toFixed(6)}`);
+          const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+          cachedLocationRef.current = coords;
+          lastLocationFetchTimeRef.current = Date.now();
+          resolve(coords);
         },
         (error) => {
           setIsFetchingLocation(false);
@@ -478,15 +522,17 @@ export default function AttendanceTerminal({
     const record = getTodayRecord(empId);
     if (!record) return 'not-entered';
     
+    // Globally check breaks first to ensure return buttons are immediately activated
+    if (record.dinnerOut && !record.dinnerIn) return 'on-dinner';
+    if (record.lunchOut && !record.lunchIn) return 'on-lunch';
+
     // Shift 2 active checks
     if (record.entryTime2) {
       if (record.exitTime2) return 'fully-exited';
-      if (record.dinnerOut && !record.dinnerIn) return 'on-dinner';
       return 'active-working-shift2';
     }
 
     // Shift 1 checks
-    if (record.lunchOut && !record.lunchIn) return 'on-lunch';
     if (record.exitTime) return 'exited'; // Checked out of Shift 1, available for Shift 2
     return 'active-working';
   };
@@ -1230,19 +1276,19 @@ export default function AttendanceTerminal({
                     disabled={!(currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
                       (currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime)
-                        ? 'border-teal-100 bg-teal-50/45 hover:bg-teal-50 text-teal-900 shadow-sm cursor-pointer hover:border-teal-200'
+                        ? 'border-emerald-250 bg-emerald-50 text-emerald-950 shadow-md cursor-pointer hover:border-emerald-450 ring-2 ring-emerald-500/25 duration-300 transform scale-[1.01] animate-pulse font-bold'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
                   >
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-teal-600 block">
-                        Lunch In
+                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-emerald-600 block">
+                        Lunch In (लंच से वापिस)
                       </span>
                       <span className="text-sm font-extrabold block">RETURN BREAK</span>
                       <span className="text-[10px] text-slate-500 block">Back from lunch rest.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      (currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime) ? 'bg-teal-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.lunchOut && !currentRecord.lunchIn && !currentRecord.exitTime) ? 'bg-emerald-600 text-white group-hover:scale-105 shadow-sm animate-bounce' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Coffee className="w-4 h-4" />
                     </div>
@@ -1264,9 +1310,9 @@ export default function AttendanceTerminal({
                   >
                     <div className="space-y-1">
                       <span className="text-[10px] font-extrabold uppercase tracking-widest font-mono text-rose-600 block">
-                        Conclude Daily Duty
+                        Conclude Daily Duty (ड्यूटी समाप्त करें)
                       </span>
-                      <span className="text-sm font-black block text-slate-800">EXIT PUNCH</span>
+                      <span className="text-sm font-black block text-slate-800">EXIT PUNCH (बाहर जा रहे हैं / छुट्टी)</span>
                       <span className="text-[10.5px] text-slate-500 block">Conclude standard working desk shifts & log payroll hours.</span>
                     </div>
                     <div className={`p-3 rounded-xl transition-transform ${
@@ -1290,64 +1336,38 @@ export default function AttendanceTerminal({
                   }`}></span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* S2 ENTRY BUTTON */}
+                {/* S2 ENTRY BUTTON (TOP OF SHIFT 2) */}
+                <div className="w-full font-sans">
                   <button
                     type="button"
                     id="btn-kiosk-entry2"
                     onClick={handleEntry2CheckIn}
                     disabled={!!(currentRecord && currentRecord.entryTime) || !!(currentRecord && currentRecord.entryTime2)}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
+                    className={`flex items-center justify-between w-full p-4.5 rounded-xl border text-left transition-all group ${
                       !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2)
                         ? 'border-indigo-200 bg-indigo-100/20 hover:bg-indigo-100/40 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
                     }`}
                   >
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-indigo-700 block">
                         Clock Shift 2
                       </span>
-                      <span className="text-sm font-extrabold block">START SHIFT 2</span>
-                      <span className="text-[10px] text-slate-500 block">
+                      <span className="text-sm font-extrabold block text-slate-800">START SHIFT 2</span>
+                      <span className="text-[10.5px] text-slate-500 block">
                         {currentRecord?.entryTime ? 'Disabled: Day Duty Completed' : 'Log second shift / night.'}
                       </span>
                     </div>
-                    <div className={`p-2.5 rounded-lg transition-transform ${
-                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2) ? 'bg-indigo-700 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                    <div className={`p-3 rounded-xl transition-transform ${
+                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2) ? 'bg-indigo-700 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
-                      <Moon className="w-4 h-4" />
-                    </div>
-                  </button>
-
-                  {/* S2 EXIT BUTTON */}
-                  <button
-                    type="button"
-                    id="btn-kiosk-exit2"
-                    onClick={handleExit2CheckOut}
-                    disabled={selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner'}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner'
-                        ? 'border-indigo-200 bg-indigo-100/20 hover:bg-indigo-100/40 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
-                        : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
-                    }`}
-                  >
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-indigo-700 block">
-                        Wrap-Up S2
-                      </span>
-                      <span className="text-sm font-extrabold block">FINISH SHIFT 2</span>
-                      <span className="text-[10px] text-slate-500 block">Conclude second shift / OT.</span>
-                    </div>
-                    <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' ? 'bg-indigo-700 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
-                    }`}>
-                      <MoonStar className="w-4 h-4" />
+                      <Moon className="w-5 h-5" />
                     </div>
                   </button>
                 </div>
 
-                {/* Dinner Break Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
+                {/* Dinner Break Row (MIDDLE OF SHIFT 2) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                   {/* DINNER OUT BUTTON */}
                   <button
                     type="button"
@@ -1368,7 +1388,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Night shift dinner break.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working' ? 'bg-rose-500 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working' ? 'bg-rose-500 text-white group-hover:scale-[1.02] shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <UtensilsCrossed className="w-4 h-4" />
                     </div>
@@ -1382,21 +1402,49 @@ export default function AttendanceTerminal({
                     disabled={selectedEmpStatus !== 'on-dinner'}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
                       selectedEmpStatus === 'on-dinner'
-                        ? 'border-teal-100 bg-teal-50/45 hover:bg-teal-50 text-teal-900 shadow-sm cursor-pointer hover:border-teal-200'
+                        ? 'border-emerald-250 bg-emerald-50 text-emerald-950 shadow-md cursor-pointer hover:border-emerald-450 ring-2 ring-emerald-500/25 duration-300 transform scale-[1.01] animate-pulse font-bold'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
                   >
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-teal-600 block">
-                        Dinner In
+                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-emerald-600 block">
+                        Dinner In (डिनर से वापिस)
                       </span>
                       <span className="text-sm font-extrabold block">DINNER RETURN</span>
                       <span className="text-[10px] text-slate-500 block">Back from night dinner.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'on-dinner' ? 'bg-teal-500 text-white group-hover:scale-105' : 'bg-slate-200 text-slate-400'
+                      selectedEmpStatus === 'on-dinner' ? 'bg-emerald-600 text-white group-hover:scale-105 shadow-sm animate-bounce' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Soup className="w-4 h-4" />
+                    </div>
+                  </button>
+                </div>
+
+                {/* S2 EXIT BUTTON (BOTTOM OF SHIFT 2) */}
+                <div className="w-full pt-1">
+                  <button
+                    type="button"
+                    id="btn-kiosk-exit2"
+                    onClick={handleExit2CheckOut}
+                    disabled={selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner'}
+                    className={`flex items-center justify-between w-full p-4 rounded-xl border text-left transition-all group ${
+                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner'
+                        ? 'border-rose-150 bg-rose-50/20 hover:bg-rose-50/45 text-rose-950 shadow-sm cursor-pointer hover:border-rose-300'
+                        : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest font-mono text-rose-600 block">
+                        Conclude Shift 2 (शिफ्ट 2 समाप्त करें)
+                      </span>
+                      <span className="text-sm font-black block text-slate-800">FINISH SHIFT 2 (बाहर जा रहे हैं / छुट्टी)</span>
+                      <span className="text-[10.5px] text-slate-500 block">Conclude second shift / OT.</span>
+                    </div>
+                    <div className={`p-3 rounded-xl transition-transform ${
+                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <MoonStar className="w-5 h-5" />
                     </div>
                   </button>
                 </div>
@@ -1578,8 +1626,8 @@ export default function AttendanceTerminal({
 
       {/* Selfie Capture Modal */}
       {selfieState?.isOpen && (
-        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 relative text-center space-y-4 animate-scaleIn">
+        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white rounded-3xl p-4 sm:p-6 w-[calc(100vw-24px)] xs:w-[calc(100vw-32px)] max-w-xs sm:max-w-sm shadow-2xl border border-slate-100 relative text-center space-y-3 sm:space-y-4 animate-scaleIn">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-xs font-bold text-slate-900 flex items-center space-x-2">
@@ -1598,11 +1646,36 @@ export default function AttendanceTerminal({
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-500 font-medium font-sans leading-normal">
-              To verify your check-in integrity, snap a live selfie. Please ensure the background of your location is clear and visible.
-            </p>
+            {/* Step Indicators */}
+            <div className="flex items-center justify-center space-x-1.5 pt-1 pb-1">
+              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700'}`}>
+                <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${!capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>1</span>
+                <span>Photo (फ़ोटो)</span>
+              </div>
+              <div className="w-3 h-px bg-slate-200"></div>
+              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
+                <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-500'}`}>2</span>
+                <span>Confirm (पुष्टि)</span>
+              </div>
+            </div>
 
-            <div className="relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] max-w-[275px] mx-auto flex items-center justify-center border-4 border-slate-100 shadow-inner">
+            {capturedPhoto ? (
+              <div className="bg-emerald-50/40 rounded-2xl p-3 border border-emerald-100/80 space-y-2 animate-fadeIn text-left">
+                <div className="flex items-center space-x-1.5 text-emerald-700 font-bold text-[10px]">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                  <span>Photo Captured! (फ़ोटो ले ली गई है)</span>
+                </div>
+                <p className="text-[10px] text-slate-600 font-sans leading-relaxed">
+                  Please review the preview below for <strong className="text-slate-900">{selfieState.actionLabel}</strong>. Make sure your face is clearly visible.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500 font-medium font-sans leading-normal">
+                To verify your check-in integrity, snap a live selfie. Please ensure the background of your location is clear and visible.
+              </p>
+            )}
+
+            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[220px] xs:max-w-[260px] sm:max-w-[275px] mx-auto flex items-center justify-center border-4 shadow-inner transition-colors duration-300 ${capturedPhoto ? 'border-emerald-100' : 'border-slate-100'}`}>
               {capturedPhoto ? (
                 <img 
                   src={capturedPhoto} 
@@ -1646,15 +1719,30 @@ export default function AttendanceTerminal({
               )}
             </div>
 
+            {/* Quality Check Checklist during Preview */}
+            {capturedPhoto && (
+              <div className="bg-slate-50 rounded-xl p-2.5 text-left border border-slate-100 space-y-1">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Selfie Checklist (स्वयं-जांच सूचि)</span>
+                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px]">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  <span>Face is clearly visible & in focus (चेहरा साफ दिख रहा है)</span>
+                </div>
+                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px]">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  <span>Background lighting is clear (रोशनी पर्याप्त है)</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               {capturedPhoto ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setCapturedPhoto(null)}
-                    className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer font-sans"
+                    className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/40 rounded-xl transition-all cursor-pointer font-sans"
                   >
-                    Retake Selfie
+                    Retake (फिर से लें)
                   </button>
                   <button
                     type="button"

@@ -479,8 +479,13 @@ export default function App() {
   const handleAddAttendance = async (newRecord: AttendanceRecord) => {
     const docId = `${newRecord.date}_${newRecord.employeeId}`;
     try {
-      await setDoc(doc(db, 'attendance', docId), newRecord);
+      // Optimistic state update: update local state instantly before waiting for DB
       setAttendance((prev) => [...prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId)), newRecord]);
+
+      // Fire Firestore write asynchronously in the background
+      setDoc(doc(db, 'attendance', docId), newRecord).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
+      });
 
       const empName = employees.find(e => e.id === newRecord.employeeId)?.name || 'Employee';
 
@@ -523,8 +528,13 @@ export default function App() {
   const handleUpdateAttendance = async (updatedRecord: AttendanceRecord) => {
     const docId = `${updatedRecord.date}_${updatedRecord.employeeId}`;
     try {
-      await setDoc(doc(db, 'attendance', docId), updatedRecord);
+      // Optimistic state update: update local state instantly before waiting for DB
       setAttendance((prev) => prev.map(rec => rec.date === updatedRecord.date && rec.employeeId === updatedRecord.employeeId ? updatedRecord : rec));
+
+      // Fire Firestore write asynchronously in the background
+      setDoc(doc(db, 'attendance', docId), updatedRecord).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
+      });
 
       // Early Departure alert
       if (updatedRecord.exitTime) {
