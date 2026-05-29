@@ -360,36 +360,36 @@ export default function MyAttendanceView({
     try {
       // Small delay to let rendering refresh if needed
       await new Promise((resolve) => setTimeout(resolve, 310));
-      const element = document.getElementById("attendance-statement-direct-pdf-sheet");
-      if (!element) {
-        throw new Error("Target PDF sheet not detected inside DOM");
+      const page1 = document.getElementById("attendance-statement-direct-pdf-page-1");
+      const page2 = document.getElementById("attendance-statement-direct-pdf-page-2");
+      if (!page1 || !page2) {
+        throw new Error("Target PDF pages not detected inside DOM");
       }
 
-      const canvas = await html2canvas(element, {
+      const canvas1 = await html2canvas(page1, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
       });
 
-      const imgData = canvas.toDataURL("image/png");
+      const canvas2 = await html2canvas(page2, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
       const pdf = new jsPDF("p", "mm", "a4");
       const imgWidth = 210;
-      const pageHeight = 295;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      let heightLeft = imgHeight;
-      let position = 0;
+      const imgHeight = 297; // exact A4 height in mm
 
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+      const imgData1 = canvas1.toDataURL("image/png");
+      pdf.addImage(imgData1, "PNG", 0, 0, imgWidth, imgHeight, undefined, 'FAST');
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= pageHeight;
-      }
+      pdf.addPage();
+      const imgData2 = canvas2.toDataURL("image/png");
+      pdf.addImage(imgData2, "PNG", 0, 0, imgWidth, imgHeight, undefined, 'FAST');
 
       pdf.save(`Attendance_Statement_${loggedInEmployee.id}_${selectedMonth}.pdf`);
     } catch (err) {
@@ -1616,217 +1616,341 @@ export default function MyAttendanceView({
       </div>
       )}
       {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
-      <div style={{ height: 0, overflow: 'hidden', position: 'relative', width: '820px', pointerEvents: 'none' }}>
-        <div id="attendance-statement-direct-pdf-sheet" style={{ background: '#ffffff', padding: '32px', width: '820px', boxSizing: 'border-box', fontFamily: 'sans-serif' }}>
-          
-          {/* Header section */}
-          <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
-                  <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
-                    {settings?.companyName || 'Calitech Engineering Solutions'}
-                  </h1>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Employee Attendance & Wage Statement
-                  </p>
-                </td>
-                <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
-                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
-                  <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedMonth)}</div>
-                  <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
-                    Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ID Details Card */}
-          <table style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', borderCollapse: 'separate', borderSpacing: '12px', textAlign: 'left', marginBottom: '20px' }}>
-            <tbody>
-              <tr>
-                <td style={{ width: '33.33%' }}>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee Name</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.name}</div>
-                </td>
-                <td style={{ width: '33.33%' }}>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee ID</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.id}</div>
-                </td>
-                <td style={{ width: '33.33%' }}>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.department}</div>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Joined Date</div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#475569', marginTop: '2px' }}>{loggedInEmployee.joinedDate}</div>
-                </td>
-                <td>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Monthly Salary</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
-                    {loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}
-                  </div>
-                </td>
-                <td>
-                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Overtime Wage</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#4f46e5', marginTop: '2px' }}>
-                    ₹{loggedInEmployee.hourlyRate.toFixed(2)}/hr
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Unified Statement Grid View */}
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '10px', marginTop: '5px', marginBottom: '20px' }}>
-            <tbody>
-              <tr>
-                {/* Total Workdays Component */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Total Workdays</span>
-                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b' }}>{totalDaysInSelection}</span>
-                    <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '500' }}>days logged</span>
-                  </div>
-                </td>
-
-                {/* Days Present Column */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#059669', display: 'block' }}>Days Present</span>
-                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
-                    <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
-                  </div>
-                </td>
-
-                {/* Days Absent Column */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444', display: 'block' }}>Days Absent</span>
-                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
-                    <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} leave</span>
-                  </div>
-                </td>
-
-                {/* Log Book Hours Column */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Log Book Hours</span>
-                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
-                    <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>accumulated</span>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                {/* Standard Hours Pay Column */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Standard Hours Pay</span>
-                  <div style={{ marginTop: '6px' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
-                  </div>
-                </td>
-
-                {/* Overtime Compensation Column */}
-                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Overtime Compensation</span>
-                  <div style={{ marginTop: '6px' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
-                  </div>
-                </td>
-
-                {/* Calculated Payout Highlight Box (Spans 2 columns) */}
-                <td colSpan={2} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#0284c7', display: 'block' }}>Calculated Payout (Net Pay)</span>
-                  <div style={{ marginTop: '4px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                    <span style={{ fontSize: '22px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
-                    <span style={{ fontSize: '9px', color: '#0284c7', fontWeight: '600' }}>(Estimate for {getFriendlyMonthName(selectedMonth)})</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Detailed logs table */}
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
-                  <th style={{ padding: '8px 12px' }}>Day</th>
-                  <th style={{ padding: '8px 12px' }}>Status</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
-                </tr>
-              </thead>
+      <div style={{ height: 0, overflow: 'hidden', position: 'relative', width: '824px', pointerEvents: 'none' }}>
+        
+        {/* PAGE 1 */}
+        <div id="attendance-statement-direct-pdf-page-1" style={{ 
+          background: '#ffffff', 
+          padding: '40px', 
+          width: '800px', 
+          height: '1130px', 
+          boxSizing: 'border-box', 
+          fontFamily: 'sans-serif',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            {/* Header section */}
+            <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
               <tbody>
-                {processedLogs.map((curr) => {
-                  const rec = curr.rawRecord;
-                  const statusColor = curr.status === 'Present' ? '#059669' : 
-                                      curr.status === 'Late Entry' ? '#d97706' :
-                                      curr.status === 'On Leave' ? '#4f46e5' :
-                                      curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
+                <tr>
+                  <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                      {settings?.companyName || 'Calitech Engineering Solutions'}
+                    </h1>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Employee Attendance & Wage Statement
+                    </p>
+                  </td>
+                  <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
+                    <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
+                    <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedMonth)}</div>
+                    <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                      Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-                  let dayEarnings = { totalPay: 0 };
-                  if (rec) {
-                    const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
-                    const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
-                    dayEarnings = calculateEarnings(
-                      curr.hours,
-                      curr.overtime,
-                      loggedInEmployee.hourlyRate,
-                      settings?.overtimeRateMultiplier || 1.5,
-                      isIncomplete,
-                      loggedInEmployee.monthlySalary,
-                      isHalfDay
+            {/* ID Details Card */}
+            <table style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', borderCollapse: 'separate', borderSpacing: '12px', textAlign: 'left', marginBottom: '20px' }}>
+              <tbody>
+                <tr>
+                  <td style={{ width: '33.33%' }}>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee Name</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.name}</div>
+                  </td>
+                  <td style={{ width: '33.33%' }}>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee ID</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.id}</div>
+                  </td>
+                  <td style={{ width: '33.33%' }}>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.department}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Joined Date</div>
+                    <div style={{ fontSize: '12px', fontWeight: '600', color: '#475569', marginTop: '2px' }}>{loggedInEmployee.joinedDate}</div>
+                  </td>
+                  <td>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Monthly Salary</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
+                      {loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Overtime Wage</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#4f46e5', marginTop: '2px' }}>
+                      ₹{loggedInEmployee.hourlyRate.toFixed(2)}/hr
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Unified Statement Grid View */}
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '10px', marginTop: '5px', marginBottom: '20px' }}>
+              <tbody>
+                <tr>
+                  {/* Total Workdays Component */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Total Workdays</span>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b' }}>{totalDaysInSelection}</span>
+                      <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '500' }}>days logged</span>
+                    </div>
+                  </td>
+
+                  {/* Days Present Column */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#059669', display: 'block' }}>Days Present</span>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
+                      <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+                    </div>
+                  </td>
+
+                  {/* Days Absent Column */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444', display: 'block' }}>Days Absent</span>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
+                      <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} leave</span>
+                    </div>
+                  </td>
+
+                  {/* Log Book Hours Column */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Log Book Hours</span>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
+                      <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>accumulated</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  {/* Standard Hours Pay Column */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Standard Hours Pay</span>
+                    <div style={{ marginTop: '6px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
+                    </div>
+                  </td>
+
+                  {/* Overtime Compensation Column */}
+                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Overtime Compensation</span>
+                    <div style={{ marginTop: '6px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
+                    </div>
+                  </td>
+
+                  {/* Calculated Payout Highlight Box (Spans 2 columns) */}
+                  <td colSpan={2} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#0284c7', display: 'block' }}>Calculated Payout (Net Pay)</span>
+                    <div style={{ marginTop: '4px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontSize: '22px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
+                      <span style={{ fontSize: '9px', color: '#0284c7', fontWeight: '600' }}>(Estimate for {getFriendlyMonthName(selectedMonth)})</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Attendance list days 1-15 */}
+            <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 8px 0', letterSpacing: '0.025em' }}>Attendance Log (Days 1 - 15)</h3>
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
+                    <th style={{ padding: '8px 12px' }}>Day</th>
+                    <th style={{ padding: '8px 12px' }}>Status</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedLogs.slice(0, 15).map((curr) => {
+                    const rec = curr.rawRecord;
+                    const statusColor = curr.status === 'Present' ? '#059669' : 
+                                        curr.status === 'Late Entry' ? '#d97706' :
+                                        curr.status === 'On Leave' ? '#4f46e5' :
+                                        curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
+
+                    let dayEarnings = { totalPay: 0 };
+                    if (rec) {
+                      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                      const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                      dayEarnings = calculateEarnings(
+                        curr.hours,
+                        curr.overtime,
+                        loggedInEmployee.hourlyRate,
+                        settings?.overtimeRateMultiplier || 1.5,
+                        isIncomplete,
+                        loggedInEmployee.monthlySalary,
+                        isHalfDay
+                      );
+                    }
+
+                    return (
+                      <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
+                        <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
+                        <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                          {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
+                          {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                          ₹{dayEarnings.totalPay.toFixed(2)}
+                        </td>
+                      </tr>
                     );
-                  }
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
+            <span>{settings?.companyName || 'Calitech Engineering Solutions'} - Monthly Statement</span>
+            <span>Page 1 of 2</span>
+          </div>
+        </div>
 
-                  return (
-                    <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
-                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
-                      <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
-                      <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
-                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
-                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
-                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
-                        {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
-                        {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
-                        ₹{dayEarnings.totalPay.toFixed(2)}
-                      </td>
-                    </tr>
-                  );
-                })}
+        {/* PAGE 2 */}
+        <div id="attendance-statement-direct-pdf-page-2" style={{ 
+          background: '#ffffff', 
+          padding: '40px', 
+          width: '800px', 
+          height: '1130px', 
+          boxSizing: 'border-box', 
+          fontFamily: 'sans-serif',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            {/* Header section repeated */}
+            <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                      {settings?.companyName || 'Calitech Engineering Solutions'}
+                    </h1>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Employee Attendance & Wage Statement
+                    </p>
+                  </td>
+                  <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
+                    <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
+                    <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedMonth)}</div>
+                    <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                      Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Attendance list days 16 - end */}
+            <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 8px 0', letterSpacing: '0.025em' }}>Attendance Log (Days 16 - End)</h3>
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
+                    <th style={{ padding: '8px 12px' }}>Day</th>
+                    <th style={{ padding: '8px 12px' }}>Status</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedLogs.slice(15).map((curr) => {
+                    const rec = curr.rawRecord;
+                    const statusColor = curr.status === 'Present' ? '#059669' : 
+                                        curr.status === 'Late Entry' ? '#d97706' :
+                                        curr.status === 'On Leave' ? '#4f46e5' :
+                                        curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
+
+                    let dayEarnings = { totalPay: 0 };
+                    if (rec) {
+                      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                      const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                      dayEarnings = calculateEarnings(
+                        curr.hours,
+                        curr.overtime,
+                        loggedInEmployee.hourlyRate,
+                        settings?.overtimeRateMultiplier || 1.5,
+                        isIncomplete,
+                        loggedInEmployee.monthlySalary,
+                        isHalfDay
+                      );
+                    }
+
+                    return (
+                      <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
+                        <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
+                        <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                          {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
+                          {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                          ₹{dayEarnings.totalPay.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Signatures section for PDF compliance */}
+            <table style={{ width: '100%', marginTop: '30px', borderCollapse: 'separate', borderSpacing: '32px 0' }}>
+              <tbody>
+                <tr>
+                  <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Employee Signature</p>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>Verification of logged punch shifts</p>
+                  </td>
+                  <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Authorized Representative</p>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions'}</p>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          {/* Signatures section for PDF compliance */}
-          <table style={{ width: '100%', marginTop: '30px', borderCollapse: 'separate', borderSpacing: '32px 0' }}>
-            <tbody>
-              <tr>
-                <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Employee Signature</p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>Verification of logged punch shifts</p>
-                </td>
-                <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Authorized Representative</p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions'}</p>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
+            <span>{settings?.companyName || 'Calitech Engineering Solutions'} - Monthly Statement</span>
+            <span>Page 2 of 2</span>
+          </div>
         </div>
+
       </div>
 
     </div>
