@@ -171,6 +171,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('synced');
   const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'offline' | 'error'>('connecting');
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
   // Offline Punch Queue State
   const [punchQueue, setPunchQueue] = useState<AttendanceRecord[]>(() => {
@@ -219,6 +220,7 @@ export default function App() {
 
     // 2. Perform Anonymous Firebase auth login mapping or fallback to unauthenticated
     setFirebaseStatus('connecting');
+    setFirebaseError(null);
 
     let unsubEmp: (() => void) | null = null;
     let unsubAttendance: (() => void) | null = null;
@@ -234,6 +236,8 @@ export default function App() {
       // Since settings/global is the master initialization document,
       // its creation/existence dictates if we seed initial defaults to an empty Firestore instance.
       unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
         if (!docSnap.exists()) {
           console.log('Pristine database detected. Seeding settings and demo fixtures to Firestore...');
           
@@ -277,10 +281,13 @@ export default function App() {
       }, (err) => {
         console.error('Settings document snapshot query failed:', err);
         setFirebaseStatus('error');
+        setFirebaseError(err.message || String(err));
       });
 
       // Snapshot - Employees
       unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
         const list: Employee[] = [];
         snapshot.forEach((d) => {
           list.push(d.data() as Employee);
@@ -289,10 +296,13 @@ export default function App() {
       }, (err) => {
         console.error('Employees cloud listing denied:', err);
         setFirebaseStatus('error');
+        setFirebaseError(err.message || String(err));
       });
 
       // Snapshot - Attendance
       unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
         const list: AttendanceRecord[] = [];
         snapshot.forEach((d) => {
           list.push(d.data() as AttendanceRecord);
@@ -301,10 +311,13 @@ export default function App() {
       }, (err) => {
         console.error('Attendance cloud listing denied:', err);
         setFirebaseStatus('error');
+        setFirebaseError(err.message || String(err));
       });
 
       // Snapshot - Leave Requests
       unsubLeaves = onSnapshot(collection(db, 'leaveRequests'), (snapshot) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
         const list: LeaveRequest[] = [];
         snapshot.forEach((d) => {
           list.push(d.data() as LeaveRequest);
@@ -314,10 +327,13 @@ export default function App() {
       }, (err) => {
         console.error('Leave requests query failed:', err);
         setFirebaseStatus('error');
+        setFirebaseError(err.message || String(err));
       });
 
       // Snapshot - Notifications
       unsubNotifs = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
         const list: AppNotification[] = [];
         snapshot.forEach((d) => {
           list.push(d.data() as AppNotification);
@@ -328,6 +344,7 @@ export default function App() {
       }, (err) => {
         console.error('Audit alerts subscription query denied:', err);
         setFirebaseStatus('error');
+        setFirebaseError(err.message || String(err));
       });
     };
 
@@ -335,13 +352,20 @@ export default function App() {
       .then(async () => {
         console.log('Firebase Anonymous Session initialized successfully.');
         const isOnline = await testConnection();
+        // If snapshot succeeds it will configure connected anyway, but we set initial state
         setFirebaseStatus(isOnline ? 'connected' : 'offline');
+        if (!isOnline) {
+          setFirebaseError('Database handshake timed out or is unverified.');
+        }
         setupSubscriptions();
       })
       .catch(async (err) => {
         console.warn('Firebase Anonymous Auth restricted by GCP project policy, proceeding unauthenticated:', err.message);
         const isOnline = await testConnection();
         setFirebaseStatus(isOnline ? 'connected' : 'offline');
+        if (!isOnline) {
+          setFirebaseError('Unauthenticated. Handshake timed out or is unverified.');
+        }
         setupSubscriptions();
       });
 
@@ -1188,10 +1212,12 @@ export default function App() {
                 firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
                 'bg-rose-50 border-rose-100 text-rose-700'
               }`}
-              title="Firebase Cloud Database Connection Status"
+              title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}` : "Firebase Cloud Database Connection Status"}
             >
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
-              <span className="hidden sm:inline">Cloud DB: {firebaseStatus}</span>
+              <span className="hidden sm:inline">
+                Cloud DB: {firebaseStatus}{firebaseError ? ` (${firebaseError.slice(0, 15)}...)` : ''}
+              </span>
               <span className="sm:hidden text-[9px]">DB: {firebaseStatus === 'connected' ? 'On' : firebaseStatus === 'connecting' ? 'Hold' : 'Off'}</span>
             </div>
 

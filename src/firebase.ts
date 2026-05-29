@@ -1,16 +1,29 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust multi-tab offline local cache persistence
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-}, (firebaseConfig as any).firestoreDatabaseId);
+// Initialize Firestore with resilient multi-tab offline local cache persistence
+let dbInstance;
+try {
+  dbInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  }, (firebaseConfig as any).firestoreDatabaseId);
+  console.log("Firestore successfully initialized with persistent multi-tab localCache.");
+} catch (cacheErr) {
+  console.warn("Firestore multi-tab persistence not supported in this client environment, falling back to clean memory-only instance:", cacheErr);
+  try {
+    dbInstance = initializeFirestore(app, {}, (firebaseConfig as any).firestoreDatabaseId);
+  } catch (err2) {
+    dbInstance = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+  }
+}
+
+export const db = dbInstance;
 
 export const auth = getAuth();
 export const googleProvider = new GoogleAuthProvider();
