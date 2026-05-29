@@ -4,6 +4,7 @@ export interface Employee {
   department: string;
   email: string;
   hourlyRate: number;
+  monthlySalary?: number; // Base monthly salary to compute daily wage (e.g., Monthly Salary / 30)
   joinedDate: string;
   status: 'Active' | 'Inactive';
   password?: string; // custom employee login passcode / PIN for privacy protection

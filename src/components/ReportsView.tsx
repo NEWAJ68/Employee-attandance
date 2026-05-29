@@ -255,14 +255,23 @@ export default function ReportsView({
     const emp = employees.find((e) => e.id === rec.employeeId);
     const hourlyRate = emp ? emp.hourlyRate : 25; // default rate lookup
 
-    totalWorkHours += rec.totalHours || 0;
-    totalOvertimeHours += rec.overtime || 0;
+    const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+    const isUnderMinHours = (rec.totalHours || 0) < 3;
+    const effectiveHours = (isIncomplete || isUnderMinHours) ? 0 : (rec.totalHours || 0);
+    const effectiveOvertime = (isIncomplete || isUnderMinHours) ? 0 : (rec.overtime || 0);
 
+    totalWorkHours += effectiveHours;
+    totalOvertimeHours += effectiveOvertime;
+
+    const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
     const { regularPay, overtimePay } = calculateEarnings(
       rec.totalHours || 0,
       rec.overtime || 0,
       hourlyRate,
-      settings.overtimeRateMultiplier
+      settings.overtimeRateMultiplier,
+      isIncomplete,
+      emp?.monthlySalary,
+      isHalfDay
     );
 
     totalWagesPaid += regularPay;
@@ -285,7 +294,17 @@ export default function ReportsView({
       const emp = employees.find((e) => e.id === rec.employeeId);
       const rate = emp ? emp.hourlyRate : 20;
       const addr = emp?.address ? `"${emp.address.replace(/"/g, '""')}"` : '""';
-      const earnings = calculateEarnings(rec.totalHours, rec.overtime, rate, settings.overtimeRateMultiplier);
+      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+      const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+      const earnings = calculateEarnings(
+        rec.totalHours, 
+        rec.overtime, 
+        rate, 
+        settings.overtimeRateMultiplier, 
+        isIncomplete,
+        emp?.monthlySalary,
+        isHalfDay
+      );
       
       const row = [
         rec.date,
@@ -324,13 +343,22 @@ export default function ReportsView({
     let overtimePay = 0;
 
     empRecords.forEach(rec => {
-      totalHours += rec.totalHours || 0;
-      overtimeHours += rec.overtime || 0;
+      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+      const isUnderMinHours = (rec.totalHours || 0) < 3;
+      const effectiveHours = (isIncomplete || isUnderMinHours) ? 0 : (rec.totalHours || 0);
+      const effectiveOvertime = (isIncomplete || isUnderMinHours) ? 0 : (rec.overtime || 0);
+
+      totalHours += effectiveHours;
+      overtimeHours += effectiveOvertime;
+      const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
       const { regularPay: rp, overtimePay: op } = calculateEarnings(
         rec.totalHours || 0,
         rec.overtime || 0,
         emp.hourlyRate,
-        settings.overtimeRateMultiplier
+        settings.overtimeRateMultiplier,
+        isIncomplete,
+        emp.monthlySalary,
+        isHalfDay
       );
       regularPay += rp;
       overtimePay += op;
@@ -393,7 +421,17 @@ export default function ReportsView({
       : filteredRecords.map((rec) => {
           const emp = employees.find((e) => e.id === rec.employeeId);
           const rate = emp?.hourlyRate || 25;
-          const earnings = calculateEarnings(rec.totalHours, rec.overtime, rate, settings.overtimeRateMultiplier);
+          const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+          const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+          const earnings = calculateEarnings(
+            rec.totalHours, 
+            rec.overtime, 
+            rate, 
+            settings.overtimeRateMultiplier, 
+            isIncomplete,
+            emp?.monthlySalary,
+            isHalfDay
+          );
           return `
             <tr style="border-bottom: 1px solid #f1f5f9;">
               <td style="padding: 10px 8px; font-weight: 500; font-family: monospace; color: #334155;">${rec.date}</td>
@@ -411,7 +449,7 @@ export default function ReportsView({
               <td style="padding: 10px 8px; text-align: center; font-weight: 600; color: #4f46e5;">${(rec.overtime || 0).toFixed(2)}h</td>
               <td style="padding: 10px 12px; text-align: center;">
                 <span style="font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${
-                  rec.status.includes('Double Shift') ? '#f3e8ff; color: #6b21a8;' :
+                  rec.status.includes('2nd Shift') ? '#f3e8ff; color: #6b21a8;' :
                   rec.status.includes('Half Day') ? '#fef3c7; color: #b45309;' :
                   rec.status.includes('Present') ? '#f0fdf4; color: #166534;' :
                   rec.status.includes('Late') ? '#fef9c3; color: #854d0e;' :
@@ -424,12 +462,32 @@ export default function ReportsView({
           `;
         }).join('');
 
-    const totalHoursAgg = filteredRecords.reduce((sum, r) => sum + (r.totalHours || 0), 0);
-    const totalOTAgg = filteredRecords.reduce((sum, r) => sum + (r.overtime || 0), 0);
+    const totalHoursAgg = filteredRecords.reduce((sum, r) => {
+      const isIncomplete = !!((r.entryTime && !r.exitTime) || (r.entryTime2 && !r.exitTime2));
+      const isUnderMinHours = (r.totalHours || 0) < 3;
+      if (isIncomplete || isUnderMinHours) return sum;
+      return sum + (r.totalHours || 0);
+    }, 0);
+    const totalOTAgg = filteredRecords.reduce((sum, r) => {
+      const isIncomplete = !!((r.entryTime && !r.exitTime) || (r.entryTime2 && !r.exitTime2));
+      const isUnderMinHours = (r.totalHours || 0) < 3;
+      if (isIncomplete || isUnderMinHours) return sum;
+      return sum + (r.overtime || 0);
+    }, 0);
     const totalPayAgg = filteredRecords.reduce((sum, r) => {
       const emp = employees.find((e) => e.id === r.employeeId);
       const rate = emp?.hourlyRate || 25;
-      return sum + calculateEarnings(r.totalHours, r.overtime, rate, settings.overtimeRateMultiplier).totalPay;
+      const isIncomplete = !!((r.entryTime && !r.exitTime) || (r.entryTime2 && !r.exitTime2));
+      const isHalfDay = r.status ? r.status.includes('Half Day') : false;
+      return sum + calculateEarnings(
+        r.totalHours, 
+        r.overtime, 
+        rate, 
+        settings.overtimeRateMultiplier, 
+        isIncomplete,
+        emp?.monthlySalary,
+        isHalfDay
+      ).totalPay;
     }, 0);
 
     const activeEmpDetails = activeEmployeeModel ? `
@@ -1274,11 +1332,16 @@ export default function ReportsView({
                   const emp = employees.find((e) => e.id === rec.employeeId);
                   const rate = emp ? emp.hourlyRate : 25;
                   
+                  const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                  const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
                   const earnings = calculateEarnings(
                     rec.totalHours || 0,
                     rec.overtime || 0,
                     rate,
-                    settings.overtimeRateMultiplier
+                    settings.overtimeRateMultiplier,
+                    isIncomplete,
+                    emp?.monthlySalary,
+                    isHalfDay
                   );
 
                   return (
@@ -2006,7 +2069,17 @@ export default function ReportsView({
                     ₹{filteredRecords.reduce((sum, r) => {
                       const emp = employees.find((e) => e.id === r.employeeId);
                       const rate = emp ? emp.hourlyRate : 25;
-                      return sum + calculateEarnings(r.totalHours, r.overtime, rate, settings.overtimeRateMultiplier).totalPay;
+                      const isHalfDay = r.status ? r.status.includes('Half Day') : false;
+                      const isIncomplete = !!((r.entryTime && !r.exitTime) || (r.entryTime2 && !r.exitTime2));
+                      return sum + calculateEarnings(
+                        r.totalHours, 
+                        r.overtime, 
+                        rate, 
+                        settings.overtimeRateMultiplier, 
+                        isIncomplete,
+                        emp?.monthlySalary,
+                        isHalfDay
+                      ).totalPay;
                     }, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -2041,10 +2114,20 @@ export default function ReportsView({
                         </td>
                       </tr>
                     ) : (
-                      filteredRecords.map((rec) => {
+                       filteredRecords.map((rec) => {
                         const emp = employees.find((e) => e.id === rec.employeeId);
                         const rate = emp ? emp.hourlyRate : 25;
-                        const earnings = calculateEarnings(rec.totalHours || 0, rec.overtime || 0, rate, settings.overtimeRateMultiplier);
+                        const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                        const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                        const earnings = calculateEarnings(
+                          rec.totalHours || 0,
+                          rec.overtime || 0,
+                          rate,
+                          settings.overtimeRateMultiplier,
+                          isIncomplete,
+                          emp?.monthlySalary,
+                          isHalfDay
+                        );
                         return (
                           <tr key={`preview-${rec.employeeId}-${rec.date}`} className="hover:bg-slate-50/55 print:hover:bg-white text-3xs sm:text-2xs">
                             <td className="py-2 px-4 font-mono font-semibold text-slate-600">

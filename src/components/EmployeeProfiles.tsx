@@ -55,6 +55,20 @@ export default function EmployeeProfiles({
   const [deptInput, setDeptInput] = useState('Engineering');
   const [emailInput, setEmailInput] = useState('');
   const [hourlyRateInput, setHourlyRateInput] = useState<number | string>(25);
+  const [monthlySalaryInput, setMonthlySalaryInput] = useState<number | string>(15000);
+
+  const handleMonthlySalaryChange = (value: string) => {
+    setMonthlySalaryInput(value);
+    const salaryVal = parseFloat(value);
+    if (!isNaN(salaryVal) && salaryVal > 0) {
+      // Automatic hourly wage based on: (salary / 30) / 8 hours
+      const calculatedWage = Math.round(((salaryVal / 30) / 8) * 100) / 100;
+      setHourlyRateInput(calculatedWage);
+    } else {
+      setHourlyRateInput(0);
+    }
+  };
+
   const [statusInput, setStatusInput] = useState<'Active' | 'Inactive'>('Active');
   const [photoUrlInput, setPhotoUrlInput] = useState<string>('');
   const [addressInput, setAddressInput] = useState('');
@@ -73,6 +87,7 @@ export default function EmployeeProfiles({
     setDeptInput('Engineering');
     setEmailInput('');
     setHourlyRateInput(25);
+    setMonthlySalaryInput(15000);
     setStatusInput('Active');
     setPhotoUrlInput('');
     setAddressInput('');
@@ -86,6 +101,7 @@ export default function EmployeeProfiles({
     setDeptInput(emp.department);
     setEmailInput(emp.email);
     setHourlyRateInput(emp.hourlyRate);
+    setMonthlySalaryInput(emp.monthlySalary || 0);
     setStatusInput(emp.status);
     setPhotoUrlInput(emp.photoUrl || '');
     setAddressInput(emp.address || '');
@@ -111,6 +127,7 @@ export default function EmployeeProfiles({
       department: deptInput,
       email: emailInput.trim() || `${nameInput.trim().toLowerCase().replace(/\s+/g, '.')}@company.com`,
       hourlyRate: Number(hourlyRateInput) || 20,
+      monthlySalary: Number(monthlySalaryInput) || 0,
       joinedDate: editingEmployee ? editingEmployee.joinedDate : new Date().toISOString().split('T')[0],
       status: statusInput,
       photoUrl: photoUrlInput || undefined,
@@ -407,14 +424,29 @@ export default function EmployeeProfiles({
                           <span>{emp.address}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between text-slate-800">
-                        <div className="flex items-center space-x-2">
-                          <IndianRupee className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>Hourly Wage:</span>
+                      <div className="space-y-1 bg-slate-50/75 p-2 rounded-xl text-3xs">
+                        <div className="flex items-center justify-between text-slate-800">
+                          <span className="text-slate-500 font-semibold font-sans">Hourly OT Wage:</span>
+                          <span className="font-bold font-mono text-indigo-650 text-[11px]">
+                            ₹{emp.hourlyRate.toFixed(2)}/hr
+                          </span>
                         </div>
-                        <span className="font-bold font-mono text-indigo-600 text-sm">
-                          ₹{emp.hourlyRate.toFixed(2)}/hr
-                        </span>
+                        {emp.monthlySalary !== undefined && emp.monthlySalary > 0 && (
+                          <>
+                            <div className="flex items-center justify-between text-slate-800 border-t border-slate-100 pt-1">
+                              <span className="text-slate-500 font-semibold font-sans">Monthly Salary:</span>
+                              <span className="font-bold font-mono text-emerald-600 text-[11px]">
+                                ₹{emp.monthlySalary.toFixed(2)}/mo
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-800 border-t border-slate-100 pt-1">
+                              <span className="text-slate-500 font-semibold font-sans">Daily Wage Rate (8h):</span>
+                              <span className="font-bold font-mono text-blue-600 text-[11px]">
+                                ₹{(emp.monthlySalary / 30).toFixed(2)}/day
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -620,9 +652,9 @@ export default function EmployeeProfiles({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-2xs uppercase tracking-wider font-semibold text-slate-500 mb-1 font-mono">
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1 font-mono">
                     Department Unit
                   </label>
                   <select
@@ -639,17 +671,32 @@ export default function EmployeeProfiles({
                 </div>
 
                 <div>
-                  <label className="block text-2xs uppercase tracking-wider font-semibold text-slate-500 mb-1 font-mono">
-                    Hourly Wage Rate (₹)
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1 font-mono">
+                    Hourly OT Rate (₹)
                   </label>
                   <input
                     type="number"
                     min="1"
-                    max="500"
+                    max="1000"
                     step="0.01"
                     required
                     value={hourlyRateInput}
                     onChange={(e) => setHourlyRateInput(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl font-bold font-mono text-slate-750 focus:ring-1 focus:ring-indigo-505 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1 font-mono">
+                    Monthly Salary (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    value={monthlySalaryInput}
+                    onChange={(e) => handleMonthlySalaryChange(e.target.value)}
                     className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl font-bold font-mono text-slate-750 focus:ring-1 focus:ring-indigo-505 outline-none"
                   />
                 </div>

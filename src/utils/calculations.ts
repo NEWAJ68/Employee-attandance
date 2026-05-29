@@ -64,6 +64,18 @@ export const isTimeBefore = (timeStr: string, refStr: string): boolean => {
 };
 
 /**
+ * Checks if a time string is valid and not a placeholder like "--:--" or "null" / "undefined".
+ */
+export const isValidTimeStr = (timeStr: string | undefined | null): boolean => {
+  if (!timeStr) return false;
+  const clean = timeStr.trim();
+  if (clean === '' || clean === '--:--' || clean.toLowerCase() === 'undefined' || clean.toLowerCase() === 'null') {
+    return false;
+  }
+  return true;
+};
+
+/**
  * Primary calculator for attendance metrics
  */
 export const calculateAttendanceMetrics = (
@@ -85,25 +97,34 @@ export const calculateAttendanceMetrics = (
 } => {
   const statusFlags: string[] = [];
   
-  if (!entry && !entry2) {
+  const s1Entry = entry && isValidTimeStr(entry) ? entry.trim() : '';
+  const s1Exit = exit && isValidTimeStr(exit) ? exit.trim() : '';
+  const s2Entry = entry2 && isValidTimeStr(entry2) ? entry2.trim() : '';
+  const s2Exit = exit2 && isValidTimeStr(exit2) ? exit2.trim() : '';
+  const lOut = lunchOut && isValidTimeStr(lunchOut) ? lunchOut.trim() : '';
+  const lIn = lunchIn && isValidTimeStr(lunchIn) ? lunchIn.trim() : '';
+  const dOut = dinnerOut && isValidTimeStr(dinnerOut) ? dinnerOut.trim() : '';
+  const dIn = dinnerIn && isValidTimeStr(dinnerIn) ? dinnerIn.trim() : '';
+
+  if (!s1Entry && !s2Entry) {
     return { totalHours: 0, overtime: 0, statusFlags: ['Absent'], lunchDurationMins: 0, dinnerDurationMins: 0 };
   }
 
   // Determine active states
-  const isShift1Active = entry && !exit;
-  const isShift2Active = entry2 && !exit2;
+  const isShift1Active = !!(s1Entry && !s1Exit);
+  const isShift2Active = !!(s2Entry && !s2Exit);
   const isCurrentlyActive = isShift1Active || isShift2Active;
 
   // Check late arrival on morning (from 10:00 AM)
-  const checkInTime = entry || entry2;
+  const checkInTime = s1Entry || s2Entry;
   const hasMorningLateEntry = checkInTime ? timeToMinutes(checkInTime) > timeToMinutes("10:00") : false;
 
   // Check early checkout (before 17:00 / 5 PM)
-  const finalCheckOutTime = entry2 ? exit2 : exit;
+  const finalCheckOutTime = s2Entry ? s2Exit : s1Exit;
   const hasEarlyExitHalfDay = finalCheckOutTime ? timeToMinutes(finalCheckOutTime) < timeToMinutes("17:00") : false;
 
   // Check standard late entry based on settings for informational flag
-  if (entry && settings.workStartHour && isTimeAfter(entry, settings.workStartHour)) {
+  if (s1Entry && settings.workStartHour && isTimeAfter(s1Entry, settings.workStartHour)) {
     statusFlags.push('Late Entry');
   }
 
@@ -112,9 +133,9 @@ export const calculateAttendanceMetrics = (
   let dinnerMins = 0;
 
   // --- SHIFT 1 WORKED TIME ---
-  if (entry) {
-    const entryMins = timeToMinutes(entry);
-    const exitMins1 = exit ? timeToMinutes(exit) : 0;
+  if (s1Entry) {
+    const entryMins = timeToMinutes(s1Entry);
+    const exitMins1 = s1Exit ? timeToMinutes(s1Exit) : 0;
     
     if (exitMins1 > 0) {
       if (exitMins1 < entryMins) {
@@ -125,9 +146,9 @@ export const calculateAttendanceMetrics = (
       }
     } else {
       // Shift 1 still active
-      if (lunchOut && !lunchIn) {
+      if (lOut && !lIn) {
         statusFlags.push('On Lunch');
-      } else if (dinnerOut && !dinnerIn) {
+      } else if (dOut && !dIn) {
         statusFlags.push('On Dinner');
       } else {
         statusFlags.push('Active');
@@ -136,12 +157,12 @@ export const calculateAttendanceMetrics = (
   }
 
   // --- SHIFT 2 WORKED TIME (IF PRESENT) ---
-  if (entry2) {
-    if (entry) {
-      statusFlags.push('Double Shift');
+  if (s2Entry) {
+    if (s1Entry) {
+      statusFlags.push('2nd Shift');
     }
-    const entryMins2 = timeToMinutes(entry2);
-    const exitMins2 = exit2 ? timeToMinutes(exit2) : 0;
+    const entryMins2 = timeToMinutes(s2Entry);
+    const exitMins2 = s2Exit ? timeToMinutes(s2Exit) : 0;
 
     if (exitMins2 > 0) {
       if (exitMins2 < entryMins2) {
@@ -152,9 +173,9 @@ export const calculateAttendanceMetrics = (
       }
     } else {
       // Shift 2 still active
-      if (dinnerOut && !dinnerIn) {
+      if (dOut && !dIn) {
         statusFlags.push('On Dinner');
-      } else if (lunchOut && !lunchIn) {
+      } else if (lOut && !lIn) {
         statusFlags.push('On Lunch');
       } else {
         statusFlags.push('Active (Shift 2)');
@@ -163,10 +184,10 @@ export const calculateAttendanceMetrics = (
   }
 
   // Lunch break calculation
-  if (lunchOut) {
-    if (lunchIn) {
-      const loMins = timeToMinutes(lunchOut);
-      const liMins = timeToMinutes(lunchIn);
+  if (lOut) {
+    if (lIn) {
+      const loMins = timeToMinutes(lOut);
+      const liMins = timeToMinutes(lIn);
       if (liMins > loMins) {
         lunchMins = liMins - loMins;
       } else if (liMins < loMins) {
@@ -178,10 +199,10 @@ export const calculateAttendanceMetrics = (
   }
 
   // Dinner break calculation
-  if (dinnerOut) {
-    if (dinnerIn) {
-      const doMins = timeToMinutes(dinnerOut);
-      const diMins = timeToMinutes(dinnerIn);
+  if (dOut) {
+    if (dIn) {
+      const doMins = timeToMinutes(dOut);
+      const diMins = timeToMinutes(dIn);
       if (diMins > doMins) {
         dinnerMins = diMins - doMins;
       } else if (diMins < doMins) {
@@ -206,12 +227,33 @@ export const calculateAttendanceMetrics = (
     // Fully checked out or absent
     if (totalHours < 3) {
       isAbsent = true;
-    } else if (totalHours < (settings.standardHours || 8) || hasMorningLateEntry || hasEarlyExitHalfDay) {
-      isHalfDay = true;
+    } else {
+      // Standard late morning arrival (Shift 1 check-in > 10:00 AM)
+      const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
+      
+      // Standard early check-out (Final exit < 17:00 / 5 PM)
+      const lastExit = s2Exit || s1Exit;
+      const earlyExit = lastExit ? (timeToMinutes(lastExit) < timeToMinutes("17:00")) : false;
+      
+      if (morningLate || earlyExit) {
+        isHalfDay = true;
+      } else if (totalHours < (settings.standardHours || 8)) {
+        // Not standard late (>10:00) and not early (<17:00).
+        // Let's check if they completed a full-day span:
+        // Did they check in by 10:00 AM AND stay at least until 17:00 PM?
+        const hasFullDaySpan = (s1Entry && timeToMinutes(s1Entry) <= timeToMinutes("10:00")) &&
+                               (lastExit && timeToMinutes(lastExit) >= timeToMinutes("17:00"));
+        if (hasFullDaySpan) {
+          isHalfDay = false; // It's a FULL DAY (Present) as they worked the whole required duration!
+        } else {
+          isHalfDay = true;
+        }
+      }
     }
   } else {
-    // Informational: mark as Half Day immediately if their check-in was late (after 10:00 AM)
-    if (hasMorningLateEntry) {
+    // Informational: mark as Half Day immediately if their Shift 1 check-in was late (after 10:00 AM)
+    const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
+    if (morningLate) {
       isHalfDay = true;
     }
   }
@@ -251,6 +293,11 @@ export const calculateAttendanceMetrics = (
     }
   }
 
+  // Ensure status flags doesn't duplicate 'Present' when there is '2nd Shift' or 'Half Day'
+  if (cleanedFlags.includes('2nd Shift') || cleanedFlags.includes('Half Day')) {
+    cleanedFlags = cleanedFlags.filter(f => f !== 'Present');
+  }
+
   return {
     totalHours,
     overtime,
@@ -267,14 +314,36 @@ export const calculateEarnings = (
   hoursWorked: number,
   overtimeHours: number,
   hourlyRate: number,
-  multiplier: number = 1.5
+  multiplier: number = 1.5,
+  isIncomplete: boolean = false,
+  monthlySalary?: number,
+  isHalfDay: boolean = false
 ): {
   regularPay: number;
   overtimePay: number;
   totalPay: number;
 } => {
-  const standardWork = Math.max(0, hoursWorked - overtimeHours);
-  const regularPay = Math.round(standardWork * hourlyRate * 100) / 100;
+  if (isIncomplete || hoursWorked < 3) {
+    return {
+      regularPay: 0,
+      overtimePay: 0,
+      totalPay: 0,
+    };
+  }
+
+  let regularPay = 0;
+  if (monthlySalary && monthlySalary > 0) {
+    const dailyWage = monthlySalary / 30;
+    if (isHalfDay) {
+      regularPay = Math.round((dailyWage / 2) * 100) / 100;
+    } else {
+      regularPay = Math.round(dailyWage * 100) / 100;
+    }
+  } else {
+    const standardWork = Math.max(0, hoursWorked - overtimeHours);
+    regularPay = Math.round(standardWork * hourlyRate * 100) / 100;
+  }
+
   const overtimePay = Math.round(overtimeHours * (hourlyRate * multiplier) * 100) / 100;
   const totalPay = Math.round((regularPay + overtimePay) * 100) / 100;
 
@@ -297,7 +366,7 @@ export const ALLOWED_LOCATIONS: AllowedLocation[] = [
     lat: 26.1185573,
     lng: 91.5396016,
     name: "Calitech Engineering Solutions pvt.ltd",
-    radiusMeters: 200
+    radiusMeters: 500
   },
   {
     lat: 26.1158,

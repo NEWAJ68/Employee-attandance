@@ -27,6 +27,20 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
   const [regEmail, setRegEmail] = useState('');
   const [regDept, setRegDept] = useState('Engineering');
   const [regRate, setRegRate] = useState('25');
+  const [regMonthlySalary, setRegMonthlySalary] = useState('15000');
+
+  const handleRegMonthlySalaryChange = (value: string) => {
+    setRegMonthlySalary(value);
+    const salaryVal = parseFloat(value);
+    if (!isNaN(salaryVal) && salaryVal > 0) {
+      // Automatic hourly wage based on: (salary / 30) / 8 hours
+      const calculatedWage = Math.round(((salaryVal / 30) / 8) * 100) / 100;
+      setRegRate(calculatedWage.toString());
+    } else {
+      setRegRate('0');
+    }
+  };
+
   const [regId, setRegId] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regSuccessMsg, setRegSuccessMsg] = useState('');
@@ -134,6 +148,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
       department: regDept,
       email: regEmail.trim(),
       hourlyRate: parseFloat(regRate) || 25,
+      monthlySalary: parseFloat(regMonthlySalary) || 0,
       joinedDate: new Date().toISOString().split('T')[0],
       status: 'Active',
       password: regPassword.trim(),
@@ -151,6 +166,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
     setRegEmail('');
     setRegDept('Engineering');
     setRegRate('25');
+    setRegMonthlySalary('15000');
     setRegId('');
     setRegPassword('');
     
@@ -288,28 +304,28 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label htmlFor="reg-dept" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
+                    Department
+                  </label>
+                  <select
+                    id="reg-dept"
+                    value={regDept}
+                    onChange={(e) => setRegDept(e.target.value)}
+                    className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold"
+                  >
+                    <option value="Engineering">Engineering</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Human Resources">Human Resources</option>
+                    <option value="Sales">Sales & Marketing</option>
+                    <option value="Administration">Administration</option>
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label htmlFor="reg-dept" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
-                      Department
-                    </label>
-                    <select
-                      id="reg-dept"
-                      value={regDept}
-                      onChange={(e) => setRegDept(e.target.value)}
-                      className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold"
-                    >
-                      <option value="Engineering">Engineering</option>
-                      <option value="Operations">Operations</option>
-                      <option value="Human Resources">Human Resources</option>
-                      <option value="Sales">Sales & Marketing</option>
-                      <option value="Administration">Administration</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
                     <label htmlFor="reg-rate" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
-                      Hourly Wage
+                      Hourly OT Wage (₹)
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -319,10 +335,32 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                         id="reg-rate"
                         type="number"
                         min="1"
-                        step="0.5"
+                        step="0.01"
                         required
                         value={regRate}
                         onChange={(e) => setRegRate(e.target.value)}
+                        className="appearance-none block w-full pl-8 pr-3 py-2.5 border border-slate-200 rounded-xl shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs font-mono font-bold transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="reg-salary" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
+                      Monthly Salary (₹)
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <IndianRupee className="h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                      <input
+                        id="reg-salary"
+                        type="number"
+                        min="100"
+                        step="0.01"
+                        required
+                        value={regMonthlySalary}
+                        onChange={(e) => handleRegMonthlySalaryChange(e.target.value)}
+                        placeholder="e.g. 15000"
                         className="appearance-none block w-full pl-8 pr-3 py-2.5 border border-slate-200 rounded-xl shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs font-mono font-bold transition-all"
                       />
                     </div>

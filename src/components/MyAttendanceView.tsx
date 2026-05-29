@@ -24,10 +24,14 @@ import {
   TrendingUp,
   Megaphone,
   Bell,
-  ShieldAlert
+  ShieldAlert,
+  Printer,
+  FileText
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
 import { calculateEarnings, getLocalDateString } from '../utils/calculations';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface MyAttendanceViewProps {
   loggedInEmployee: Employee;
@@ -60,6 +64,8 @@ export default function MyAttendanceView({
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthStr);
   const [filterType, setFilterType] = useState<'All' | 'Present' | 'Absent' | 'Weekly Off'>('All');
   const [uploadError, setUploadError] = useState('');
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Filter attendance records specifically belonging to this logged in employee
   const myLogs = attendance.filter(record => record.employeeId === loggedInEmployee.id);
@@ -248,20 +254,488 @@ export default function MyAttendanceView({
   const presentDaysCount = processedLogs.filter(l => ['Present', 'Late Entry', 'Night Shift'].includes(l.status)).length;
   const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
   const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
-  const sumWorkHours = processedLogs.reduce((acc, current) => acc + current.hours, 0);
+  const sumWorkHours = processedLogs.reduce((acc, current) => {
+    const rec = current.rawRecord;
+    if (!rec) return acc;
+    const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+    if (isIncomplete || current.hours < 3) return acc;
+    return acc + current.hours;
+  }, 0);
 
   // Compute earnings and details for Monthly Payroll Summary Card
   const currencySymbol = '₹';
 
-  const totalOvertimeHours = processedLogs.reduce((acc, curr) => acc + curr.overtime, 0);
+  const totalOvertimeHours = processedLogs.reduce((acc, curr) => {
+    const rec = curr.rawRecord;
+    if (!rec) return acc;
+    const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+    if (isIncomplete || curr.hours < 3) return acc;
+    return acc + curr.overtime;
+  }, 0);
   const totalStandardHours = Math.max(0, sumWorkHours - totalOvertimeHours);
 
-  const { regularPay, overtimePay, totalPay } = calculateEarnings(
-    sumWorkHours,
-    totalOvertimeHours,
-    loggedInEmployee.hourlyRate,
-    settings?.overtimeRateMultiplier || 1.5
-  );
+  let regularPay = 0;
+  let overtimePay = 0;
+  let totalPay = 0;
+
+  if (loggedInEmployee.monthlySalary && loggedInEmployee.monthlySalary > 0) {
+    processedLogs.forEach(curr => {
+      const rec = curr.rawRecord;
+      if (!rec) return;
+      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+      const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+      const dayEarnings = calculateEarnings(
+        curr.hours,
+        curr.overtime,
+        loggedInEmployee.hourlyRate,
+        settings?.overtimeRateMultiplier || 1.5,
+        isIncomplete,
+        loggedInEmployee.monthlySalary,
+        isHalfDay
+      );
+      regularPay += dayEarnings.regularPay;
+      overtimePay += dayEarnings.overtimePay;
+      totalPay += dayEarnings.totalPay;
+    });
+    regularPay = Math.round(regularPay * 100) / 100;
+    overtimePay = Math.round(overtimePay * 100) / 100;
+    totalPay = Math.round(totalPay * 100) / 100;
+  } else {
+    const earnings = calculateEarnings(
+      sumWorkHours,
+      totalOvertimeHours,
+      loggedInEmployee.hourlyRate,
+      settings?.overtimeRateMultiplier || 1.5
+    );
+    regularPay = earnings.regularPay;
+    overtimePay = earnings.overtimePay;
+    totalPay = earnings.totalPay;
+  }
+
+  // Filter out system technical status logs and admin action logs to clean up standard employee notice board
+  const EXCLUDED_SYSTEM_TITLES = [
+    "Offline Punch Synced",
+    "Database Sync Restored",
+    "Database Sync Failed",
+    "Sync Warning",
+    "Workforce Reset",
+    "Offline Punch Queued",
+    "Late Entry Alert",
+    "Duplicate Entry Attempt",
+    "Early Exit Alert",
+    "New Leave Request",
+    "Database Cleared",
+    "Google Account Connected",
+    "Google Authentication Failed",
+    "Google Account Disconnected",
+    "New Spreadsheet Created",
+    "BLOCKED Out-of-Range Punch",
+    "Out-of-Range Punch Alert",
+    "Push Authorized"
+  ];
+
+  const employeeNotifications = notifications.filter(n => {
+    // Must be targeted at the employee or a general broadcast
+    const isTargeted = !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id;
+    if (!isTargeted) return false;
+
+    // Filter out unnecessary/technical system status logs or admin alerts
+    return !EXCLUDED_SYSTEM_TITLES.includes(n.title);
+  });
+
+  const unreadEmployeeNotifications = employeeNotifications.filter(n => {
+    const isPersonal = n.employeeId && n.employeeId !== "" && n.employeeId !== "all" && n.employeeId !== "broadcast";
+    return isPersonal ? !n.read : !(n.readByEmployees || []).includes(loggedInEmployee.id);
+  });
+
+  const getFriendlyMonthName = (monthStr: string) => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const handleGenerateDirectPDF = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      // Small delay to let rendering refresh if needed
+      await new Promise((resolve) => setTimeout(resolve, 310));
+      const element = document.getElementById("attendance-statement-direct-pdf-sheet");
+      if (!element) {
+        throw new Error("Target PDF sheet not detected inside DOM");
+      }
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, 'FAST');
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Attendance_Statement_${loggedInEmployee.id}_${selectedMonth}.pdf`);
+    } catch (err) {
+      console.error("Direct PDF rendering aborted:", err);
+      alert("Something went wrong compiling PDF. Downloading offline HTML sheet instead.");
+      handleDownloadPDF();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    const companyName = settings?.companyName || 'Calitech Engineering Solutions';
+    const friendlyMonth = getFriendlyMonthName(selectedMonth);
+    const printedOn = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }) + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const tableRows = processedLogs.map(curr => {
+      const rec = curr.rawRecord;
+      const hoursStr = curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--';
+      const otStr = curr.overtime > 0 ? `${curr.overtime.toFixed(2)}h` : '--';
+      const statusColor = curr.status === 'Present' ? '#10b981' : 
+                          curr.status === 'Late Entry' ? '#f59e0b' :
+                          curr.status === 'On Leave' ? '#4f46e5' :
+                          curr.status === 'Weekly Off' ? '#64748b' : '#ef4444';
+
+      let dayEarnings = { regularPay: 0, overtimePay: 0, totalPay: 0 };
+      if (rec) {
+        const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+        const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+        dayEarnings = calculateEarnings(
+          curr.hours,
+          curr.overtime,
+          loggedInEmployee.hourlyRate,
+          settings?.overtimeRateMultiplier || 1.5,
+          isIncomplete,
+          loggedInEmployee.monthlySalary,
+          isHalfDay
+        );
+      }
+
+      return `
+        <tr>
+          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.dateString}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.dayLabel}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; color: ${statusColor}; text-align: center;">${curr.status}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockIn}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockOut}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${hoursStr}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center; color: #4f46e5;">${otStr}</td>
+          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #1e3a8a;">₹${dayEarnings.totalPay.toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Attendance Statement - ${loggedInEmployee.name} - ${friendlyMonth}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+    }
+    .container {
+      max-width: 900px;
+      margin: 30px auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      border: 1px solid #e2e8f0;
+    }
+    .print-banner {
+      background: #e0e7ff;
+      border: 1px solid #6366f1;
+      color: #3730a3;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px double #cbd5e1;
+      padding-bottom: 20px;
+      margin-bottom: 25px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.025em;
+    }
+    .header p {
+      margin: 4px 0 0 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-cols: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 25px;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .meta-item {
+      font-size: 12px;
+    }
+    .meta-label {
+      font-weight: bold;
+      color: #64748b;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .meta-val {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 13px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-cols: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 25px;
+    }
+    .stat-card {
+      border: 1px solid #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      background: #fafafa;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      font-weight: bold;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .stat-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0d1e3d;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 30px;
+    }
+    th {
+      background: #0f172a;
+      color: white;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      border: 1px solid #1e293b;
+      padding: 10px 8px;
+    }
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .signatures-section {
+      display: grid;
+      grid-template-cols: repeat(2, 1fr);
+      gap: 40px;
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .sign-box {
+      border-top: 1px dashed #cbd5e1;
+      text-align: center;
+      padding-top: 8px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #475569;
+    }
+    @media print {
+      body {
+        background: white;
+      }
+      .container {
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        max-width: 100%;
+      }
+      .print-banner {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="print-banner">
+      📄 Press Ctrl+P (or Cmd+P on Mac) to print this page or save as a digital PDF!
+    </div>
+
+    <div class="header">
+      <div>
+        <h1>${companyName}</h1>
+        <p>Employee Attendance & Wage Statement</p>
+      </div>
+      <div style="text-align: right; font-size: 12px; color: #475569;">
+        <div>Statement Period: <strong>${friendlyMonth}</strong></div>
+        <div style="font-size: 10px; margin-top: 4px;">Generated On: ${printedOn}</div>
+      </div>
+    </div>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Employee Name</div>
+        <div class="meta-val">${loggedInEmployee.name}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Employee ID</div>
+        <div class="meta-val">${loggedInEmployee.id}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Department Unit</div>
+        <div class="meta-val">${loggedInEmployee.department}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Joined Date</div>
+        <div class="meta-val">${loggedInEmployee.joinedDate}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Monthly Fixed Salary</div>
+        <div class="meta-val">${loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Hourly Overtime Rate</div>
+        <div class="meta-val">₹${loggedInEmployee.hourlyRate.toFixed(2)}/hr</div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-lbl">Days Present</div>
+        <div class="stat-val" style="color: #10b981;">${presentDaysCount} days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Days Absent</div>
+        <div class="stat-val" style="color: #ef4444;">${absentDaysCount} days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Active Leave</div>
+        <div class="stat-val" style="color: #4f46e5;">${leavesCount} days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Total Work Hours</div>
+        <div class="stat-val" style="color: #0f172a;">${sumWorkHours.toFixed(1)} hrs</div>
+      </div>
+    </div>
+
+    <div class="stats-grid" style="grid-template-cols: repeat(3, 1fr);">
+      <div class="stat-card">
+        <div class="stat-lbl">Standard Hours Pay</div>
+        <div class="stat-val">₹${regularPay.toFixed(2)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Overtime Compensation</div>
+        <div class="stat-val" style="color: #4f46e5;">₹${overtimePay.toFixed(2)}</div>
+      </div>
+      <div class="stat-card" style="background: #e0f2fe; border-color: #bae6fd;">
+        <div class="stat-lbl">Calculated Payout</div>
+        <div class="stat-val" style="color: #0369a1; font-size: 18px; font-weight: 900;">₹${totalPay.toFixed(2)}</div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 13px; text-transform: uppercase; color: #334155; margin-bottom: 12px; margin-top: 30px; letter-spacing: 0.05em;">Shift Logs & Punch Records</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Status</th>
+          <th>Entry</th>
+          <th>Exit</th>
+          <th>Worked Hours</th>
+          <th>Overtime Hours</th>
+          <th>Wage (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+      </tbody>
+    </table>
+
+    <div class="signatures-section">
+      <div class="sign-box">
+        Employee Signature
+      </div>
+      <div class="sign-box">
+        Authorized Representative Sign / Stamp
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Attendance_Statement_${loggedInEmployee.id}_${selectedMonth}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn font-sans" id="my-attendance-sheet">
@@ -434,14 +908,37 @@ export default function MyAttendanceView({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownloadCSV}
-              className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer w-full sm:w-auto"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download CSV Report</span>
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleDownloadCSV}
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 border border-slate-250 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-2xs transition-all cursor-pointer w-full sm:w-auto"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span>Download CSV</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateDirectPDF}
+                disabled={isGeneratingPdf}
+                className={`flex items-center justify-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-2xs transition-all shadow-sm cursor-pointer w-full sm:w-auto ${
+                  isGeneratingPdf ? 'opacity-75 cursor-not-allowed' : 'animate-pulse'
+                }`}
+              >
+                {isGeneratingPdf ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                    <span>Direct downloading PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Download PDF Statement</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -483,7 +980,7 @@ export default function MyAttendanceView({
       </div>
 
       {/* 📢 PERSISTENT EMPLOYEE NOTICE BOARD & MEMOS */}
-      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4 animate-fadeIn">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100/80">
           <div className="flex items-center space-x-2">
             <Megaphone className="w-5 h-5 text-indigo-600 animate-bounce" />
@@ -492,25 +989,24 @@ export default function MyAttendanceView({
               <p className="text-[10px] text-slate-400 font-medium">Personal assignments, shift warnings, and administrative memos.</p>
             </div>
           </div>
-          {notifications.filter(n => (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id) && !(n.employeeId && n.employeeId !== "" && n.employeeId !== "all" && n.employeeId !== "broadcast" ? n.read : (n.readByEmployees || []).includes(loggedInEmployee.id))).length > 0 && (
+          {unreadEmployeeNotifications.length > 0 && (
             <span className="bg-rose-150 text-rose-800 border border-rose-200/50 text-[10px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
-              {notifications.filter(n => (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id) && !(n.employeeId && n.employeeId !== "" && n.employeeId !== "all" && n.employeeId !== "broadcast" ? n.read : (n.readByEmployees || []).includes(loggedInEmployee.id))).length} New Message(s)
+              {unreadEmployeeNotifications.length} New Message(s)
             </span>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[280px] overflow-y-auto pr-1">
-          {notifications.filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id).length === 0 ? (
+          {employeeNotifications.length === 0 ? (
             <div className="col-span-1 md:col-span-2 py-10 text-center flex flex-col items-center justify-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-150">
               <span className="p-2 sm:p-3 bg-slate-100 text-slate-450 rounded-full">
                 <Bell className="w-5 h-5 opacity-40" />
               </span>
-              <p className="text-2xs font-extrabold text-slate-400 uppercase tracking-widest">Noticeboard is Clear</p>
-              <p className="text-3xs text-slate-400 max-w-[240px]">No administrative broadcasts or warning notifications have been logged to your ID.</p>
+              <p className="text-2xs font-extrabold text-slate-400 uppercase tracking-widest block">Noticeboard is Clear</p>
+              <p className="text-3xs text-slate-400 max-w-[240px]">No administrative broadcasts or warning notifications have been logged to your ID today.</p>
             </div>
           ) : (
-            notifications
-              .filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id)
+            employeeNotifications
               // Sort newest first
               .sort((a, b) => b.id.localeCompare(a.id))
               .map((notif) => {
@@ -531,7 +1027,7 @@ export default function MyAttendanceView({
                   priorityTitle = 'text-emerald-950';
                   priorityIcon = <CheckCircle className="w-4 h-4 text-emerald-500" />;
                 } else {
-                  priorityBorder = 'border-indigo-150 bg-indigo-50/20';
+                  priorityBorder = 'border-indigo-150 bg-[#EEF2F6]/40';
                   priorityTitle = 'text-indigo-950';
                   priorityIcon = <Megaphone className="w-4 h-4 text-indigo-650" />;
                 }
@@ -560,13 +1056,13 @@ export default function MyAttendanceView({
                         </h4>
                         <span className="text-[9px] font-mono text-slate-400">{notif.timestamp}</span>
                       </div>
-                      <p className="text-[11px] text-slate-650 leading-relaxed font-medium">{notif.message}</p>
+                      <p className="text-[11px] text-slate-650 leading-relaxed font-semibold">{notif.message}</p>
                       
                       {!hasBeenRead && onMarkNotificationRead && (
                         <button
                           type="button"
                           onClick={() => onMarkNotificationRead(notif.id)}
-                          className="inline-flex items-center gap-1 text-[9px] text-indigo-700 hover:text-indigo-900 font-extrabold uppercase mt-2 hover:underline cursor-pointer"
+                          className="inline-flex items-center gap-1 text-[9px] text-indigo-700 hover:text-indigo-950 font-extrabold uppercase mt-2 hover:underline cursor-pointer"
                         >
                           <Check className="w-3 h-3 text-indigo-650" />
                           <span>Acknowledge Message</span>
@@ -1117,8 +1613,174 @@ export default function MyAttendanceView({
             </table>
           </div>
         </div>
-        </div>
+      </div>
       )}
+      {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
+      <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '850px', pointerEvents: 'none', zIndex: -1000 }}>
+        <div id="attendance-statement-direct-pdf-sheet" className="bg-white p-8 space-y-6 text-slate-800" style={{ width: '850px' }}>
+          
+          {/* Header section */}
+          <div className="flex justify-between items-start border-b-2 border-slate-200 pb-5">
+            <div className="text-left">
+              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight uppercase">
+                {settings?.companyName || 'Calitech Engineering Solutions'}
+              </h1>
+              <p className="text-xs font-semibold text-slate-500 tracking-wide uppercase mt-1">
+                Employee Attendance & Wage Statement
+              </p>
+            </div>
+            <div className="text-right text-xs">
+              <div className="text-slate-500 font-bold uppercase tracking-wide">Statement Period</div>
+              <div className="font-extrabold text-indigo-700 text-sm mt-0.5">{getFriendlyMonthName(selectedMonth)}</div>
+              <div className="text-[9px] text-slate-400 mt-1">
+                Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </div>
+            </div>
+          </div>
+
+          {/* ID Details Card */}
+          <div className="grid grid-cols-3 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-xl text-left">
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Employee Name</div>
+              <div className="text-xs font-bold text-slate-800">{loggedInEmployee.name}</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Employee ID</div>
+              <div className="text-xs font-mono font-bold text-slate-800">{loggedInEmployee.id}</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Department</div>
+              <div className="text-xs font-bold text-slate-800">{loggedInEmployee.department}</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Joined Date</div>
+              <div className="text-xs font-semibold text-slate-700">{loggedInEmployee.joinedDate}</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Monthly Salary</div>
+              <div className="text-xs font-bold text-slate-800">
+                {loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Overtime Wage</div>
+              <div className="text-xs font-mono font-bold text-indigo-650">
+                ₹{loggedInEmployee.hourlyRate.toFixed(2)}/hr
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Indicators */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Present</div>
+              <div className="text-xs sm:text-sm font-black text-emerald-600 mt-1">{presentDaysCount} Days</div>
+            </div>
+            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Absent</div>
+              <div className="text-xs sm:text-sm font-black text-rose-650 mt-1">{absentDaysCount} Days</div>
+            </div>
+            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Leaves</div>
+              <div className="text-xs sm:text-sm font-black text-indigo-655 mt-1">{leavesCount} Days</div>
+            </div>
+            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Work Hours</div>
+              <div className="text-xs sm:text-sm font-black text-slate-800 mt-1">{sumWorkHours.toFixed(1)} Hrs</div>
+            </div>
+          </div>
+
+          {/* Earnings Details */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="border border-slate-150 p-3 rounded-xl text-left bg-slate-50/50">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-450">Standard Earnings</div>
+              <div className="text-xs font-mono font-bold text-slate-800 mt-1">₹{regularPay.toFixed(2)}</div>
+            </div>
+            <div className="border border-slate-150 p-3 rounded-xl text-left bg-slate-50/50">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-450">Overtime Earnings</div>
+              <div className="text-xs font-mono font-bold text-indigo-650 mt-1">₹{overtimePay.toFixed(2)}</div>
+            </div>
+            <div className="border border-sky-100 p-3 rounded-xl text-left bg-sky-50/30">
+              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-sky-600 font-extrabold">Net Pay Estimate</div>
+              <div className="text-sm font-extrabold text-blue-800 mt-0.5">₹{totalPay.toFixed(2)}</div>
+            </div>
+          </div>
+
+          {/* Detailed logs table */}
+          <div className="border border-slate-205 rounded-xl overflow-hidden">
+            <table className="w-full text-left border-collapse text-3xs sm:text-2xs">
+              <thead>
+                <tr className="bg-slate-900 text-white font-bold uppercase font-mono tracking-wider">
+                  <th className="py-2 px-3 text-center">Date</th>
+                  <th className="py-2 px-3">Day</th>
+                  <th className="py-2 px-3">Status</th>
+                  <th className="py-2 px-3 text-center">Entry</th>
+                  <th className="py-2 px-3 text-center">Exit</th>
+                  <th className="py-3 px-3 text-center flex-1">Hours</th>
+                  <th className="py-2 px-3 text-center">Overtime</th>
+                  <th className="py-2 px-3 text-right">Wage (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {processedLogs.map((curr) => {
+                  const rec = curr.rawRecord;
+                  const statusColor = curr.status === 'Present' ? 'text-emerald-600' : 
+                                      curr.status === 'Late Entry' ? 'text-amber-500' :
+                                      curr.status === 'On Leave' ? 'text-indigo-600' :
+                                      curr.status === 'Weekly Off' ? 'text-slate-400' : 'text-rose-500';
+
+                  let dayEarnings = { totalPay: 0 };
+                  if (rec) {
+                    const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                    const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                    dayEarnings = calculateEarnings(
+                      curr.hours,
+                      curr.overtime,
+                      loggedInEmployee.hourlyRate,
+                      settings?.overtimeRateMultiplier || 1.5,
+                      isIncomplete,
+                      loggedInEmployee.monthlySalary,
+                      isHalfDay
+                    );
+                  }
+
+                  return (
+                    <tr key={curr.dateString} className="border-b border-slate-150 bg-white font-sans text-left">
+                      <td className="py-1.5 px-3 text-center font-mono font-semibold">{curr.dateString}</td>
+                      <td className="py-1.5 px-3 text-slate-500">{curr.dayLabel}</td>
+                      <td className={`py-1.5 px-3 font-semibold ${statusColor}`}>{curr.status}</td>
+                      <td className="py-1.5 px-3 text-center font-mono text-slate-650">{curr.clockIn}</td>
+                      <td className="py-1.5 px-3 text-center font-mono text-slate-650">{curr.clockOut}</td>
+                      <td className="py-1.5 px-3 text-center font-mono font-bold text-slate-700">
+                        {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
+                      </td>
+                      <td className="py-1.5 px-3 text-center font-mono text-indigo-600">
+                        {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
+                      </td>
+                      <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
+                        ₹{dayEarnings.totalPay.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Signatures section for PDF compliance */}
+          <div className="grid grid-cols-2 gap-12 pt-8 pb-3 font-sans">
+            <div className="border-t border-dashed border-slate-300 pt-2 text-center">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Employee Signature</p>
+              <p className="text-[8px] text-slate-400 mt-1">Verification of logged punch shifts</p>
+            </div>
+            <div className="border-t border-dashed border-slate-300 pt-2 text-center">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Authorized Representative Sign / Stamp</p>
+              <p className="text-[8px] text-slate-400 mt-1">{settings?.companyName || 'Calitech Engineering Solutions Ltd.'}</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
     </div>
   );
