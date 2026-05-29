@@ -34,7 +34,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
 ];
 
 export const INITIAL_SETTINGS: Settings = {
-  companyName: 'Calitech Engineering Solution',
+  companyName: 'Calitech Engineering Solutions Pvt. Ltd.',
   standardHours: 8,
   lunchDurationMinutes: 60,
   overtimeRateMultiplier: 1.5,

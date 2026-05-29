@@ -365,7 +365,7 @@ export const ALLOWED_LOCATIONS: AllowedLocation[] = [
   {
     lat: 26.1185573,
     lng: 91.5396016,
-    name: "Calitech Engineering Solutions pvt.ltd",
+    name: "Calitech Engineering Solutions Pvt. Ltd.",
     radiusMeters: 500
   },
   {
@@ -443,3 +443,151 @@ export function verifyProximityToOffice(coordStr: string): {
     matchedLocationName: closestLocation.name
   };
 }
+
+export interface ProcessedDayLog {
+  dateObj: Date;
+  dateString: string;
+  dayLabel: string;
+  formattedDate: string;
+  status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future';
+  isWeekend: boolean;
+  clockIn: string;
+  lunchOut: string;
+  lunchIn: string;
+  clockOut: string;
+  hours: number;
+  overtime: number;
+  notes?: string;
+  rawRecord?: any;
+  extraSundayPay?: number;
+  extraSundayHours?: number;
+}
+
+export function getProcessedLogsForEmployee(
+  myLogs: { date: string; [key: string]: any }[],
+  employee: { id: string; hourlyRate: number; monthlySalary?: number },
+  yearMonth: string,
+  settings: Settings
+): ProcessedDayLog[] {
+  const [year, month] = yearMonth.split('-').map(Number);
+  
+  // 1. Generate all dates in the selected month
+  const dateList: Date[] = [];
+  const dateCursor = new Date(year, month - 1, 1);
+  while (dateCursor.getMonth() === month - 1) {
+    dateList.push(new Date(dateCursor));
+    dateCursor.setDate(dateCursor.getDate() + 1);
+  }
+
+  // 2. Map calendar dates to attendance status initially
+  const logs: ProcessedDayLog[] = dateList.map(date => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+
+    const compareDate = new Date(date);
+    compareDate.setHours(0,0,0,0);
+    const compareToday = new Date();
+    compareToday.setHours(0,0,0,0);
+    const isFuture = compareDate > compareToday;
+    const isToday = compareDate.getTime() === compareToday.getTime();
+    
+    // Find matching record
+    const matchedRecord = myLogs.find(log => log.date === dateStr);
+    
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+    const isWeekend = dayOfWeek === 0; // Weekly Off on Sunday (Sat is standard work day)
+
+    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' = 'Absent';
+    let detail = matchedRecord;
+
+    if (isFuture) {
+      status = 'Future';
+    } else if (matchedRecord) {
+      if (matchedRecord.status && matchedRecord.status.toLowerCase().includes('leave')) {
+        status = 'On Leave';
+      } else if (matchedRecord.status === 'Late Entry') {
+        status = 'Late Entry';
+      } else if (matchedRecord.status === 'Night Shift') {
+        status = 'Night Shift';
+      } else {
+        status = 'Present';
+      }
+    } else if (isWeekend) {
+      status = 'Weekly Off';
+    } else if (isToday) {
+      status = 'Pending';
+    }
+
+    return {
+      dateObj: date,
+      dateString: dateStr,
+      dayLabel: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      formattedDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status,
+      isWeekend,
+      clockIn: detail?.entryTime || detail?.entryTime2 || '--:--',
+      lunchOut: detail?.lunchOut || '--:--',
+      lunchIn: detail?.lunchIn || '--:--',
+      clockOut: detail?.exitTime || detail?.exitTime2 || '--:--',
+      hours: detail?.totalHours || 0,
+      overtime: detail?.overtime || 0,
+      notes: detail?.notes,
+      rawRecord: detail
+    };
+  });
+
+  // 3. Group processed logs by week id to apply rules
+  const getMondayDateString = (dt: Date): string => {
+    const copy = new Date(dt);
+    const day = copy.getDay(); // 0 is Sunday, 1 is Monday ... 6 is Saturday
+    const diff = copy.getDate() - (day === 0 ? 6 : day - 1);
+    const monday = new Date(copy.setDate(diff));
+    const y = monday.getFullYear();
+    const mm = String(monday.getMonth() + 1).padStart(2, '0');
+    const dd = String(monday.getDate()).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  };
+
+  const logsByWeek: { [weekId: string]: ProcessedDayLog[] } = {};
+  logs.forEach(log => {
+    const weekId = getMondayDateString(log.dateObj);
+    if (!logsByWeek[weekId]) {
+      logsByWeek[weekId] = [];
+    }
+    logsByWeek[weekId].push(log);
+  });
+
+  // 4. Process each week's Sunday / Weekly off rule
+  Object.keys(logsByWeek).forEach(weekId => {
+    const weekDays = logsByWeek[weekId];
+    // Find Sunday of this week
+    const sundayLog = weekDays.find(day => day.dateObj.getDay() === 0);
+    if (sundayLog) {
+      const workedOnSunday = sundayLog.hours > 0 || (sundayLog.rawRecord && (sundayLog.rawRecord.entryTime || sundayLog.rawRecord.entryTime2));
+      if (workedOnSunday) {
+        // Find if there are other days of this week that were missed (within this month)
+        const otherDays = weekDays.filter(day => day.dateObj.getDay() !== 0);
+        const missedDays = otherDays.filter(day => day.status === 'Absent' || day.status === 'On Leave' || day.status === 'Pending');
+        
+        if (missedDays.length > 0) {
+          // Rule 1: Swap first missed day of this week to Weekly Off instead of Absent
+          const firstMissed = missedDays[0];
+          firstMissed.status = 'Weekly Off';
+        } else {
+          // Rule 2: Worked Sunday + No absent days in the rest of this week -> Sunday gets extra 8 hours (1 day) pay!
+          const extraPay = employee.monthlySalary && employee.monthlySalary > 0 
+            ? (employee.monthlySalary / 30) 
+            : (8 * employee.hourlyRate);
+          
+          sundayLog.extraSundayPay = extraPay;
+          sundayLog.extraSundayHours = 8;
+        }
+      }
+    }
+  });
+
+  return logs;
+}
+

@@ -29,7 +29,7 @@ import {
   FileText
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
-import { calculateEarnings, getLocalDateString } from '../utils/calculations';
+import { calculateEarnings, getLocalDateString, getProcessedLogsForEmployee } from '../utils/calculations';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -111,64 +111,18 @@ export default function MyAttendanceView({
 
   const calendarDays = getCalendarDays(selectedMonth);
 
-  // Map calendar dates to attendance records
-  const processedLogs = datesInMonth.map(date => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
+  const safeSettings: Settings = settings || {
+    standardHours: 8,
+    lunchDurationMinutes: 60,
+    overtimeRateMultiplier: 1.5,
+    companyName: 'Calitech Engineering Solutions Pvt. Ltd.',
+    workStartHour: '10:00',
+    workEndHour: '17:00',
+    currency: '₹'
+  };
 
-    const compareDate = new Date(date);
-    compareDate.setHours(0,0,0,0);
-    const compareToday = new Date();
-    compareToday.setHours(0,0,0,0);
-    const isFuture = compareDate > compareToday;
-    const isToday = compareDate.getTime() === compareToday.getTime();
-    
-    // Find matching record
-    const matchedRecord = myLogs.find(log => log.date === dateStr);
-    
-    const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; 
-
-    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' = 'Absent';
-    let detail = matchedRecord;
-
-    if (isFuture) {
-      status = 'Future';
-    } else if (matchedRecord) {
-      if (matchedRecord.status && matchedRecord.status.toLowerCase().includes('leave')) {
-        status = 'On Leave';
-      } else if (matchedRecord.status === 'Late Entry') {
-        status = 'Late Entry';
-      } else if (matchedRecord.status === 'Night Shift') {
-        status = 'Night Shift';
-      } else {
-        status = 'Present';
-      }
-    } else if (isWeekend) {
-      status = 'Weekly Off';
-    } else if (isToday) {
-      status = 'Pending'; // Today is active, and no check-in yet
-    }
-
-    return {
-      dateObj: date,
-      dateString: dateStr,
-      dayLabel: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      formattedDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      status,
-      isWeekend,
-      clockIn: detail?.entryTime || detail?.entryTime2 || '--:--',
-      lunchOut: detail?.lunchOut || '--:--',
-      lunchIn: detail?.lunchIn || '--:--',
-      clockOut: detail?.exitTime || detail?.exitTime2 || '--:--',
-      hours: detail?.totalHours || 0,
-      overtime: detail?.overtime || 0,
-      notes: detail?.notes,
-      rawRecord: detail
-    };
-  });
+  // Map calendar dates to attendance records with Sunday / Weekly Off rules
+  const processedLogs = getProcessedLogsForEmployee(myLogs, loggedInEmployee, selectedMonth, safeSettings);
 
   // Filter logs based on dropdown search
   const filteredLogs = processedLogs.filter(log => {
@@ -293,9 +247,9 @@ export default function MyAttendanceView({
         loggedInEmployee.monthlySalary,
         isHalfDay
       );
-      regularPay += dayEarnings.regularPay;
+      regularPay += dayEarnings.regularPay + (curr.extraSundayPay || 0);
       overtimePay += dayEarnings.overtimePay;
-      totalPay += dayEarnings.totalPay;
+      totalPay += dayEarnings.totalPay + (curr.extraSundayPay || 0);
     });
     regularPay = Math.round(regularPay * 100) / 100;
     overtimePay = Math.round(overtimePay * 100) / 100;
@@ -307,9 +261,10 @@ export default function MyAttendanceView({
       loggedInEmployee.hourlyRate,
       settings?.overtimeRateMultiplier || 1.5
     );
-    regularPay = earnings.regularPay;
+    const extraSundayWages = processedLogs.reduce((sum, curr) => sum + (curr.extraSundayPay || 0), 0);
+    regularPay = earnings.regularPay + extraSundayWages;
     overtimePay = earnings.overtimePay;
-    totalPay = earnings.totalPay;
+    totalPay = earnings.totalPay + extraSundayWages;
   }
 
   // Filter out system technical status logs and admin action logs to clean up standard employee notice board
@@ -402,7 +357,7 @@ export default function MyAttendanceView({
   };
 
   const handleDownloadPDF = () => {
-    const companyName = settings?.companyName || 'Calitech Engineering Solutions';
+    const companyName = settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.';
     const friendlyMonth = getFriendlyMonthName(selectedMonth);
     const printedOn = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
@@ -423,7 +378,7 @@ export default function MyAttendanceView({
       if (rec) {
         const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
         const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
-        dayEarnings = calculateEarnings(
+        const baseEarnings = calculateEarnings(
           curr.hours,
           curr.overtime,
           loggedInEmployee.hourlyRate,
@@ -432,6 +387,17 @@ export default function MyAttendanceView({
           loggedInEmployee.monthlySalary,
           isHalfDay
         );
+        dayEarnings = {
+          regularPay: baseEarnings.regularPay + (curr.extraSundayPay || 0),
+          overtimePay: baseEarnings.overtimePay,
+          totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+        };
+      } else if (curr.extraSundayPay) {
+        dayEarnings = {
+          regularPay: curr.extraSundayPay,
+          overtimePay: 0,
+          totalPay: curr.extraSundayPay
+        };
       }
 
       return `
@@ -1132,7 +1098,7 @@ export default function MyAttendanceView({
                 return (
                   <div 
                     key={`empty-${idx}`} 
-                    className="min-h-[48px] sm:min-h-[74px] bg-slate-50/20 rounded-lg border border-dashed border-slate-100/60"
+                    className="h-10 sm:h-12 bg-slate-50/20 rounded-lg border border-dashed border-slate-100/60"
                   />
                 );
               }
@@ -1155,148 +1121,78 @@ export default function MyAttendanceView({
               if (logMatch) {
                 switch (logMatch.status) {
                   case 'Present':
-                    containerStyle = 'bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50';
-                    badgeStyle = 'bg-emerald-600 text-white border-emerald-500 shadow-3xs';
+                    containerStyle = 'bg-emerald-50/30 border-emerald-150 hover:bg-emerald-50 text-emerald-800';
+                    badgeStyle = 'bg-emerald-600 text-white border-emerald-500 font-extrabold shadow-3xs';
                     badgeChar = 'P';
                     break;
                   case 'Late Entry':
-                    containerStyle = 'bg-amber-50/40 border-amber-205 hover:bg-amber-55';
-                    badgeStyle = 'bg-amber-500 text-white border-amber-450';
-                    badgeChar = 'L';
+                    containerStyle = 'bg-amber-50/30 border-amber-150 hover:bg-amber-50 text-amber-800';
+                    badgeStyle = 'bg-amber-500 text-white border-amber-400 font-extrabold';
+                    badgeChar = 'LE';
                     break;
                   case 'Night Shift':
-                    containerStyle = 'bg-sky-50/40 border-sky-200 hover:bg-sky-50';
-                    badgeStyle = 'bg-sky-650 text-white border-sky-600';
-                    badgeChar = 'N';
+                    containerStyle = 'bg-sky-50/30 border-sky-150 hover:bg-sky-50 text-sky-800';
+                    badgeStyle = 'bg-sky-600 text-white border-sky-500 font-extrabold';
+                    badgeChar = 'NS';
                     break;
                   case 'Weekly Off':
-                    containerStyle = 'bg-slate-50/60 border-slate-150 text-slate-400';
-                    badgeStyle = 'bg-slate-205 text-slate-500 border-slate-300';
+                    containerStyle = 'bg-slate-50/30 border-slate-120 text-slate-400';
+                    badgeStyle = 'bg-slate-200 text-slate-600 border-slate-300 font-extrabold';
                     badgeChar = 'WO';
                     break;
                   case 'On Leave':
-                    containerStyle = 'bg-teal-50/40 border-teal-200 text-teal-700 hover:bg-teal-50';
-                    badgeStyle = 'bg-teal-600 text-white border-teal-500';
-                    badgeChar = 'OL';
+                    containerStyle = 'bg-teal-50/30 border-teal-150 text-teal-800 hover:bg-teal-50';
+                    badgeStyle = 'bg-teal-600 text-white border-teal-500 font-extrabold';
+                    badgeChar = 'L'; // 'L' for Leave as requested
                     break;
                   case 'Pending':
-                    containerStyle = 'bg-indigo-50/20 border-indigo-150 shadow-3xs border-dashed text-slate-400';
-                    badgeStyle = 'bg-indigo-100 text-indigo-750 font-medium text-[8px] tracking-tight p-0.5';
-                    badgeChar = 'Awaiting';
+                    containerStyle = 'bg-indigo-50/10 border-indigo-150 shadow-3xs border-dashed text-slate-400';
+                    badgeStyle = 'bg-indigo-100 text-indigo-700 border-indigo-200 font-extrabold';
+                    badgeChar = '?';
                     break;
                   case 'Future':
-                    containerStyle = 'bg-slate-50/20 border-slate-100 text-slate-300';
+                    containerStyle = 'bg-slate-50/10 border-slate-100 text-slate-200';
                     badgeStyle = '';
                     badgeChar = '';
                     break;
                   default: // Absent
-                    containerStyle = 'bg-rose-50/30 border-rose-150 hover:bg-rose-50';
-                    badgeStyle = 'bg-rose-600 text-white border-rose-505 font-black shrink-0';
+                    containerStyle = 'bg-red-50/30 border-red-150 hover:bg-red-100 text-red-800';
+                    badgeStyle = 'bg-red-600 text-white border-red-500 font-extrabold shadow-3xs'; // RED background for Absent
                     badgeChar = 'A';
                     break;
+                }
+              }
+
+              // Dynamic browser tooltip detailed display
+              let tooltipText = `${logMatch ? logMatch.formattedDate : dateStringVal}`;
+              if (logMatch) {
+                tooltipText += `\nStatus: ${logMatch.status}`;
+                if (logMatch.hours > 0) {
+                  tooltipText += `\nIn: ${logMatch.clockIn} | Out: ${logMatch.clockOut}\nWork Hours: ${logMatch.hours.toFixed(2)} hrs`;
+                  if (logMatch.overtime > 0) {
+                    tooltipText += `\nOvertime: ${logMatch.overtime.toFixed(1)} hrs`;
+                  }
+                }
+                if (logMatch.notes) {
+                  tooltipText += `\nNotes: ${logMatch.notes}`;
                 }
               }
 
               return (
                 <div 
                   key={dateStringVal}
-                  className={`min-h-[48px] sm:min-h-[74px] p-1 sm:p-1.5 rounded-lg border flex flex-col justify-between transition-all hover:shadow-3xs group ${containerStyle} ${
-                    isToday ? 'ring-2 ring-indigo-500 border-indigo-500' : ''
+                  title={tooltipText}
+                  className={`h-10 sm:h-12 py-1 px-1.5 sm:px-2 rounded-lg border flex items-center justify-between transition-all hover:shadow-3xs group cursor-help ${containerStyle} ${
+                    isToday ? 'ring-2 ring-indigo-500 border-indigo-500 font-extrabold' : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[9px] sm:text-[10px] font-black tracking-tight ${isToday ? 'text-indigo-650 font-black font-mono' : 'text-slate-800'}`}>
-                      {dateNum}
-                      {isToday && <span className="text-[6px] text-indigo-655 uppercase ml-0.5 hidden sm:inline-block font-bold">Today</span>}
+                  <span className={`text-[10px] sm:text-[11px] font-bold font-mono tracking-tight ${isToday ? 'text-indigo-650 font-black' : 'text-slate-800'}`}>
+                    {dateNum}
+                  </span>
+                  {badgeChar && (
+                    <span className={`inline-flex shrink-0 min-w-[14px] sm:min-w-[18px] h-4.5 sm:h-5.5 items-center justify-center text-[7.5px] sm:text-[9.5px] font-black rounded border px-0.5 sm:px-1 uppercase leading-none font-mono ${badgeStyle}`}>
+                      {badgeChar}
                     </span>
-                    {badgeChar && (
-                      <span className={`inline-flex h-3.5 sm:h-4.5 items-center justify-center text-[7.5px] sm:text-[8.5px] font-black rounded border px-0.5 sm:px-1 uppercase leading-none font-mono ${badgeStyle}`}>
-                        {badgeChar}
-                      </span>
-                    )}
-                  </div>
-
-                  {logMatch && logMatch.status !== 'Future' && logMatch.status !== 'Weekly Off' && logMatch.status !== 'On Leave' && (
-                    <div className="mt-1 space-y-0.5 select-none font-mono text-[8px] sm:text-[8.5px] text-slate-550 flex flex-col">
-                      {logMatch.hours > 0 ? (
-                        <>
-                          {/* Desktop details view */}
-                          <div className="hidden sm:flex flex-col space-y-0.5">
-                            <span className="font-bold text-slate-700 flex items-center gap-1 truncate">
-                              In: {logMatch.clockIn}
-                              {(logMatch.rawRecord?.locationIn || logMatch.rawRecord?.locationEntry2) && (
-                                <a
-                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationIn || logMatch.rawRecord.locationEntry2}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[7.5px] text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
-                                  title="Verify GPS Location"
-                                >
-                                  <MapPin className="w-2 h-2" />
-                                </a>
-                              )}
-                            </span>
-                            <span className="font-bold text-slate-700 flex items-center gap-1 truncate">
-                              Out: {logMatch.clockOut}
-                              {(logMatch.rawRecord?.locationOut || logMatch.rawRecord?.locationExit2) && (
-                                <a
-                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationOut || logMatch.rawRecord.locationExit2}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center text-[7.5px] text-teal-610 bg-teal-50 hover:bg-teal-100 border border-teal-150 px-0.5 rounded transition-colors shrink-0 font-medium"
-                                  title="Verify GPS Location"
-                                >
-                                  <MapPin className="w-2 h-2" />
-                                </a>
-                              )}
-                            </span>
-                          </div>
-
-                          {/* Mobile compact labels */}
-                          <div className="flex sm:hidden flex-col text-[7.5px] font-bold text-slate-700 space-y-0.5">
-                            <span className="truncate">
-                              I: {logMatch.clockIn}
-                            </span>
-                            <span className="truncate">
-                              O: {logMatch.clockOut}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-1 mt-0.5">
-                            <span className="text-indigo-655 font-extrabold font-mono text-[7.5px] sm:text-[8.5px] leading-none shrink-0">{logMatch.hours.toFixed(1)} hrs</span>
-                            {/* General Map Pin link on mobile */}
-                            <span className="inline-flex sm:hidden">
-                              {(logMatch.rawRecord?.locationIn || logMatch.rawRecord?.locationEntry2 || logMatch.rawRecord?.locationOut || logMatch.rawRecord?.locationExit2) && (
-                                <a
-                                  href={`https://www.google.com/maps?q=${logMatch.rawRecord.locationIn || logMatch.rawRecord.locationEntry2 || logMatch.rawRecord.locationOut || logMatch.rawRecord.locationExit2}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-teal-605 bg-teal-50 hover:bg-teal-100 border border-teal-150 p-0.5 rounded shrink-0 transition-all scale-90"
-                                  title="GPS Location Link"
-                                >
-                                  <MapPin className="w-1.5 h-1.5" />
-                                </a>
-                              )}
-                            </span>
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-slate-350 italic text-[7px] sm:text-[7.5px] hidden sm:block">No clocks logged</span>
-                      )}
-                    </div>
-                  )}
-
-                  {logMatch && logMatch.status === 'Weekly Off' && (
-                    <div className="text-[8.5px] sm:text-[9.5px] italic font-mono text-slate-400 font-bold flex items-center gap-0.5 hidden sm:flex">
-                      <Coffee className="w-2.5 h-2.5 text-slate-405" />
-                      <span>OFF DAY</span>
-                    </div>
-                  )}
-
-                  {logMatch && logMatch.status === 'On Leave' && (
-                    <div className="text-[8px] sm:text-[8.5px] uppercase tracking-wider font-mono text-teal-600 font-black hidden sm:block">
-                      Excused Out
-                    </div>
                   )}
                 </div>
               );
@@ -1591,13 +1487,20 @@ export default function MyAttendanceView({
                         {/* Log Hours */}
                         <td className="py-3 px-4 h-12">
                           {log.hours > 0 ? (
-                            <div className="flex items-center space-x-1">
-                              <span className="font-mono font-bold text-slate-850 bg-indigo-50/30 text-indigo-755 border border-indigo-100 px-1.5 py-0.5 rounded">
-                                {log.hours.toFixed(2)} hrs
-                              </span>
-                              {log.overtime > 0 && (
-                                <span className="text-[10px] font-mono text-emerald-600 font-bold">
-                                  (+{log.overtime.toFixed(1)} OT)
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center space-x-1">
+                                <span className="font-mono font-bold text-slate-850 bg-indigo-50/30 text-indigo-755 border border-indigo-100 px-1.5 py-0.5 rounded">
+                                  {log.hours.toFixed(2)} hrs
+                                </span>
+                                {log.overtime > 0 && (
+                                  <span className="text-[10px] font-mono text-emerald-600 font-bold">
+                                    (+{log.overtime.toFixed(1)} OT)
+                                  </span>
+                                )}
+                              </div>
+                              {log.extraSundayPay && (
+                                <span className="inline-flex max-w-fit text-[8.5px] items-center gap-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold px-1 py-0.5 rounded uppercase font-mono tracking-wide" title="Worked Sunday + Full Week worked reward (+8 Hours pay!)">
+                                  ★ +8h Sunday Reward
                                 </span>
                               )}
                             </div>
@@ -1637,7 +1540,7 @@ export default function MyAttendanceView({
                 <tr>
                   <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
                     <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
-                      {settings?.companyName || 'Calitech Engineering Solutions'}
+                      {settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}
                     </h1>
                     <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Employee Attendance & Wage Statement
@@ -1789,7 +1692,7 @@ export default function MyAttendanceView({
                     if (rec) {
                       const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
                       const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
-                      dayEarnings = calculateEarnings(
+                      const baseEarnings = calculateEarnings(
                         curr.hours,
                         curr.overtime,
                         loggedInEmployee.hourlyRate,
@@ -1798,6 +1701,13 @@ export default function MyAttendanceView({
                         loggedInEmployee.monthlySalary,
                         isHalfDay
                       );
+                      dayEarnings = {
+                        totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+                      };
+                    } else if (curr.extraSundayPay) {
+                      dayEarnings = {
+                        totalPay: curr.extraSundayPay
+                      };
                     }
 
                     return (
@@ -1825,7 +1735,7 @@ export default function MyAttendanceView({
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
-            <span>{settings?.companyName || 'Calitech Engineering Solutions'} - Monthly Statement</span>
+            <span>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'} - Monthly Statement</span>
             <span>Page 1 of 2</span>
           </div>
         </div>
@@ -1849,7 +1759,7 @@ export default function MyAttendanceView({
                 <tr>
                   <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
                     <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
-                      {settings?.companyName || 'Calitech Engineering Solutions'}
+                      {settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}
                     </h1>
                     <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Employee Attendance & Wage Statement
@@ -1894,7 +1804,7 @@ export default function MyAttendanceView({
                     if (rec) {
                       const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
                       const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
-                      dayEarnings = calculateEarnings(
+                      const baseEarnings = calculateEarnings(
                         curr.hours,
                         curr.overtime,
                         loggedInEmployee.hourlyRate,
@@ -1903,6 +1813,13 @@ export default function MyAttendanceView({
                         loggedInEmployee.monthlySalary,
                         isHalfDay
                       );
+                      dayEarnings = {
+                        totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+                      };
+                    } else if (curr.extraSundayPay) {
+                      dayEarnings = {
+                        totalPay: curr.extraSundayPay
+                      };
                     }
 
                     return (
@@ -1938,7 +1855,7 @@ export default function MyAttendanceView({
                   </td>
                   <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
                     <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Authorized Representative</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions'}</p>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}</p>
                   </td>
                 </tr>
               </tbody>
@@ -1946,7 +1863,7 @@ export default function MyAttendanceView({
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
-            <span>{settings?.companyName || 'Calitech Engineering Solutions'} - Monthly Statement</span>
+            <span>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'} - Monthly Statement</span>
             <span>Page 2 of 2</span>
           </div>
         </div>

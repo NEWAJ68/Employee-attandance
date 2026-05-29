@@ -19,7 +19,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateEarnings, calculateAttendanceMetrics } from '../utils/calculations';
+import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee } from '../utils/calculations';
 
 interface ReportsViewProps {
   employees: Employee[];
@@ -336,32 +336,65 @@ export default function ReportsView({
 
   // Group and compute employee-wise summaries for payroll summary PDF doc
   const employeePayrollSummaries = employees.map(emp => {
-    const empRecords = filteredRecords.filter(rec => rec.employeeId === emp.id);
+    const monthStr = singleDate.slice(0, 7);
+    const empRecords = attendance.filter(rec => rec.employeeId === emp.id && rec.date.startsWith(monthStr));
+    
+    if (empRecords.length === 0) {
+      return {
+        employeeId: emp.id,
+        name: emp.name,
+        department: emp.department || 'General Services',
+        hourlyRate: emp.hourlyRate,
+        totalHours: 0,
+        overtimeHours: 0,
+        regularPay: 0,
+        overtimePay: 0,
+        netPay: 0,
+        recordCount: 0
+      };
+    }
+
+    const employeeProcessedDays = getProcessedLogsForEmployee(empRecords, emp, monthStr, settings);
+    
     let totalHours = 0;
     let overtimeHours = 0;
     let regularPay = 0;
     let overtimePay = 0;
 
-    empRecords.forEach(rec => {
+    employeeProcessedDays.forEach(curr => {
+      if (curr.status === 'Future') return;
+      
+      const rec = curr.rawRecord;
+      if (!rec) return;
+      
       const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
-      const isUnderMinHours = (rec.totalHours || 0) < 3;
-      const effectiveHours = (isIncomplete || isUnderMinHours) ? 0 : (rec.totalHours || 0);
-      const effectiveOvertime = (isIncomplete || isUnderMinHours) ? 0 : (rec.overtime || 0);
+      const isUnderMinHours = curr.hours < 3;
+      const effectiveHours = (isIncomplete || isUnderMinHours) ? 0 : curr.hours;
+      const effectiveOvertime = (isIncomplete || isUnderMinHours) ? 0 : curr.overtime;
 
       totalHours += effectiveHours;
       overtimeHours += effectiveOvertime;
+      
       const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
-      const { regularPay: rp, overtimePay: op } = calculateEarnings(
-        rec.totalHours || 0,
-        rec.overtime || 0,
+      const dayEarnings = calculateEarnings(
+        curr.hours,
+        curr.overtime,
         emp.hourlyRate,
         settings.overtimeRateMultiplier,
         isIncomplete,
         emp.monthlySalary,
         isHalfDay
       );
-      regularPay += rp;
-      overtimePay += op;
+      
+      regularPay += dayEarnings.regularPay + (curr.extraSundayPay || 0);
+      overtimePay += dayEarnings.overtimePay;
+    });
+
+    // Handle edge cases of extraSundayPay on days with no attendance entry
+    employeeProcessedDays.forEach(curr => {
+      if (!curr.rawRecord && curr.extraSundayPay) {
+        regularPay += curr.extraSundayPay;
+      }
     });
 
     const netPay = regularPay + overtimePay;
