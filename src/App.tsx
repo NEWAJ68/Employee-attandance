@@ -210,44 +210,29 @@ export default function App() {
     let unsubNotifs: (() => void) | null = null;
     let destroyed = false;
 
-    const setupSubscriptions = async () => {
-      let alreadyInitialized = false;
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'global'));
-        if (settingsSnap.exists()) {
-          alreadyInitialized = true;
-        }
-      } catch (err) {
-        console.warn('Check initialization failed:', err);
-      }
-
+    const setupSubscriptions = () => {
       if (destroyed) return;
 
-      // Snapshot - Employees
-      unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
-        if (snapshot.empty && !alreadyInitialized) {
-          // Seed defaults onto Firestore
+      // Snapshot - Settings
+      // Since settings/global is the master initialization document,
+      // its creation/existence dictates if we seed initial defaults to an empty Firestore instance.
+      unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+        if (!docSnap.exists()) {
+          console.log('Pristine database detected. Seeding settings and demo fixtures to Firestore...');
+          
+          // Seed settings
+          setDoc(doc(db, 'settings', 'global'), INITIAL_SETTINGS).catch(err => {
+            handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+          });
+
+          // Seed default employees
           INITIAL_EMPLOYEES.forEach((emp) => {
             setDoc(doc(db, 'employees', emp.id), emp).catch(err => {
               handleFirestoreError(err, OperationType.WRITE, `employees/${emp.id}`);
             });
           });
-        } else {
-          const list: Employee[] = [];
-          snapshot.forEach((d) => {
-            list.push(d.data() as Employee);
-          });
-          setEmployees(list);
-        }
-      }, (err) => {
-        console.error('Employees cloud listing denied:', err);
-        setFirebaseStatus('error');
-      });
 
-      // Snapshot - Attendance
-      unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
-        if (snapshot.empty && !alreadyInitialized) {
-          // Seed default logs relative to today's date
+          // Seed default attendance
           const seededLogs = generateInitialAttendance(new Date().toISOString().split('T')[0]);
           seededLogs.forEach((rec) => {
             const docId = `${rec.date}_${rec.employeeId}`;
@@ -255,23 +240,19 @@ export default function App() {
               handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
             });
           });
-        } else {
-          const list: AttendanceRecord[] = [];
-          snapshot.forEach((d) => {
-            list.push(d.data() as AttendanceRecord);
-          });
-          setAttendance(list);
-        }
-      }, (err) => {
-        console.error('Attendance cloud listing denied:', err);
-        setFirebaseStatus('error');
-      });
 
-      // Snapshot - Settings
-      unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
-        if (!docSnap.exists()) {
-          setDoc(doc(db, 'settings', 'global'), INITIAL_SETTINGS).catch(err => {
-            handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+          // Seed default leaves
+          INITIAL_LEAVE_REQUESTS.forEach((req) => {
+            setDoc(doc(db, 'leaveRequests', req.id), req).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${req.id}`);
+            });
+          });
+
+          // Seed default notifications
+          INITIAL_NOTIFICATIONS.forEach((notif) => {
+            setDoc(doc(db, 'notifications', notif.id), notif).catch(err => {
+              handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`);
+            });
           });
         } else {
           setSettings(docSnap.data() as Settings);
@@ -281,22 +262,38 @@ export default function App() {
         setFirebaseStatus('error');
       });
 
+      // Snapshot - Employees
+      unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
+        const list: Employee[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as Employee);
+        });
+        setEmployees(list);
+      }, (err) => {
+        console.error('Employees cloud listing denied:', err);
+        setFirebaseStatus('error');
+      });
+
+      // Snapshot - Attendance
+      unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        const list: AttendanceRecord[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as AttendanceRecord);
+        });
+        setAttendance(list);
+      }, (err) => {
+        console.error('Attendance cloud listing denied:', err);
+        setFirebaseStatus('error');
+      });
+
       // Snapshot - Leave Requests
       unsubLeaves = onSnapshot(collection(db, 'leaveRequests'), (snapshot) => {
-        if (snapshot.empty && !alreadyInitialized) {
-          INITIAL_LEAVE_REQUESTS.forEach((req) => {
-            setDoc(doc(db, 'leaveRequests', req.id), req).catch(err => {
-              handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${req.id}`);
-            });
-          });
-        } else {
-          const list: LeaveRequest[] = [];
-          snapshot.forEach((d) => {
-            list.push(d.data() as LeaveRequest);
-          });
-          list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-          setLeaveRequests(list);
-        }
+        const list: LeaveRequest[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as LeaveRequest);
+        });
+        list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+        setLeaveRequests(list);
       }, (err) => {
         console.error('Leave requests query failed:', err);
         setFirebaseStatus('error');
@@ -304,21 +301,13 @@ export default function App() {
 
       // Snapshot - Notifications
       unsubNotifs = onSnapshot(collection(db, 'notifications'), (snapshot) => {
-        if (snapshot.empty && !alreadyInitialized) {
-          INITIAL_NOTIFICATIONS.forEach((notif) => {
-            setDoc(doc(db, 'notifications', notif.id), notif).catch(err => {
-              handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`);
-            });
-          });
-        } else {
-          const list: AppNotification[] = [];
-          snapshot.forEach((d) => {
-            list.push(d.data() as AppNotification);
-          });
-          // Sort by unique timestamp string or id if desired, keeping newest first
-          list.sort((a, b) => b.id.localeCompare(a.id));
-          setNotifications(list);
-        }
+        const list: AppNotification[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as AppNotification);
+        });
+        // Sort by unique timestamp string or id if desired, keeping newest first
+        list.sort((a, b) => b.id.localeCompare(a.id));
+        setNotifications(list);
       }, (err) => {
         console.error('Audit alerts subscription query denied:', err);
         setFirebaseStatus('error');
@@ -377,6 +366,43 @@ export default function App() {
   useEffect(() => {
     handleSaveToLocalStorage();
   }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
+
+  // Automatic Real-time Google Sheets Mirroring on dynamic snapshot updates
+  useEffect(() => {
+    if (!googleAccessToken || !googleSpreadsheetId || !settings.autoSyncSheets) {
+      return;
+    }
+
+    // Debounce timer (3 seconds) to prevent API rate-limits during bulk/fast updates
+    const timer = setTimeout(async () => {
+      try {
+        console.log('Real-time sync: Mirroring Employees roster to connected Google Sheet...');
+        await syncEmployeesToSheet(googleAccessToken, googleSpreadsheetId, employees);
+      } catch (err) {
+        console.error('Real-time automatic Employees sheets mirror sync failed:', err);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [employees, googleAccessToken, googleSpreadsheetId, settings.autoSyncSheets]);
+
+  useEffect(() => {
+    if (!googleAccessToken || !googleSpreadsheetId || !settings.autoSyncSheets) {
+      return;
+    }
+
+    // Debounce timer (3.5 seconds) to prevent concurrent write rate-limits on Sheets API
+    const timer = setTimeout(async () => {
+      try {
+        console.log('Real-time sync: Mirroring Attendance logs to connected Google Sheet...');
+        await syncAllAttendanceToSheet(googleAccessToken, googleSpreadsheetId, attendance);
+      } catch (err) {
+        console.error('Real-time automatic Attendance sheets mirror sync failed:', err);
+      }
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [attendance, googleAccessToken, googleSpreadsheetId, settings.autoSyncSheets]);
 
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
