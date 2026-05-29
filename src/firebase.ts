@@ -77,17 +77,32 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Connection test with a fast, non-blocking timeout fallback to detect offline environments gracefully
 export async function testConnection(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
   try {
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firebase connection check timed out')), 2500)
+      setTimeout(() => reject(new Error('Firebase connection check timed out')), 3500)
     );
     await Promise.race([
       getDocFromServer(doc(db, 'test', 'connection')),
       timeout
     ]);
     return true;
-  } catch (error) {
-    console.info("Firestore status log: Operating in offline/local state. Cache/IndexedDB is active.");
+  } catch (error: any) {
+    // If the server explicitly returns a Firestore error code (like permission-denied or unauthenticated),
+    // it means we successfully contacted the Google Cloud Firestore endpoint and got a real-time response.
+    if (error && (
+      error.code === 'permission-denied' || 
+      error.code === 'unauthenticated' || 
+      error.code === 'not-found' ||
+      error.message?.includes('permission-denied') ||
+      error.message?.includes('unauthenticated')
+    )) {
+      console.log("Firestore connection verified (server responded):", error.code || error.message);
+      return true;
+    }
+    console.info("Firestore status log: Operating in offline/local state. Cache/IndexedDB is active. Details:", error?.message || error);
     return false;
   }
 }

@@ -490,6 +490,33 @@ export default function App() {
     setIsSyncingQueue(false);
   };
 
+  const handleManualConnectionCheck = async () => {
+    if (firebaseStatus === 'connecting') return;
+    setFirebaseStatus('connecting');
+    setFirebaseError(null);
+    console.log('Manually checking Cloud DB connection...');
+    const isOnline = await testConnection();
+    if (isOnline) {
+      setFirebaseStatus('connected');
+      handleRaiseNotification(
+        'Database Sync Restored',
+        'Successfully established handshake with live Google Cloud Firestore. Refreshing feeds...',
+        'success'
+      );
+      if (punchQueue.length > 0) {
+        await syncOfflineQueue();
+      }
+    } else {
+      setFirebaseStatus('offline');
+      setFirebaseError('Handshake timed out or unverified.');
+      handleRaiseNotification(
+        'Database Sync Failed',
+        'Could not reach database server. Operating in robust offline-cache mode.',
+        'warning'
+      );
+    }
+  };
+
   // Run automatically when firebaseStatus becomes 'connected'
   useEffect(() => {
     if (firebaseStatus === 'connected' && punchQueue.length > 0 && !isSyncingQueue) {
@@ -517,17 +544,17 @@ export default function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic ping to check connection every 15 seconds to ensure real-time accuracy
+    // Periodic ping to check connection every 35 seconds to ensure real-time accuracy without overriding active listener
     const interval = setInterval(async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setFirebaseStatus('offline');
+        return;
+      }
       const isOnline = await testConnection();
-      setFirebaseStatus(prev => {
-        const nextState = isOnline ? 'connected' : 'offline';
-        if (prev !== nextState && (prev === 'connected' || prev === 'offline')) {
-          return nextState;
-        }
-        return prev;
-      });
-    }, 15000);
+      if (isOnline) {
+        setFirebaseStatus(prev => prev === 'offline' ? 'connected' : prev);
+      }
+    }, 35000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -1207,12 +1234,13 @@ export default function App() {
             )}
 
             <div 
-              className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
-                firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' :
+              onClick={handleManualConnectionCheck}
+              className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:opacity-90 ${
+                firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-155 text-indigo-700 hover:bg-indigo-100/80' :
                 firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
-                'bg-rose-50 border-rose-100 text-rose-700'
+                'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
               }`}
-              title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}` : "Firebase Cloud Database Connection Status"}
+              title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}. Click to re-establish connection manually.` : "Firebase Database Online. Click to manually ping / synchronize now."}
             >
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
               <span className="hidden sm:inline">
