@@ -101,7 +101,7 @@ export default function Sidebar({
       {/* Mobile Sidebar overlay */}
       {isOpen && (
         <div 
-          className={`${isFixed ? 'fixed' : 'absolute'} inset-0 bg-slate-900/40 backdrop-blur-sm z-30 ${layoutMode === 'desktop' ? 'lg:hidden' : ''}`}
+          className={`${isFixed ? 'fixed' : 'absolute'} inset-0 bg-slate-900/40 backdrop-blur-sm z-30 ${layoutMode === 'desktop' ? 'lg:hidden' : ''} print:hidden`}
           onClick={onToggleSidebar}
         />
       )}
@@ -109,7 +109,7 @@ export default function Sidebar({
       {/* Main Sidebar */}
       <aside 
         id="app-sidebar"
-        className={`${isFixed ? 'fixed' : 'absolute'} top-0 bottom-0 left-0 z-40 w-72 bg-[#111827] text-gray-300 flex flex-col border-r border-[#1f2937] shadow-xl transition-transform duration-300 transform ${
+        className={`${isFixed ? 'fixed' : 'absolute'} top-0 bottom-0 left-0 z-40 w-72 bg-[#111827] text-gray-300 flex flex-col border-r border-[#1f2937] shadow-xl transition-transform duration-300 transform print:hidden ${
           layoutMode === 'desktop' ? 'lg:translate-x-0' : ''
         } ${
           isOpen ? 'translate-x-0' : '-translate-x-full'

@@ -59,6 +59,7 @@ export default function ReportsView({
   // Clear confirmation state
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isPayrollSummaryOpen, setIsPayrollSummaryOpen] = useState(false);
   
   // Form fields
   const [formEmployeeId, setFormEmployeeId] = useState('');
@@ -297,6 +298,48 @@ export default function ReportsView({
     document.body.removeChild(link);
   };
 
+  // Group and compute employee-wise summaries for payroll summary PDF doc
+  const employeePayrollSummaries = employees.map(emp => {
+    const empRecords = filteredRecords.filter(rec => rec.employeeId === emp.id);
+    let totalHours = 0;
+    let overtimeHours = 0;
+    let regularPay = 0;
+    let overtimePay = 0;
+
+    empRecords.forEach(rec => {
+      totalHours += rec.totalHours || 0;
+      overtimeHours += rec.overtime || 0;
+      const { regularPay: rp, overtimePay: op } = calculateEarnings(
+        rec.totalHours || 0,
+        rec.overtime || 0,
+        emp.hourlyRate,
+        settings.overtimeRateMultiplier
+      );
+      regularPay += rp;
+      overtimePay += op;
+    });
+
+    const netPay = regularPay + overtimePay;
+
+    return {
+      employeeId: emp.id,
+      name: emp.name,
+      department: emp.department || 'General Services',
+      hourlyRate: emp.hourlyRate,
+      totalHours,
+      overtimeHours,
+      regularPay,
+      overtimePay,
+      netPay,
+      recordCount: empRecords.length
+    };
+  }).filter(summary => summary.recordCount > 0);
+
+  const grandSummaryWages = employeePayrollSummaries.reduce((sum, item) => sum + item.regularPay, 0);
+  const grandSummaryOvertime = employeePayrollSummaries.reduce((sum, item) => sum + item.overtimePay, 0);
+  const grandSummaryNetPay = employeePayrollSummaries.reduce((sum, item) => sum + item.netPay, 0);
+  const grandSummaryHours = employeePayrollSummaries.reduce((sum, item) => sum + item.totalHours, 0);
+
   // EXPORT PDF via window.print CSS print styles
   const handlePrintPDF = () => {
     window.print();
@@ -339,6 +382,14 @@ export default function ReportsView({
           >
             <Printer className="w-4 h-4 text-indigo-200 shrink-0" />
             <span>Export / Print PDF</span>
+          </button>
+          <button
+            onClick={() => setIsPayrollSummaryOpen(true)}
+            id="btn-payroll-summary-pdf"
+            className="flex items-center space-x-1 px-4 py-2 text-white bg-violet-600 hover:bg-violet-700 rounded-xl text-xs font-semibold cursor-pointer shadow-sm shadow-violet-600/10 transition-colors"
+          >
+            <Receipt className="w-4 h-4 text-violet-200 shrink-0" />
+            <span>Payroll Summary (PDF)</span>
           </button>
           {onClearAttendance && (
             <button
@@ -977,6 +1028,202 @@ export default function ReportsView({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* PAYROLL SUMMARY REPORT MODAL FOR PRINT */}
+      {isPayrollSummaryOpen && (
+        <div id="payroll-summary-modal-backdrop" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn print:p-0 print:bg-white print:static print:inset-auto">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-4xl w-full shadow-2xl border border-slate-100 relative space-y-6 max-h-[90vh] overflow-y-auto animate-scaleIn print:shadow-none print:border-0 print:p-0 print:max-h-none print:overflow-visible">
+            
+            {/* Header - Screen only */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 print:hidden">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                  <Receipt className="w-5 h-5 text-indigo-600" />
+                  <span>Payroll Summary PDF Generator</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Print or save clean, structured employee wage lists for accounting audits
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center space-x-1.5 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl text-xs font-bold cursor-pointer shadow-sm transition-colors"
+                >
+                  <Printer className="w-4 h-4 text-indigo-100" />
+                  <span>Print PDF Document</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPayrollSummaryOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-lg cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Sheet Container */}
+            <div id="payroll-summary-sheet" className="space-y-6 pt-2 print:space-y-8">
+              {/* Special print header styles to override everything on printers */}
+              <style>{`
+                @media print {
+                  body * {
+                    visibility: hidden;
+                  }
+                  #main-application-stage, #main-application-stage * {
+                    visibility: hidden;
+                  }
+                  #payroll-summary-modal-backdrop, #payroll-summary-modal-backdrop * {
+                    visibility: visible;
+                  }
+                  #payroll-summary-sheet, #payroll-summary-sheet * {
+                    visibility: visible;
+                  }
+                  #payroll-summary-modal-backdrop {
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: white !important;
+                    display: block !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                  }
+                  .print\\:hidden {
+                    display: none !important;
+                  }
+                }
+              `}</style>
+
+              {/* Master Company Header */}
+              <div className="border-b border-slate-200 pb-5 flex justify-between items-start">
+                <div>
+                  <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">{settings.companyName}</h1>
+                  <p className="text-3xs font-mono font-bold uppercase tracking-widest text-slate-400 mt-0.5">Official Payroll & Earnings Audit Sheet</p>
+                  <div className="flex items-center space-x-3 mt-2 text-2xs text-slate-500 font-medium font-sans">
+                    <span>Period Filter: <strong className="text-slate-800 capitalize font-semibold">{filterType} summary</strong></span>
+                    <span>•</span>
+                    {filterType === 'daily' && <span>Date: <strong className="text-slate-800 font-semibold">{singleDate}</strong></span>}
+                    {filterType === 'monthly' && <span>Month: <strong className="text-slate-800 font-semibold">{singleDate.slice(0, 7)}</strong></span>}
+                    {filterType === 'custom' && <span>Range: <strong className="text-slate-800 font-semibold">{startDate} to {endDate}</strong></span>}
+                  </div>
+                </div>
+                <div className="text-right text-3xs text-slate-400 font-mono space-y-0.5">
+                  <p>Document: PAYROLL-REF-{new Date().toISOString().split('T')[0].replace(/-/g, '')}</p>
+                  <p>Generated At: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-[9px] text-green-600 font-bold">STATUS: AUDITED & LOCKED</p>
+                </div>
+              </div>
+
+              {/* Aggregated Total Cards */}
+              <div className="grid grid-cols-3 gap-4 bg-slate-50 border border-slate-100 p-4 rounded-2xl print:border-slate-300">
+                <div className="space-y-0.5 font-sans">
+                  <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider font-mono">Cumulative Hours</span>
+                  <p className="text-base font-black text-slate-900">{grandSummaryHours.toFixed(2)} hrs</p>
+                </div>
+                <div className="space-y-0.5 font-sans">
+                  <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider font-mono">Overtime Subtotal</span>
+                  <p className="text-base font-black text-slate-900">₹{grandSummaryOvertime.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-0.5 font-sans border-l border-slate-200/80 pl-4 font-sans">
+                  <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-widest font-mono">Net Payable Budget</span>
+                  <p className="text-base font-black text-indigo-650">₹{grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+
+              {/* Master Summary Table of Employee Wages */}
+              <div className="border border-slate-100 rounded-2xl overflow-hidden print:border-slate-300 pointer-events-none">
+                <table className="w-full text-left border-collapse text-2xs font-sans">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-100/60 text-slate-600 font-bold tracking-wider uppercase font-mono text-[9px]">
+                      <th className="py-2.5 px-4 font-bold">Staff ID</th>
+                      <th className="py-2.5 px-4 font-bold">Employee Name</th>
+                      <th className="py-2.5 px-3 font-bold">Department</th>
+                      <th className="py-2.5 px-3 text-center font-bold">Hourly Rate</th>
+                      <th className="py-2.5 px-3 text-center font-bold">Total Hours</th>
+                      <th className="py-2.5 px-3 text-center font-bold">Overtime (Hrs)</th>
+                      <th className="py-2.5 px-4 text-right font-bold">Net Payable Amnt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150 text-slate-800">
+                    {employeePayrollSummaries.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-400 font-mono">
+                          No active employee payroll summary items found for specified parameters.
+                        </td>
+                      </tr>
+                    ) : (
+                      employeePayrollSummaries.map((summary) => (
+                        <tr key={summary.employeeId} className="hover:bg-slate-50/10">
+                          <td className="py-3 px-4 font-mono font-semibold text-slate-500">
+                            {summary.employeeId}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900">
+                            {summary.name}
+                          </td>
+                          <td className="py-3 px-3 text-slate-600">
+                            {summary.department}
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono text-slate-500 font-sans">
+                            ₹{summary.hourlyRate}/hr
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono font-semibold">
+                            {summary.totalHours.toFixed(2)}h
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono text-indigo-600 font-semibold">
+                            {summary.overtimeHours > 0 ? `${summary.overtimeHours.toFixed(2)}h` : '0.00'}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-black text-rose-650">
+                            ₹{summary.netPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-55 border-t border-slate-300 font-bold font-sans">
+                      <td colSpan={4} className="py-3 px-4 font-mono uppercase tracking-widest text-[9px] text-slate-500 text-right">
+                        Summary Cumulative Totals:
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-extrabold text-slate-900">
+                        {grandSummaryHours.toFixed(2)}h
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono text-indigo-700 font-extrabold">
+                        {employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-black text-indigo-900 bg-slate-100/50">
+                        ₹{grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Certification stamp & signatory fields for compliance printouts */}
+              <div className="grid grid-cols-2 gap-12 pt-10 print:pt-16 font-sans">
+                <div className="border-t border-dashed border-slate-300 pt-3">
+                  <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold block font-mono">Prepared & Verified By</span>
+                  <p className="text-xs font-bold text-slate-800 mt-1">HR General / Admin Manager</p>
+                  <p className="text-3xs text-slate-400 mt-0.5 font-mono">Calitech Finance Operations Desk</p>
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-3 text-right">
+                  <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold block font-mono">Approved & Signed By</span>
+                  <p className="text-xs font-bold text-slate-800 mt-1">Director / Authorized Signatory</p>
+                  <p className="text-3xs text-slate-400 mt-0.5 font-mono">Corporate seal and stamp authorization</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Fine print footnote - Screen only */}
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-[10px] leading-relaxed text-slate-400 text-center print:hidden font-sans">
+              Press <strong>"Print PDF"</strong> above to trigger standard operating system page layouts. For landscape standard documents, please specify Landscape orientation in your browser's printing panel before saving as PDF.
+            </div>
           </div>
         </div>
       )}
