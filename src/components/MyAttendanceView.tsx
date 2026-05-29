@@ -1616,127 +1616,161 @@ export default function MyAttendanceView({
       </div>
       )}
       {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
-      <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '850px', pointerEvents: 'none', zIndex: -1000 }}>
-        <div id="attendance-statement-direct-pdf-sheet" className="bg-white p-8 space-y-6 text-slate-800" style={{ width: '850px' }}>
+      <div style={{ height: 0, overflow: 'hidden', position: 'relative', width: '820px', pointerEvents: 'none' }}>
+        <div id="attendance-statement-direct-pdf-sheet" style={{ background: '#ffffff', padding: '32px', width: '820px', boxSizing: 'border-box', fontFamily: 'sans-serif' }}>
           
           {/* Header section */}
-          <div className="flex justify-between items-start border-b-2 border-slate-200 pb-5">
-            <div className="text-left">
-              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight uppercase">
-                {settings?.companyName || 'Calitech Engineering Solutions'}
-              </h1>
-              <p className="text-xs font-semibold text-slate-500 tracking-wide uppercase mt-1">
-                Employee Attendance & Wage Statement
-              </p>
-            </div>
-            <div className="text-right text-xs">
-              <div className="text-slate-500 font-bold uppercase tracking-wide">Statement Period</div>
-              <div className="font-extrabold text-indigo-700 text-sm mt-0.5">{getFriendlyMonthName(selectedMonth)}</div>
-              <div className="text-[9px] text-slate-400 mt-1">
-                Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </div>
-            </div>
-          </div>
+          <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                  <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                    {settings?.companyName || 'Calitech Engineering Solutions'}
+                  </h1>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Employee Attendance & Wage Statement
+                  </p>
+                </td>
+                <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
+                  <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedMonth)}</div>
+                  <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                    Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           {/* ID Details Card */}
-          <div className="grid grid-cols-3 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-xl text-left">
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Employee Name</div>
-              <div className="text-xs font-bold text-slate-800">{loggedInEmployee.name}</div>
-            </div>
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Employee ID</div>
-              <div className="text-xs font-mono font-bold text-slate-800">{loggedInEmployee.id}</div>
-            </div>
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Department</div>
-              <div className="text-xs font-bold text-slate-800">{loggedInEmployee.department}</div>
-            </div>
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Joined Date</div>
-              <div className="text-xs font-semibold text-slate-700">{loggedInEmployee.joinedDate}</div>
-            </div>
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Monthly Salary</div>
-              <div className="text-xs font-bold text-slate-800">
-                {loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}
-              </div>
-            </div>
-            <div>
-              <div className="text-[9px] font-mono uppercase tracking-wider font-bold text-slate-450">Overtime Wage</div>
-              <div className="text-xs font-mono font-bold text-indigo-650">
-                ₹{loggedInEmployee.hourlyRate.toFixed(2)}/hr
-              </div>
-            </div>
-          </div>
+          <table style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', borderCollapse: 'separate', borderSpacing: '12px', textAlign: 'left', marginBottom: '20px' }}>
+            <tbody>
+              <tr>
+                <td style={{ width: '33.33%' }}>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee Name</div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.name}</div>
+                </td>
+                <td style={{ width: '33.33%' }}>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee ID</div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.id}</div>
+                </td>
+                <td style={{ width: '33.33%' }}>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department</div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.department}</div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Joined Date</div>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#475569', marginTop: '2px' }}>{loggedInEmployee.joinedDate}</div>
+                </td>
+                <td>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Monthly Salary</div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
+                    {loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}
+                  </div>
+                </td>
+                <td>
+                  <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Overtime Wage</div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#4f46e5', marginTop: '2px' }}>
+                    ₹{loggedInEmployee.hourlyRate.toFixed(2)}/hr
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           {/* Unified Statement Grid View */}
-          <div className="grid grid-cols-4 gap-3 bg-slate-50/50 p-4 rounded-xl border border-slate-200">
-            {/* Present Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present</span>
-              <div className="text-sm font-black text-emerald-600 mt-1">{presentDaysCount} days</div>
-            </div>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '10px', marginTop: '5px', marginBottom: '20px' }}>
+            <tbody>
+              <tr>
+                {/* Total Workdays Component */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Total Workdays</span>
+                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b' }}>{totalDaysInSelection}</span>
+                    <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '500' }}>days logged</span>
+                  </div>
+                </td>
 
-            {/* Absent Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent</span>
-              <div className="text-sm font-black text-rose-600 mt-1">{absentDaysCount} days</div>
-            </div>
+                {/* Days Present Column */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#059669', display: 'block' }}>Days Present</span>
+                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
+                    <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+                  </div>
+                </td>
 
-            {/* Active Leave Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-505 block">Active Leave</span>
-              <div className="text-sm font-black text-indigo-650 mt-1">{leavesCount} days</div>
-            </div>
+                {/* Days Absent Column */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444', display: 'block' }}>Days Absent</span>
+                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
+                    <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} leave</span>
+                  </div>
+                </td>
 
-            {/* Total Work Hours Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Total Work Hours</span>
-              <div className="text-sm font-black text-slate-800 mt-1">{sumWorkHours.toFixed(1)} hrs</div>
-            </div>
+                {/* Log Book Hours Column */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Log Book Hours</span>
+                  <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
+                    <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>accumulated</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                {/* Standard Hours Pay Column */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Standard Hours Pay</span>
+                  <div style={{ marginTop: '6px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
+                  </div>
+                </td>
 
-            {/* Standard Hours Pay Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Standard Hours Pay</span>
-              <div className="text-sm font-mono font-bold text-slate-800 mt-1">₹{regularPay.toFixed(2)}</div>
-            </div>
+                {/* Overtime Compensation Column */}
+                <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Overtime Compensation</span>
+                  <div style={{ marginTop: '6px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
+                  </div>
+                </td>
 
-            {/* Overtime Compensation Column */}
-            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-505 block">Overtime Compensation</span>
-              <div className="text-sm font-mono font-bold text-indigo-650 mt-1">₹{overtimePay.toFixed(2)}</div>
-            </div>
-
-            {/* Calculated Payout Highlight Box (Spans 2 columns) */}
-            <div className="col-span-2 bg-sky-55 border border-sky-200 p-3 rounded-lg text-center flex flex-col justify-center items-center shadow-3xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Calculated Payout (Net Pay)</span>
-              <div className="text-base font-extrabold text-blue-800 mt-0.5">₹{totalPay.toFixed(2)}</div>
-            </div>
-          </div>
+                {/* Calculated Payout Highlight Box (Spans 2 columns) */}
+                <td colSpan={2} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
+                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#0284c7', display: 'block' }}>Calculated Payout (Net Pay)</span>
+                  <div style={{ marginTop: '4px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                    <span style={{ fontSize: '22px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
+                    <span style={{ fontSize: '9px', color: '#0284c7', fontWeight: '600' }}>(Estimate for {getFriendlyMonthName(selectedMonth)})</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           {/* Detailed logs table */}
-          <div className="border border-slate-205 rounded-xl overflow-hidden">
-            <table className="w-full text-left border-collapse text-3xs sm:text-2xs">
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
               <thead>
-                <tr className="bg-slate-900 text-white font-bold uppercase font-mono tracking-wider">
-                  <th className="py-2 px-3 text-center">Date</th>
-                  <th className="py-2 px-3">Day</th>
-                  <th className="py-2 px-3">Status</th>
-                  <th className="py-2 px-3 text-center">Entry</th>
-                  <th className="py-2 px-3 text-center">Exit</th>
-                  <th className="py-3 px-3 text-center flex-1">Hours</th>
-                  <th className="py-2 px-3 text-center">Overtime</th>
-                  <th className="py-2 px-3 text-right">Wage (₹)</th>
+                <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
+                  <th style={{ padding: '8px 12px' }}>Day</th>
+                  <th style={{ padding: '8px 12px' }}>Status</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 {processedLogs.map((curr) => {
                   const rec = curr.rawRecord;
-                  const statusColor = curr.status === 'Present' ? 'text-emerald-600' : 
-                                      curr.status === 'Late Entry' ? 'text-amber-500' :
-                                      curr.status === 'On Leave' ? 'text-indigo-600' :
-                                      curr.status === 'Weekly Off' ? 'text-slate-400' : 'text-rose-500';
+                  const statusColor = curr.status === 'Present' ? '#059669' : 
+                                      curr.status === 'Late Entry' ? '#d97706' :
+                                      curr.status === 'On Leave' ? '#4f46e5' :
+                                      curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
 
                   let dayEarnings = { totalPay: 0 };
                   if (rec) {
@@ -1754,19 +1788,19 @@ export default function MyAttendanceView({
                   }
 
                   return (
-                    <tr key={curr.dateString} className="border-b border-slate-150 bg-white font-sans text-left">
-                      <td className="py-1.5 px-3 text-center font-mono font-semibold">{curr.dateString}</td>
-                      <td className="py-1.5 px-3 text-slate-500">{curr.dayLabel}</td>
-                      <td className={`py-1.5 px-3 font-semibold ${statusColor}`}>{curr.status}</td>
-                      <td className="py-1.5 px-3 text-center font-mono text-slate-650">{curr.clockIn}</td>
-                      <td className="py-1.5 px-3 text-center font-mono text-slate-650">{curr.clockOut}</td>
-                      <td className="py-1.5 px-3 text-center font-mono font-bold text-slate-700">
+                    <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
+                      <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
+                      <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
                         {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
                       </td>
-                      <td className="py-1.5 px-3 text-center font-mono text-indigo-600">
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
                         {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
                       </td>
-                      <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
+                      <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
                         ₹{dayEarnings.totalPay.toFixed(2)}
                       </td>
                     </tr>
@@ -1777,16 +1811,20 @@ export default function MyAttendanceView({
           </div>
 
           {/* Signatures section for PDF compliance */}
-          <div className="grid grid-cols-2 gap-12 pt-8 pb-3 font-sans">
-            <div className="border-t border-dashed border-slate-300 pt-2 text-center">
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Employee Signature</p>
-              <p className="text-[8px] text-slate-400 mt-1">Verification of logged punch shifts</p>
-            </div>
-            <div className="border-t border-dashed border-slate-300 pt-2 text-center">
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Authorized Representative Sign / Stamp</p>
-              <p className="text-[8px] text-slate-400 mt-1">{settings?.companyName || 'Calitech Engineering Solutions Ltd.'}</p>
-            </div>
-          </div>
+          <table style={{ width: '100%', marginTop: '30px', borderCollapse: 'separate', borderSpacing: '32px 0' }}>
+            <tbody>
+              <tr>
+                <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Employee Signature</p>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>Verification of logged punch shifts</p>
+                </td>
+                <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Authorized Representative</p>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions'}</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
         </div>
       </div>
