@@ -180,26 +180,21 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
 
-        // Setup self-healing/reset if old employee IDs exist
-        const hasOutdatedData = parsed.employees && parsed.employees.some((e: any) => e.id.startsWith('EMP-'));
-        if (hasOutdatedData) {
-          localStorage.removeItem(LOCAL_STORAGE_KEY);
+        // Load cached offline values from LocalStorage cleanly
+        if (parsed.employees) setEmployees(parsed.employees);
+        if (parsed.attendance) setAttendance(parsed.attendance);
+        if (parsed.settings) setSettings(parsed.settings);
+        if (parsed.appsScriptUrl) {
+          setAppsScriptUrl(parsed.appsScriptUrl);
+          setSyncStatus('synced');
         } else {
-          if (parsed.employees) setEmployees(parsed.employees);
-          if (parsed.attendance) setAttendance(parsed.attendance);
-          if (parsed.settings) setSettings(parsed.settings);
-          if (parsed.appsScriptUrl) {
-            setAppsScriptUrl(parsed.appsScriptUrl);
-            setSyncStatus('synced');
-          } else {
-            setAppsScriptUrl('https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec');
-            setSyncStatus('synced');
-          }
-          if (parsed.isAdminLoggedIn) setIsAdminLoggedIn(parsed.isAdminLoggedIn);
-          if (parsed.loggedInEmployee) setLoggedInEmployee(parsed.loggedInEmployee);
-          if (parsed.leaveRequests) setLeaveRequests(parsed.leaveRequests);
-          if (parsed.notifications) setNotifications(parsed.notifications);
+          setAppsScriptUrl('https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec');
+          setSyncStatus('synced');
         }
+        if (parsed.isAdminLoggedIn) setIsAdminLoggedIn(parsed.isAdminLoggedIn);
+        if (parsed.loggedInEmployee) setLoggedInEmployee(parsed.loggedInEmployee);
+        if (parsed.leaveRequests) setLeaveRequests(parsed.leaveRequests);
+        if (parsed.notifications) setNotifications(parsed.notifications);
       } catch (e) {
         console.error('Failed reading serialized local storage files:', e);
       }
@@ -227,6 +222,7 @@ export default function App() {
         }
       }, (err) => {
         console.error('Employees cloud listing denied:', err);
+        setFirebaseStatus('error');
       });
 
       // Snapshot - Attendance
@@ -249,6 +245,7 @@ export default function App() {
         }
       }, (err) => {
         console.error('Attendance cloud listing denied:', err);
+        setFirebaseStatus('error');
       });
 
       // Snapshot - Settings
@@ -262,6 +259,7 @@ export default function App() {
         }
       }, (err) => {
         console.error('Settings document snapshot query failed:', err);
+        setFirebaseStatus('error');
       });
 
       // Snapshot - Leave Requests
@@ -282,6 +280,7 @@ export default function App() {
         }
       }, (err) => {
         console.error('Leave requests query failed:', err);
+        setFirebaseStatus('error');
       });
 
       // Snapshot - Notifications
@@ -303,6 +302,7 @@ export default function App() {
         }
       }, (err) => {
         console.error('Audit alerts subscription query denied:', err);
+        setFirebaseStatus('error');
       });
 
       return () => {
@@ -492,35 +492,60 @@ export default function App() {
 
   const handleAddEmployee = async (newEmp: Employee) => {
     try {
-      await setDoc(doc(db, 'employees', newEmp.id), newEmp);
-      // Synchronous local state fallback
+      // 1. Optimistic state update: update local state instantly
       setEmployees((prev) => [...prev.filter(e => e.id !== newEmp.id), newEmp]);
+
+      // 2. Perform Firestore write in background without blocking
+      setDoc(doc(db, 'employees', newEmp.id), newEmp).catch((err) => {
+        console.warn('Background Firestore write failed for new employee:', err);
+        handleRaiseNotification(
+          'Sync Warning',
+          `Could not sync employee profile for ${newEmp.name} to cloud instantly. Storing locally.`,
+          'warning'
+        );
+      });
+
+      // 3. Initiate Sheets integration async
       triggerRemoteSheetsSync('syncEmployees', { employees: [...employees, newEmp] });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `employees/${newEmp.id}`);
+      console.error('Failure in handleAddEmployee:', err);
     }
   };
 
   const handleUpdateEmployee = async (updatedEmp: Employee) => {
     try {
-      await setDoc(doc(db, 'employees', updatedEmp.id), updatedEmp);
+      // 1. Optimistic state updates
       setEmployees((prev) => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
       if (loggedInEmployee && loggedInEmployee.id === updatedEmp.id) {
         setLoggedInEmployee(updatedEmp);
       }
+
+      // 2. Background Firestore write
+      setDoc(doc(db, 'employees', updatedEmp.id), updatedEmp).catch((err) => {
+        console.warn('Background Firestore update failed for employee:', err);
+      });
+
+      // 3. Trigger Sheets sync async
       triggerRemoteSheetsSync('syncEmployees', { employees: employees.map((emp) => emp.id === updatedEmp.id ? updatedEmp : emp) });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `employees/${updatedEmp.id}`);
+      console.error('Failure in handleUpdateEmployee:', err);
     }
   };
 
   const handleDeleteEmployee = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'employees', id));
+      // 1. Optimistic state filter
       setEmployees((prev) => prev.filter(e => e.id !== id));
+
+      // 2. Background Firestore delete
+      deleteDoc(doc(db, 'employees', id)).catch((err) => {
+        console.warn('Background Firestore deletion failed for employee:', err);
+      });
+
+      // 3. Trigger Sheets sync
       triggerRemoteSheetsSync('syncEmployees', { employees: employees.filter((emp) => emp.id !== id) });
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `employees/${id}`);
+      console.error('Failure in handleDeleteEmployee:', err);
     }
   };
 

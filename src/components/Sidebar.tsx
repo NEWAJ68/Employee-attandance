@@ -163,7 +163,7 @@ export default function Sidebar({
                 {isAdminLoggedIn ? 'Administrator' : loggedInEmployee ? loggedInEmployee.name : 'Kiosk Terminal'}
               </p>
               <p className="text-[10px] text-gray-450 truncate">
-                {isAdminLoggedIn ? 'Full Access Mode' : loggedInEmployee ? `${loggedInEmployee.id} | Engineering` : 'Public Clock-In Kiosk'}
+                {isAdminLoggedIn ? 'Full Access Mode' : loggedInEmployee ? `${loggedInEmployee.id} | ${loggedInEmployee.department}` : 'Public Clock-In Kiosk'}
               </p>
             </div>
           </div>
