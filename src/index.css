@@ -88,3 +88,17 @@
 .animate-spin-hover:hover {
   transform: rotate(185deg);
 }
+
+/* Dynamic Zoom Utilities for Table Scaling & Print fitting */
+.zoom-50 { zoom: 50%; }
+.zoom-60 { zoom: 60%; }
+.zoom-70 { zoom: 70%; }
+.zoom-75 { zoom: 75%; }
+.zoom-80 { zoom: 80%; }
+.zoom-85 { zoom: 85%; }
+.zoom-90 { zoom: 90%; }
+.zoom-95 { zoom: 95%; }
+.zoom-100 { zoom: 100%; }
+.zoom-105 { zoom: 105%; }
+.zoom-110 { zoom: 110%; }
+.zoom-120 { zoom: 120%; }

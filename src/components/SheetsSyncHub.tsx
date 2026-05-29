@@ -412,6 +412,90 @@ function saveSettings(configs) {
         </p>
       </div>
 
+      {/* Bilingual Instruction Box (Hindi / English Setup Guide) */}
+      <div className="bg-gradient-to-r from-amber-50 to-indigo-50/50 p-6 rounded-2xl border border-indigo-120/40 shadow-xs space-y-4">
+        <div className="flex items-center space-x-2.5 text-indigo-900 font-bold text-sm">
+          <span className="text-lg">💡</span>
+          <span>Google Sheets Se Kaise Connect Karen? (गूगल शीट से कैसे जोड़ें?)</span>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-650 leading-relaxed font-sans">
+          {/* Method 1: Direct Single-Click Sync */}
+          <div className="bg-white p-5 rounded-xl border border-indigo-100 shadow-3xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded uppercase font-mono">
+                Method A: Easy Sync (सबसे आसान तरीका)
+              </span>
+              <span className="text-emerald-600 font-black text-2xs animate-pulse">✓ Recommended</span>
+            </div>
+            
+            <p className="font-semibold text-slate-800">
+              बिना किसी कोडिंग या सिरदर्द के सीधे अपने Google Account से सिंक करें:
+            </p>
+            <ol className="list-decimal pl-4.5 space-y-2 text-slate-600">
+              <li>
+                <strong>Step 1:</strong> बाईं तरफ वाले <span className="font-bold text-emerald-700">"Connect with Google Account"</span> बटन पर क्लिक करें।
+              </li>
+              <li>
+                <strong>Step 2:</strong> अपना गूगल ईमेल आईडी चुनें और परमिशन कन्फर्म करें।
+              </li>
+              <li>
+                <strong>Step 3:</strong> शीट का नाम (जैसे: <em>"CES Attendance Database"</em>) लिखकर <span className="font-bold text-emerald-600">"Create"</span> बटन दबाएं।
+              </li>
+            </ol>
+            <p className="text-3xs text-slate-500 italic mt-1 font-mono">
+              * यह खुद ही नया गूगल शीट आपके गूगल ड्राइव में बना देगा और सिंक चालू कर देगा।
+            </p>
+          </div>
+
+          {/* Method 2: Apps Script Workflow */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-3xs space-y-3">
+            <span className="font-extrabold text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded uppercase font-mono">
+              Method B: Custom Web App (एडवांस्ड तरीका)
+            </span>
+            
+            <p className="font-semibold text-slate-800">
+              Apps Script का उपयोग करके अपनी खुद की शीट में कस्टम सिंक सेट करें:
+            </p>
+            <ol className="list-decimal pl-4.5 space-y-1.5 text-slate-600">
+              <li>
+                Google Sheets पर एक नई शीट बनाएं जिसमें 3 टैब हों: <code className="bg-slate-100 px-1 py-0.5 rounded text-3xs font-mono font-bold text-indigo-600">Employees</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-3xs font-mono font-bold text-indigo-600">Attendance</code>, और <code className="bg-slate-100 px-1 py-0.5 rounded text-3xs font-mono font-bold text-indigo-600">Settings</code>
+              </li>
+              <li>
+                दाहिनी ओर दिए गए <strong className="text-slate-800">"Raw Code.gs"</strong> टैब से पूरा कोड कॉपी कर लें।
+              </li>
+              <li>
+                Google Sheet में <em>Extensions → Apps Script</em> पर जाकर कोड पेस्ट करें।
+              </li>
+              <li>
+                <strong>Deploy → New Deployment</strong> करें (Who has access: Anyone) और वेब ऐप URL को यहाँ बाईं तरफ पेस्ट कर दें।
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        {/* Where is my sheet section */}
+        <div className="bg-amber-50/70 p-4 border border-amber-200/60 rounded-xl space-y-2 text-xs">
+          <div className="flex items-center space-x-1.5 text-amber-900 font-bold">
+            <span>📂</span>
+            <span>Mujhe Meri Google Sheet Kahan Milegi? (मेरी बनाई हुई गूगल शीट मुझे कहाँ मिलेगी?)</span>
+          </div>
+          <div className="text-slate-700 space-y-1.5 pl-5">
+            <p>
+              जब आप सफलतापूर्वक सिंक पूरा कर लेते हैं, तो आपकी शीट इन दो मुख्य तरीकों से मिल जाएगी:
+            </p>
+            <ul className="list-disc pl-4 space-y-1 text-slate-650">
+              <li>
+                <strong>तरीका 1 (Direct Shortcut):</strong> इसी पेज पर बाईं ओर जहाँ <strong className="text-indigo-900">"Google Sheet Connection"</strong> कार्ड है, वहाँ पर एक हरा <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-md font-bold text-3xs uppercase">Open Sheet</span> बटन दिखेगा। उस पर क्लिक करते ही शीट सीधे नए टैब में खुल जाएगी!
+              </li>
+              <li>
+                <strong>तरीका 2 (Google Drive):</strong> यह शीट सीधे आपके Google Account में सेव होती है। आप सीधे <a href="https://drive.google.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold hover:text-indigo-800">drive.google.com (Google Drive)</a> या <a href="https://docs.google.com/spreadsheets" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold hover:text-indigo-800">sheets.google.com</a> पर जाएं। वहाँ आपको आपके द्वारा चुना गया शीट का नाम (जैसे: <em>"CES Attendance Database"</em>) सबसे ऊपर दिख जाएगा।
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column: Setup guides & Connection endpoint config */}
         <div className="space-y-6 lg:col-span-1">

@@ -62,6 +62,19 @@ export default function ReportsView({
   const [isClearing, setIsClearing] = useState(false);
   const [isPayrollSummaryOpen, setIsPayrollSummaryOpen] = useState(false);
   
+  // Custom interactive viewport/print zoom adjustment state
+  const [tableZoom, setTableZoom] = useState<number>(100);
+
+  const handleZoomChange = (dir: 'in' | 'out') => {
+    const zoomSteps = [50, 60, 70, 75, 80, 85, 90, 95, 100, 105, 110, 120];
+    const currentIndex = zoomSteps.indexOf(tableZoom);
+    if (dir === 'in' && currentIndex < zoomSteps.length - 1) {
+      setTableZoom(zoomSteps[currentIndex + 1]);
+    } else if (dir === 'out' && currentIndex > 0) {
+      setTableZoom(zoomSteps[currentIndex - 1]);
+    }
+  };
+  
   // Form fields
   const [formEmployeeId, setFormEmployeeId] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
@@ -475,6 +488,7 @@ export default function ReportsView({
       border-collapse: collapse;
       font-size: 11px;
       margin-bottom: 40px;
+      zoom: ${tableZoom}%;
     }
     th {
       background: #f1f5f9;
@@ -694,6 +708,7 @@ export default function ReportsView({
       border-collapse: collapse;
       font-size: 11px;
       margin-bottom: 40px;
+      zoom: ${tableZoom}%;
     }
     th {
       background: #f1f5f9;
@@ -1161,19 +1176,68 @@ export default function ReportsView({
 
       {/* Main logs items table list */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between text-slate-800">
+        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-slate-800">
           <div>
             <h3 className="text-sm font-bold">Timecard & Wage Breakdown</h3>
             <p className="text-3xs text-slate-400 font-mono uppercase mt-0.5">
               Compiled results showing {filteredRecords.length} records matching guidelines
             </p>
           </div>
-          <span className="text-3xs font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-50 px-2 py-1 rounded border">
-            {presentDaysCount} Presence shifts recorded
-          </span>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Table Zoom Controls */}
+            <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl text-3xs font-mono shadow-inner">
+              <span className="text-slate-400 uppercase font-black select-none mr-1">🔍 Scale:</span>
+              <button
+                type="button"
+                onClick={() => handleZoomChange('out')}
+                disabled={tableZoom <= 50}
+                className="w-5 h-5 flex items-center justify-center bg-white border border-slate-200 hover:border-slate-300 rounded text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-bold transition-all select-none"
+                title="Scale Out (makes more columns fit on small monitors/A4 print views)"
+              >
+                -
+              </button>
+              <span className="font-extrabold text-slate-800 text-center w-8 select-none">
+                {tableZoom}%
+              </span>
+              <button
+                type="button"
+                onClick={() => handleZoomChange('in')}
+                disabled={tableZoom >= 120}
+                className="w-5 h-5 flex items-center justify-center bg-white border border-slate-200 hover:border-slate-300 rounded text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-bold transition-all select-none"
+                title="Scale In"
+              >
+                +
+              </button>
+              
+              <select
+                value={tableZoom}
+                onChange={(e) => setTableZoom(Number(e.target.value))}
+                className="ml-1 bg-white border border-slate-200 font-sans hover:border-slate-340 rounded px-1.5 py-0.5 text-2xs text-slate-800 font-medium outline-none cursor-pointer"
+                title="Select direct table sizing/zoom preset"
+              >
+                <option value="120">120% (Large Layout)</option>
+                <option value="110">110%</option>
+                <option value="105">105%</option>
+                <option value="100">100% (Default standard)</option>
+                <option value="95">95%</option>
+                <option value="90">90% (Readable fit)</option>
+                <option value="85">85% (Compact)</option>
+                <option value="80">80% (Dense columns)</option>
+                <option value="75">75% (A4 Perfect Fit)</option>
+                <option value="70">70% (Micro table)</option>
+                <option value="60">60% (Extra dense)</option>
+                <option value="50">50% (Extreme compact)</option>
+              </select>
+            </div>
+
+            <span className="text-3xs font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+              {presentDaysCount} Presence shifts recorded
+            </span>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto zoom-${tableZoom}`}>
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-450 font-bold text-[10px] uppercase font-mono tracking-wider">
