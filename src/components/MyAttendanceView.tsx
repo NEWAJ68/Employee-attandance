@@ -27,7 +27,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
-import { calculateEarnings } from '../utils/calculations';
+import { calculateEarnings, getLocalDateString } from '../utils/calculations';
 
 interface MyAttendanceViewProps {
   loggedInEmployee: Employee;
@@ -649,7 +649,7 @@ export default function MyAttendanceView({
 
               // Match processed log details
               const logMatch = processedLogs.find(l => l.dateString === dateStringVal);
-              const isToday = new Date().toISOString().split('T')[0] === dateStringVal;
+              const isToday = getLocalDateString(new Date()) === dateStringVal;
 
               // Styles map based on status
               let containerStyle = 'bg-white border-slate-150 text-slate-705';

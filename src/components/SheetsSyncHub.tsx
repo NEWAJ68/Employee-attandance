@@ -285,17 +285,17 @@ function getAttendanceFromSheet() {
       date: row[0] ? Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), "yyyy-MM-dd") : "",
       employeeId: row[1],
       employeeName: row[2],
-      entryTime: row[3] || "",
-      lunchOut: row[4] || "",
-      lunchIn: row[5] || "",
-      exitTime: row[6] || "",
-      totalHours: Number(row[7]) || 0,
-      overtime: Number(row[8]) || 0,
-      status: row[9] || "",
-      entryTime2: row[10] || "",
-      exitTime2: row[11] || "",
-      dinnerOut: row[12] || "",
-      dinnerIn: row[13] || ""
+      status: row[3] || "",
+      entryTime: row[4] || "",
+      lunchOut: row[5] || "",
+      lunchIn: row[6] || "",
+      exitTime: row[7] || "",
+      entryTime2: row[8] || "",
+      exitTime2: row[9] || "",
+      dinnerOut: row[10] || "",
+      dinnerIn: row[11] || "",
+      totalHours: Number(row[12]) || 0,
+      overtime: Number(row[13]) || 0
     });
   }
   return list;
@@ -330,7 +330,7 @@ function saveAttendanceRecord(rec) {
   let sheet = SPREADSHEET.getSheetByName("Attendance");
   if (!sheet) {
     sheet = SPREADSHEET.insertSheet("Attendance");
-    sheet.appendRow(["Date", "Employee ID", "Employee Name", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Total Hours", "Overtime", "Status", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In"]);
+    sheet.appendRow(["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime"]);
   }
   
   const rows = sheet.getDataRange().getValues();
@@ -349,17 +349,17 @@ function saveAttendanceRecord(rec) {
     rec.date,
     rec.employeeId,
     rec.employeeName,
+    rec.status,
     rec.entryTime,
     rec.lunchOut,
     rec.lunchIn,
     rec.exitTime,
-    rec.totalHours,
-    rec.overtime,
-    rec.status,
     rec.entryTime2 || "",
     rec.exitTime2 || "",
     rec.dinnerOut || "",
-    rec.dinnerIn || ""
+    rec.dinnerIn || "",
+    rec.totalHours,
+    rec.overtime
   ];
   
   if (targetRowIndex > -1) {
@@ -939,13 +939,17 @@ function saveSettings(configs) {
                             <th className="py-2.5 px-4 border-r">A: Date</th>
                             <th className="py-2.5 px-3 border-r">B: Employee ID</th>
                             <th className="py-2.5 px-3 border-r">C: Employee Name</th>
-                            <th className="py-2.5 px-3 border-r">D: Entry Time</th>
-                            <th className="py-2.5 px-3 border-r">E: Lunch Out</th>
-                            <th className="py-2.5 px-3 border-r">F: Lunch In</th>
-                            <th className="py-2.5 px-3 border-r">G: Exit Time</th>
-                            <th className="py-2.5 px-3 border-r">H: Total Hours</th>
-                            <th className="py-2.5 px-3 border-r">I: Overtime</th>
-                            <th className="py-2.5 px-3">J: Status</th>
+                            <th className="py-2.5 px-3 border-r">D: Status</th>
+                            <th className="py-2.5 px-3 border-r">E: Entry Time</th>
+                            <th className="py-2.5 px-3 border-r">F: Lunch Out</th>
+                            <th className="py-2.5 px-3 border-r">G: Lunch In</th>
+                            <th className="py-2.5 px-3 border-r">H: Exit Time</th>
+                            <th className="py-2.5 px-3 border-r">I: Entry Time 2</th>
+                            <th className="py-2.5 px-3 border-r">J: Exit Time 2</th>
+                            <th className="py-2.5 px-3 border-r">K: Dinner Out</th>
+                            <th className="py-2.5 px-3 border-r">L: Dinner In</th>
+                            <th className="py-2.5 px-3 border-r">M: Total Hours</th>
+                            <th className="py-2.5 px-3">N: Overtime</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-150 text-slate-600">
@@ -954,13 +958,17 @@ function saveSettings(configs) {
                               <td className="py-2 px-4 border-r font-semibold text-slate-900">{rec.date}</td>
                               <td className="py-2 px-3 border-r font-black text-indigo-600">{rec.employeeId}</td>
                               <td className="py-2 px-3 border-r text-slate-800 font-sans font-semibold">{rec.employeeName}</td>
+                              <td className="py-2 px-3 border-r capitalize font-semibold text-slate-700">{rec.status}</td>
                               <td className="py-2 px-3 border-r">{rec.entryTime || '--'}</td>
                               <td className="py-2 px-3 border-r">{rec.lunchOut || '--'}</td>
                               <td className="py-2 px-3 border-r">{rec.lunchIn || '--'}</td>
                               <td className="py-2 px-3 border-r">{rec.exitTime || '--'}</td>
-                              <td className="py-2 px-3 border-r font-bold text-slate-900">{rec.totalHours || '0'}</td>
-                              <td className="py-2 px-3 border-r font-bold text-indigo-500">{rec.overtime || '0'}</td>
-                              <td className="py-2 px-3 capitalize">{rec.status}</td>
+                              <td className="py-2 px-3 border-r">{rec.entryTime2 || '--'}</td>
+                              <td className="py-2 px-3 border-r">{rec.exitTime2 || '--'}</td>
+                              <td className="py-2 px-3 border-r">{rec.dinnerOut || '--'}</td>
+                              <td className="py-2 px-3 border-r">{rec.dinnerIn || '--'}</td>
+                              <td className="py-2 px-3 border-r font-bold text-slate-900">{rec.totalHours?.toFixed(2) || '0'}</td>
+                              <td className="py-2 px-3 font-bold text-indigo-500">{rec.overtime?.toFixed(2) || '0'}</td>
                             </tr>
                           ))}
                         </tbody>

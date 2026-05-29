@@ -173,7 +173,7 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
   }
   
   if (rows.length === 0) {
-    const headers = ["Date", "Employee ID", "Employee Name", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Total Hours", "Overtime", "Status", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In"];
+    const headers = ["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime"];
     rows = [headers];
   }
   
@@ -193,17 +193,17 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
     record.date || "",
     record.employeeId || "",
     record.employeeName || "",
+    record.status || "",
     record.entryTime || "",
     record.lunchOut || "",
     record.lunchIn || "",
     record.exitTime || "",
-    record.totalHours !== undefined ? record.totalHours : "0",
-    record.overtime !== undefined ? record.overtime : "0",
-    record.status || "",
     record.entryTime2 || "",
     record.exitTime2 || "",
     record.dinnerOut || "",
-    record.dinnerIn || ""
+    record.dinnerIn || "",
+    record.totalHours !== undefined ? record.totalHours : "0",
+    record.overtime !== undefined ? record.overtime : "0"
   ];
   
   if (targetRowIndex > -1) {
@@ -245,22 +245,22 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
 
 export async function syncAllAttendanceToSheet(accessToken: string, spreadsheetId: string, attendance: any[]) {
   await ensureSheetsExist(accessToken, spreadsheetId);
-  const headers = ["Date", "Employee ID", "Employee Name", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Total Hours", "Overtime", "Status", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In"];
+  const headers = ["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime"];
   const rows = [headers, ...attendance.map(rec => [
     rec.date || "",
     rec.employeeId || "",
     rec.employeeName || "",
+    rec.status || "",
     rec.entryTime || "",
     rec.lunchOut || "",
     rec.lunchIn || "",
     rec.exitTime || "",
-    rec.totalHours !== undefined ? rec.totalHours : "0",
-    rec.overtime !== undefined ? rec.overtime : "0",
-    rec.status || "",
     rec.entryTime2 || "",
     rec.exitTime2 || "",
     rec.dinnerOut || "",
-    rec.dinnerIn || ""
+    rec.dinnerIn || "",
+    rec.totalHours !== undefined ? rec.totalHours : "0",
+    rec.overtime !== undefined ? rec.overtime : "0"
   ])];
   
   await clearSpreadsheetRange(accessToken, spreadsheetId, 'Attendance!A1:N5000');

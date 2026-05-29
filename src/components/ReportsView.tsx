@@ -61,6 +61,7 @@ export default function ReportsView({
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isPayrollSummaryOpen, setIsPayrollSummaryOpen] = useState(false);
+  const [isWagesLogPreviewOpen, setIsWagesLogPreviewOpen] = useState(false);
   
   // Custom interactive viewport/print zoom adjustment state
   const [tableZoom, setTableZoom] = useState<number>(100);
@@ -369,41 +370,51 @@ export default function ReportsView({
   const downloadFilteredLogsHTML = () => {
     const tableHeader = `
       <tr>
-        <th style="padding: 10px 12px;">Date</th>
-        <th style="padding: 10px 12px;">Emp ID</th>
-        <th style="padding: 10px 12px;">Employee Name</th>
-        <th style="padding: 10px 12px; text-align: center;">Entry</th>
-        <th style="padding: 10px 12px; text-align: center;">Lunch Out</th>
-        <th style="padding: 10px 12px; text-align: center;">Lunch In</th>
-        <th style="padding: 10px 12px; text-align: center;">Exit</th>
-        <th style="padding: 10px 12px; text-align: center;">Work Hours</th>
-        <th style="padding: 10px 12px; text-align: center;">Overtime</th>
-        <th style="padding: 10px 12px; text-align: center;">Status</th>
-        <th style="padding: 10px 12px; text-align: right;">Day Earnings</th>
+        <th style="padding: 10px 8px; text-align: left;">Date</th>
+        <th style="padding: 10px 8px; text-align: left;">Emp ID</th>
+        <th style="padding: 10px 8px; text-align: left;">Employee Name</th>
+        <th style="padding: 10px 6px; text-align: center;">Entry Time</th>
+        <th style="padding: 10px 6px; text-align: center;">Lunch Out</th>
+        <th style="padding: 10px 6px; text-align: center;">Lunch In</th>
+        <th style="padding: 10px 6px; text-align: center;">Exit Time</th>
+        <th style="padding: 10px 6px; text-align: center;">Entry Time 2</th>
+        <th style="padding: 10px 6px; text-align: center;">Dinner Out</th>
+        <th style="padding: 10px 6px; text-align: center;">Dinner In</th>
+        <th style="padding: 10px 6px; text-align: center;">Exit Time 2</th>
+        <th style="padding: 10px 8px; text-align: center;">Work Hours</th>
+        <th style="padding: 10px 8px; text-align: center;">Overtime</th>
+        <th style="padding: 10px 8px; text-align: center;">Status</th>
+        <th style="padding: 10px 8px; text-align: right;">Day Earnings</th>
       </tr>
     `;
 
     const tableRows = filteredRecords.length === 0
-      ? `<tr><td colspan="11" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No attendance log entries matched current filters.</td></tr>`
+      ? `<tr><td colspan="15" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No attendance log entries matched current filters.</td></tr>`
       : filteredRecords.map((rec) => {
           const emp = employees.find((e) => e.id === rec.employeeId);
           const rate = emp?.hourlyRate || 25;
           const earnings = calculateEarnings(rec.totalHours, rec.overtime, rate, settings.overtimeRateMultiplier);
           return `
             <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 10px 12px; font-weight: 500; font-family: monospace; color: #334155;">${rec.date}</td>
-              <td style="padding: 10px 12px; font-family: monospace; color: #64748b;">${rec.employeeId}</td>
-              <td style="padding: 10px 12px; font-weight: bold; color: #0f172a;">${rec.employeeName}</td>
-              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.entryTime || '--:--'}</td>
-              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.lunchOut || '--:--'}</td>
-              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.lunchIn || '--:--'}</td>
-              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.exitTime || '--:--'}</td>
-              <td style="padding: 10px 12px; text-align: center; font-weight: 600;">${(rec.totalHours || 0).toFixed(2)}h</td>
-              <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #4f46e5;">${(rec.overtime || 0).toFixed(2)}h</td>
+              <td style="padding: 10px 8px; font-weight: 500; font-family: monospace; color: #334155;">${rec.date}</td>
+              <td style="padding: 10px 8px; font-family: monospace; color: #64748b;">${rec.employeeId}</td>
+              <td style="padding: 10px 8px; font-weight: bold; color: #0f172a;">${rec.employeeName}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace;">${rec.entryTime || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #64748b;">${rec.lunchOut || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #64748b;">${rec.lunchIn || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace;">${rec.exitTime || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #4f46e5;">${rec.entryTime2 || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #b91c1c;">${rec.dinnerOut || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #b91c1c;">${rec.dinnerIn || '--:--'}</td>
+              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #4f46e5;">${rec.exitTime2 || '--:--'}</td>
+              <td style="padding: 10px 8px; text-align: center; font-weight: 600;">${(rec.totalHours || 0).toFixed(2)}h</td>
+              <td style="padding: 10px 8px; text-align: center; font-weight: 600; color: #4f46e5;">${(rec.overtime || 0).toFixed(2)}h</td>
               <td style="padding: 10px 12px; text-align: center;">
                 <span style="font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${
-                  rec.status === 'Present' ? '#f0fdf4; color: #166534;' :
-                  rec.status === 'Late' ? '#fef9c3; color: #854d0e;' :
+                  rec.status.includes('Double Shift') ? '#f3e8ff; color: #6b21a8;' :
+                  rec.status.includes('Half Day') ? '#fef3c7; color: #b45309;' :
+                  rec.status.includes('Present') ? '#f0fdf4; color: #166534;' :
+                  rec.status.includes('Late') ? '#fef9c3; color: #854d0e;' :
                   rec.status === 'Overtime' ? '#e0e7ff; color: #3730a3;' :
                   '#fef2f2; color: #991b1b;'
                 }">${rec.status}</span>
@@ -565,7 +576,7 @@ export default function ReportsView({
       <tbody>
         ${tableRows}
         <tr class="footer-row">
-          <td colspan="7" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Grand Cumulative Totals:</td>
+          <td colspan="11" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Grand Cumulative Totals:</td>
           <td style="text-align: center; font-weight: bold;">${totalHoursAgg.toFixed(2)}h</td>
           <td style="text-align: center; font-weight: bold; color: #4f46e5;">${totalOTAgg.toFixed(2)}h</td>
           <td></td>
@@ -796,8 +807,8 @@ export default function ReportsView({
         </div>
       </div>
       <div class="right-meta">
-        <p>Document: PAYROLL-REF-\${new Date().toISOString().split('T')[0].replace(/-/g, '')}</p>
-        <p>Generated At: \${new Date().toLocaleDateString()} \${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+        <p>Document: PAYROLL-REF-${new Date().toISOString().split('T')[0].replace(/-/g, '')}</p>
+        <p>Generated At: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
         <div class="status-badge">STATUS: AUDITED & LOCKED</div>
       </div>
     </div>
@@ -805,15 +816,15 @@ export default function ReportsView({
     <div class="cards-grid">
       <div class="card">
         <span class="title">Cumulative Hours</span>
-        <p class="value">\${grandSummaryHours.toFixed(2)} hrs</p>
+        <p class="value">${grandSummaryHours.toFixed(2)} hrs</p>
       </div>
       <div class="card">
         <span class="title">Overtime Subtotal</span>
-        <p class="value">₹\${grandSummaryOvertime.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+        <p class="value">₹${grandSummaryOvertime.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
       </div>
       <div class="card">
         <span class="title" style="color: #4f46e5;">Net Payable Budget</span>
-        <p class="net-value">₹\${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+        <p class="net-value">₹${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
       </div>
     </div>
 
@@ -830,12 +841,12 @@ export default function ReportsView({
         </tr>
       </thead>
       <tbody>
-        \${tableRows}
+        ${tableRows}
         <tr class="footer-row">
           <td colspan="4" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Summary Cumulative Totals:</td>
-          <td style="text-align: center; font-weight: bold;">\${grandSummaryHours.toFixed(2)}h</td>
-          <td style="text-align: center; font-weight: bold; color: #4f46e5;">\${employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h</td>
-          <td style="text-align: right; font-weight: 900; color: #312e81;">₹\${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: center; font-weight: bold;">${grandSummaryHours.toFixed(2)}h</td>
+          <td style="text-align: center; font-weight: bold; color: #4f46e5;">${employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h</td>
+          <td style="text-align: right; font-weight: 900; color: #312e81;">₹${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
         </tr>
       </tbody>
     </table>
@@ -906,10 +917,10 @@ export default function ReportsView({
             <span>Export CSV / Excel</span>
           </button>
           <button
-            onClick={downloadFilteredLogsHTML}
+            onClick={() => setIsWagesLogPreviewOpen(true)}
             id="btn-export-pdf"
             className="flex items-center space-x-1 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-semibold cursor-pointer shadow-sm shadow-indigo-600/10 transition-colors"
-            title="Download full report file ready to print or save as PDF"
+            title="Open preview of wages logs ready for print layout or PDF export"
           >
             <DownloadCloud className="w-4 h-4 text-indigo-200 shrink-0" />
             <span>Print & PDF (Wages Logs)</span>
@@ -1859,6 +1870,257 @@ export default function ReportsView({
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-[10px] leading-relaxed text-slate-400 text-center print:hidden font-sans">
               Press <strong>"Print PDF"</strong> above to trigger standard operating system page layouts. For landscape standard documents, please specify Landscape orientation in your browser's printing panel before saving as PDF.
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* WAGES LOG PREVIEW MODAL FOR PRINT */}
+      {isWagesLogPreviewOpen && (
+        <div id="wages-log-preview-modal-backdrop" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn print:p-0 print:bg-white print:static print:inset-auto">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-5xl w-full shadow-2xl border border-slate-100 relative space-y-6 max-h-[90vh] overflow-y-auto animate-scaleIn print:shadow-none print:border-0 print:p-0 print:max-h-none print:overflow-visible">
+            
+            {/* Header - Screen only */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 print:hidden">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                  <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                  <span>Timecard & Wages Logs Preview (प्रिंट प्रीव्यू)</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Verify the compiled shift entries & wages before triggering download or printing.
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={downloadFilteredLogsHTML}
+                  className="flex items-center space-x-1.5 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl text-xs font-bold cursor-pointer shadow-sm transition-colors"
+                  title="Download and save the offline report HTML format which automatically triggers printing when opened"
+                >
+                  <DownloadCloud className="w-4 h-4 text-indigo-100 shrink-0" />
+                  <span>Download HTML Report</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center space-x-1.5 px-4 py-2 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                  title="Attempts direct printing through browser workspace setup"
+                >
+                  <Printer className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span>Direct Browser Print</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsWagesLogPreviewOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-lg cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Sheet Container */}
+            <div id="wages-log-preview-sheet" className="space-y-6 pt-2 print:space-y-8">
+              {/* Special print header styles to override everything on printers */}
+              <style>{`
+                @media print {
+                  body * {
+                    visibility: hidden;
+                  }
+                  #main-application-stage, #main-application-stage * {
+                    visibility: hidden;
+                  }
+                  #payroll-summary-modal-backdrop, #payroll-summary-modal-backdrop * {
+                    visibility: hidden;
+                  }
+                  #wages-log-preview-modal-backdrop, #wages-log-preview-modal-backdrop * {
+                    visibility: visible;
+                  }
+                  #wages-log-preview-sheet, #wages-log-preview-sheet * {
+                    visibility: visible;
+                  }
+                }
+              `}</style>
+
+              {/* Special print header view */}
+              <div className="hidden print:flex justify-between items-start border-b border-slate-300 pb-6">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">{settings.companyName} Logs</h1>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">TIMECARD & PAYROLL AUDIT SUMMARY</p>
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    Report period: <strong className="text-slate-700">{filterType} summary</strong> &bull; Generated: {new Date().toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="text-right font-mono text-[9px] text-slate-400 space-y-0.5">
+                  <p>Document: ATTENDANCE-WAGES-LOG</p>
+                  <p>Printed: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
+                </div>
+              </div>
+
+              {/* Selected Employee Detailed Profile */}
+              {activeEmployeeModel && (
+                <div className="bg-indigo-50/55 p-4 rounded-2xl border border-indigo-100 flex flex-col md:flex-row justify-between gap-4 print:border-slate-300 print:bg-white text-left">
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-indigo-600 uppercase tracking-wider font-extrabold font-mono block">Audited Staff Member</span>
+                    <h2 className="text-sm font-black text-slate-800">{activeEmployeeModel.name} (ID: {activeEmployeeModel.id})</h2>
+                    <p className="text-2xs text-slate-500 font-sans">
+                      Department: <strong>{activeEmployeeModel.department || 'General'}</strong> &bull; Email: <strong>{activeEmployeeModel.email}</strong>
+                    </p>
+                    <p className="text-2xs text-slate-500 font-sans">
+                      Residence Address (पता): <strong>{activeEmployeeModel.address || "No address registered."}</strong>
+                    </p>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-indigo-100/60 flex items-center space-x-3 self-start print:border-slate-300">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                      <IndianRupee className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Wage Rate</span>
+                      <strong className="text-xs font-black text-indigo-600">₹{activeEmployeeModel.hourlyRate}/hr</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Aggregates Dashboard Row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 border border-slate-100 p-4 rounded-2xl print:border-slate-300 print:bg-white text-left">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block font-mono">Matched Records</span>
+                  <span className="text-lg font-black text-slate-800 mt-0.5">{filteredRecords.length} logs</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block font-mono">Aggregate Hours</span>
+                  <span className="text-lg font-black text-indigo-650 mt-0.5">
+                    {filteredRecords.reduce((sum, r) => sum + (r.totalHours || 0), 0).toFixed(2)}h
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block font-mono">Overtime Hours</span>
+                  <span className="text-lg font-black text-amber-650 mt-0.5">
+                    {filteredRecords.reduce((sum, r) => sum + (r.overtime || 0), 0).toFixed(2)}h
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-indigo-600 uppercase tracking-wider font-bold block font-mono">Grand Total Est.</span>
+                  <span className="text-lg font-black text-rose-650 mt-0.5 font-sans">
+                    ₹{filteredRecords.reduce((sum, r) => {
+                      const emp = employees.find((e) => e.id === r.employeeId);
+                      const rate = emp ? emp.hourlyRate : 25;
+                      return sum + calculateEarnings(r.totalHours, r.overtime, rate, settings.overtimeRateMultiplier).totalPay;
+                    }, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Table listing */}
+              <div className="border border-slate-100 rounded-2xl overflow-hidden print:border-slate-300">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 font-bold text-[9px] uppercase font-mono tracking-wider border-b border-slate-200">
+                      <th className="py-2 px-4">Date</th>
+                      <th className="py-2 px-3">Emp ID & Name</th>
+                      <th className="py-2 px-2 text-center">Entry Time</th>
+                      <th className="py-2 px-2 text-center">Lunch Out</th>
+                      <th className="py-2 px-2 text-center">Lunch In</th>
+                      <th className="py-2 px-2 text-center">Exit Time</th>
+                      <th className="py-2 px-2 text-center">Entry Time 2</th>
+                      <th className="py-2 px-2 text-center">Dinner Out</th>
+                      <th className="py-2 px-2 text-center">Dinner In</th>
+                      <th className="py-2 px-2 text-center">Exit Time 2</th>
+                      <th className="py-2 px-3 text-center">Work Hours</th>
+                      <th className="py-2 px-3 text-center">Overtime</th>
+                      <th className="py-2 px-3 text-center">Wage Rate</th>
+                      <th className="py-2 px-4 text-right">Computed Pay</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={14} className="py-8 text-center text-slate-400 text-xs font-mono">
+                           No active logs inside the preview. Use the report filters to adjust selections.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((rec) => {
+                        const emp = employees.find((e) => e.id === rec.employeeId);
+                        const rate = emp ? emp.hourlyRate : 25;
+                        const earnings = calculateEarnings(rec.totalHours || 0, rec.overtime || 0, rate, settings.overtimeRateMultiplier);
+                        return (
+                          <tr key={`preview-${rec.employeeId}-${rec.date}`} className="hover:bg-slate-50/55 print:hover:bg-white text-3xs sm:text-2xs">
+                            <td className="py-2 px-4 font-mono font-semibold text-slate-600">
+                              {rec.date}
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="flex flex-col text-left">
+                                <span className="font-bold text-slate-800">{rec.employeeName}</span>
+                                <span className="text-[9px] text-slate-400 font-mono">{rec.employeeId}</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-700">
+                              {rec.entryTime || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-450">
+                              {rec.lunchOut || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-450">
+                              {rec.lunchIn || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-700">
+                              {rec.exitTime || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-indigo-600">
+                              {rec.entryTime2 || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-rose-500">
+                              {rec.dinnerOut || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-rose-500">
+                              {rec.dinnerIn || '--:--'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-indigo-600">
+                              {rec.exitTime2 || '--:--'}
+                            </td>
+                            <td className="py-2 px-3 text-center font-mono font-semibold text-slate-800">
+                              {rec.totalHours.toFixed(2)}h
+                            </td>
+                            <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600">
+                              {rec.overtime > 0 ? `+${rec.overtime.toFixed(2)}h` : '--'}
+                            </td>
+                            <td className="py-2 px-3 text-center font-mono">
+                              ₹{rate}/hr
+                            </td>
+                            <td className="py-2 px-4 text-right font-mono font-bold text-slate-950">
+                              ₹{earnings.totalPay.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Certification stamp & signatory fields for compliance printouts */}
+              <div className="grid grid-cols-2 gap-12 pt-10 print:pt-16 font-sans">
+                <div className="text-left border-t border-dashed border-slate-300 pt-3">
+                  <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold block font-mono">Prepared & Verified By</span>
+                  <p className="text-xs font-bold text-slate-800 mt-1">HR General / Admin Manager</p>
+                  <p className="text-3xs text-slate-400 mt-0.5 font-mono">{settings.companyName} Finance Operations Desk</p>
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-3 text-right">
+                  <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold block font-mono">Approved & Signed By</span>
+                  <p className="text-xs font-bold text-slate-800 mt-1">Director / Authorized Signatory</p>
+                  <p className="text-3xs text-slate-400 mt-0.5 font-mono">Corporate seal and stamp authorization</p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Fine print footnote - Screen only */}
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-[10px] leading-relaxed text-slate-400 text-center print:hidden font-sans">
+              Press <strong>"Direct Browser Print"</strong> above to launch your operating system printing options. You can choose to print to paper or <strong>"Save as PDF"</strong>. For wider layout alignments, select landscape page orientation in your printing setups.
+            </div>
+
           </div>
         </div>
       )}

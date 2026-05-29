@@ -1,12 +1,44 @@
 import { Settings } from '../types';
 
 /**
- * Converts "HH:MM" string to minutes from start of day
+ * Formats a Date object as local YYYY-MM-DD to avoid UTC timezone mismatches
+ */
+export const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Converts "HH:MM" (or "HH:MM AM/PM") string to minutes from start of day.
+ * Robustly parses both 24-hour and 12-hour AM/PM formats.
  */
 export const timeToMinutes = (timeStr: string): number => {
   if (!timeStr) return 0;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  if (isNaN(hours) || isNaN(minutes)) return 0;
+  
+  // Clean, trim and convert to lowercase
+  const cleanStr = timeStr.trim().toLowerCase();
+  
+  // Check for AM/PM indicators
+  const isPm = cleanStr.includes('pm');
+  const isAm = cleanStr.includes('am');
+  
+  // Extract numbers only
+  const timeOnly = cleanStr.replace(/[a-z\s]/g, '');
+  const parts = timeOnly.split(':').map(Number);
+  
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return 0;
+  
+  let hours = parts[0];
+  const minutes = parts[1];
+  
+  if (isPm && hours < 12) {
+    hours += 12;
+  } else if (isAm && hours === 12) {
+    hours = 0;
+  }
+  
   return hours * 60 + minutes;
 };
 
@@ -57,7 +89,20 @@ export const calculateAttendanceMetrics = (
     return { totalHours: 0, overtime: 0, statusFlags: ['Absent'], lunchDurationMins: 0, dinnerDurationMins: 0 };
   }
 
-  // Check late entry on Shift 1
+  // Determine active states
+  const isShift1Active = entry && !exit;
+  const isShift2Active = entry2 && !exit2;
+  const isCurrentlyActive = isShift1Active || isShift2Active;
+
+  // Check late arrival on morning (from 10:00 AM)
+  const checkInTime = entry || entry2;
+  const hasMorningLateEntry = checkInTime ? timeToMinutes(checkInTime) > timeToMinutes("10:00") : false;
+
+  // Check early checkout (before 17:00 / 5 PM)
+  const finalCheckOutTime = entry2 ? exit2 : exit;
+  const hasEarlyExitHalfDay = finalCheckOutTime ? timeToMinutes(finalCheckOutTime) < timeToMinutes("17:00") : false;
+
+  // Check standard late entry based on settings for informational flag
   if (entry && settings.workStartHour && isTimeAfter(entry, settings.workStartHour)) {
     statusFlags.push('Late Entry');
   }
@@ -92,7 +137,9 @@ export const calculateAttendanceMetrics = (
 
   // --- SHIFT 2 WORKED TIME (IF PRESENT) ---
   if (entry2) {
-    statusFlags.push('Double Shift');
+    if (entry) {
+      statusFlags.push('Double Shift');
+    }
     const entryMins2 = timeToMinutes(entry2);
     const exitMins2 = exit2 ? timeToMinutes(exit2) : 0;
 
@@ -149,23 +196,60 @@ export const calculateAttendanceMetrics = (
   let netMins = totalGrossMins - totalDeductions;
   if (netMins < 0) netMins = 0;
 
-  const totalHours = minutesToDecimalHours(netMins);
+  let totalHours = minutesToDecimalHours(netMins);
 
-  // Overtime starts after standard hours
-  const standardHours = settings.standardHours || 8;
-  const overtime = totalHours > standardHours ? Math.round((totalHours - standardHours) * 100) / 100 : 0;
+  let isHalfDay = false;
+  let isAbsent = false;
 
-  // Early Exit Check on Shift 1 (only if no Shift 2 starts, or if they check out early on Shift 1)
-  if (!entry2 && entry && exit && settings.workEndHour && isTimeBefore(exit, settings.workEndHour)) {
-    statusFlags.push('Early Exit');
+  // Evaluate new rules
+  if (!isCurrentlyActive) {
+    // Fully checked out or absent
+    if (totalHours < 3) {
+      isAbsent = true;
+    } else if (totalHours < (settings.standardHours || 8) || hasMorningLateEntry || hasEarlyExitHalfDay) {
+      isHalfDay = true;
+    }
+  } else {
+    // Informational: mark as Half Day immediately if their check-in was late (after 10:00 AM)
+    if (hasMorningLateEntry) {
+      isHalfDay = true;
+    }
   }
 
-  if (exit || exit2) {
-    statusFlags.push('Present');
+  let overtime = 0;
+
+  if (isAbsent) {
+    totalHours = 0;
+    overtime = 0;
+    statusFlags.push('Absent');
+  } else {
+    if (isHalfDay) {
+      statusFlags.push('Half Day');
+      // "agar employ 3 hour se jiyada duty kore tho hour wage ke hisab se over time add hona cahiye"
+      // Half Day standard is 3 hours; any worked hours above 3 are overtime
+      overtime = totalHours > 3 ? Math.round((totalHours - 3) * 100) / 100 : 0;
+    } else {
+      statusFlags.push('Present');
+      const standardHours = settings.standardHours || 8;
+      overtime = totalHours > standardHours ? Math.round((totalHours - standardHours) * 100) / 100 : 0;
+    }
   }
 
-  // Clean status flag duplicates
-  const cleanedFlags = Array.from(new Set(statusFlags)).filter(f => f !== 'Active' || (!exit && !exit2));
+  // Active flag formatting and cleanup
+  let cleanedFlags = Array.from(new Set(statusFlags));
+
+  if (isAbsent) {
+    cleanedFlags = ['Absent'];
+  } else {
+    cleanedFlags = cleanedFlags.filter(f => f !== 'Active' && f !== 'Active (Shift 2)');
+    if (isCurrentlyActive) {
+      if (isShift2Active) {
+        cleanedFlags.push('Active (Shift 2)');
+      } else {
+        cleanedFlags.push('Active');
+      }
+    }
+  }
 
   return {
     totalHours,

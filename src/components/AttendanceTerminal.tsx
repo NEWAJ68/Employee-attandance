@@ -26,7 +26,7 @@ import {
   Camera
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS } from '../utils/calculations';
+import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS, getLocalDateString } from '../utils/calculations';
 
 interface AttendanceTerminalProps {
   employees: Employee[];
@@ -574,8 +574,9 @@ export default function AttendanceTerminal({
     return () => clearInterval(timer);
   }, []);
 
-  const todayStr = currentTime.toISOString().split('T')[0];
-  const timeStr = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const todayStr = getLocalDateString(currentTime);
+  const pad = (num: number) => String(num).padStart(2, '0');
+  const timeStr = `${pad(currentTime.getHours())}:${pad(currentTime.getMinutes())}`;
 
   // Get current state of selected employee for today
   const getTodayRecord = (empId: string): AttendanceRecord | undefined => {
