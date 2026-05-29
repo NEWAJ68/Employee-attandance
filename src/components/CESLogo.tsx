@@ -1,12 +1,19 @@
 import React from 'react';
+import { motion } from 'motion/react';
 
 interface CESLogoProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'sidebar';
   variant?: 'full' | 'icon-only' | 'sidebar';
+  theme?: 'light' | 'dark' | 'auto';
 }
 
-export default function CESLogo({ className = '', size = 'md', variant = 'full' }: CESLogoProps) {
+export default function CESLogo({ 
+  className = '', 
+  size = 'md', 
+  variant = 'full',
+  theme = 'auto'
+}: CESLogoProps) {
   // Height classes for responsive container sizing
   const heightClass = {
     sm: 'h-8',
@@ -15,6 +22,15 @@ export default function CESLogo({ className = '', size = 'md', variant = 'full' 
     sidebar: 'h-9',
   }[size];
 
+  // Auto-detect dark mode based on size/variant (since sidebar is dark)
+  const isDarkTheme = theme === 'dark' || (theme === 'auto' && size === 'sidebar');
+
+  // Interactive color definitions
+  const orangeColor = '#EA580C';
+  const blueColor = isDarkTheme ? '#3b82f6' : '#0029FF';
+  const taglineColor = isDarkTheme ? '#cbd5e1' : '#334155';
+  const ringFill = isDarkTheme ? '#0b0f19' : '#ffffff';
+
   if (variant === 'icon-only') {
     return (
       <svg
@@ -22,46 +38,133 @@ export default function CESLogo({ className = '', size = 'md', variant = 'full' 
         className={`${heightClass} w-auto ${className} shrink-0`}
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Outer Orange Wave Arch */}
-        <path
-          d="M 50 125 C 45 92, 75 58, 128 55"
+        {/* Outer Orange Wave Arch with motion */}
+        <motion.path
+          d="M 50 125 C 45 92, 75 58, 135 52"
           fill="none"
-          stroke="#EA580C"
+          stroke={orangeColor}
           strokeWidth="11"
           strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
         />
 
         {/* Outer Connection Tracks / Rods & Circles */}
-        <path
-          d="M 34 84 L 46 60"
+        <motion.path
+          d="M 34 84 L 50 52"
           fill="none"
-          stroke="#EA580C"
+          stroke={orangeColor}
           strokeWidth="8"
           strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
         />
-        <circle cx="50" cy="52" r="7" fill="#EA580C" />
-
-        <path
-          d="M 28 104 L 34 94"
+        
+        <motion.path
+          d="M 34 94 L 26 112"
           fill="none"
-          stroke="#EA580C"
+          stroke={orangeColor}
           strokeWidth="7"
           strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
         />
-        <circle cx="26" cy="112" r="6" fill="#EA580C" />
 
         {/* Inner Blue Wave swooping upward */}
-        <path
-          d="M 60 138 C 66 112, 60 82, 92 70"
+        <motion.path
+          d="M 58 144 C 66 112, 60 82, 98 68"
           fill="none"
-          stroke="#0029FF"
+          stroke={blueColor}
           strokeWidth="10"
           strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 1.1, delay: 0.3, ease: "easeOut" }}
         />
 
-        {/* Blue Contact Diodes */}
-        <circle cx="98" cy="68" r="7" fill="#0029FF" />
-        <circle cx="58" cy="144" r="7" fill="#0029FF" />
+        {/* --- DYNAMIC INTERACTIVE HOLLOW RINGS MATCHING PHOTO --- */}
+        {/* Top-Left Orange Ring (on the first rod) */}
+        <motion.circle
+          cx="50"
+          cy="52"
+          r="7.5"
+          fill={ringFill}
+          stroke={orangeColor}
+          strokeWidth="4.2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+          transition={{
+            scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.1 },
+            opacity: { duration: 0.4, delay: 0.1 }
+          }}
+        />
+
+        {/* Bottom-Left Orange Ring (on the second rod) */}
+        <motion.circle
+          cx="26"
+          cy="112"
+          r="7.5"
+          fill={ringFill}
+          stroke={orangeColor}
+          strokeWidth="4.2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+          transition={{
+            scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.3 },
+            opacity: { duration: 0.4, delay: 0.3 }
+          }}
+        />
+
+        {/* Top-Right Blue Ring (Tip of Orange Wave) */}
+        <motion.circle
+          cx="135"
+          cy="52"
+          r="7.5"
+          fill={ringFill}
+          stroke={blueColor}
+          strokeWidth="4.2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+          transition={{
+            scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.5 },
+            opacity: { duration: 0.4, delay: 0.5 }
+          }}
+        />
+
+        {/* Center Blue Ring (End of Blue Wave) */}
+        <motion.circle
+          cx="98"
+          cy="68"
+          r="7.5"
+          fill={ringFill}
+          stroke={blueColor}
+          strokeWidth="4.2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+          transition={{
+            scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.7 },
+            opacity: { duration: 0.4, delay: 0.7 }
+          }}
+        />
+
+        {/* Bottom-Center Blue Ring (Start of Blue Wave) */}
+        <motion.circle
+          cx="58"
+          cy="144"
+          r="7.5"
+          fill={ringFill}
+          stroke={blueColor}
+          strokeWidth="4.2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+          transition={{
+            scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.9 },
+            opacity: { duration: 0.4, delay: 0.9 }
+          }}
+        />
       </svg>
     );
   }
@@ -76,77 +179,170 @@ export default function CESLogo({ className = '', size = 'md', variant = 'full' 
       >
         {/* --- LEFT: VECTOR TECH ICON --- */}
         <g id="ces-logo-symbol">
-          {/* Outer Orange Wave Arch */}
-          <path
-            d="M 50 125 C 45 92, 75 58, 128 55"
+          {/* Outer Orange Wave Arch with motion */}
+          <motion.path
+            d="M 50 125 C 45 92, 75 58, 135 52"
             fill="none"
-            stroke="#EA580C"
+            stroke={orangeColor}
             strokeWidth="11"
             strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
           />
 
           {/* Outer Connection Tracks / Rods & Circles */}
-          <path
-            d="M 34 84 L 46 60"
+          <motion.path
+            d="M 34 84 L 50 52"
             fill="none"
-            stroke="#EA580C"
+            stroke={orangeColor}
             strokeWidth="8"
             strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
           />
-          <circle cx="50" cy="52" r="7" fill="#EA580C" />
 
-          <path
-            d="M 28 104 L 34 94"
+          <motion.path
+            d="M 34 94 L 26 112"
             fill="none"
-            stroke="#EA580C"
+            stroke={orangeColor}
             strokeWidth="7"
             strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
           />
-          <circle cx="26" cy="112" r="6" fill="#EA580C" />
 
           {/* Inner Blue Wave swooping upward */}
-          <path
-            d="M 60 138 C 66 112, 60 82, 92 70"
+          <motion.path
+            d="M 58 144 C 66 112, 60 82, 98 68"
             fill="none"
-            stroke="#0029FF"
+            stroke={blueColor}
             strokeWidth="10"
             strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1.1, delay: 0.3, ease: "easeOut" }}
           />
 
-          {/* Blue Contact Diodes */}
-          <circle cx="98" cy="68" r="7" fill="#0029FF" />
-          <circle cx="58" cy="144" r="7" fill="#0029FF" />
+          {/* Top-Left Orange Ring */}
+          <motion.circle
+            cx="50"
+            cy="52"
+            r="7.5"
+            fill={ringFill}
+            stroke={orangeColor}
+            strokeWidth="4.2"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+            transition={{
+              scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.1 },
+              opacity: { duration: 0.4, delay: 0.1 }
+            }}
+          />
+
+          {/* Bottom-Left Orange Ring */}
+          <motion.circle
+            cx="26"
+            cy="112"
+            r="7.5"
+            fill={ringFill}
+            stroke={orangeColor}
+            strokeWidth="4.2"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+            transition={{
+              scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.3 },
+              opacity: { duration: 0.4, delay: 0.3 }
+            }}
+          />
+
+          {/* Top-Right Blue Ring (Tip of Orange Wave) */}
+          <motion.circle
+            cx="135"
+            cy="52"
+            r="7.5"
+            fill={ringFill}
+            stroke={blueColor}
+            strokeWidth="4.2"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+            transition={{
+              scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.5 },
+              opacity: { duration: 0.4, delay: 0.5 }
+            }}
+          />
+
+          {/* Center Blue Ring (End of Blue Wave) */}
+          <motion.circle
+            cx="98"
+            cy="68"
+            r="7.5"
+            fill={ringFill}
+            stroke={blueColor}
+            strokeWidth="4.2"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+            transition={{
+              scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.7 },
+              opacity: { duration: 0.4, delay: 0.7 }
+            }}
+          />
+
+          {/* Bottom-Center Blue Ring (Start of Blue Wave) */}
+          <motion.circle
+            cx="58"
+            cy="144"
+            r="7.5"
+            fill={ringFill}
+            stroke={blueColor}
+            strokeWidth="4.2"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+            transition={{
+              scale: { repeat: Infinity, repeatType: "reverse", duration: 2.2, ease: "easeInOut", delay: 0.9 },
+              opacity: { duration: 0.4, delay: 0.9 }
+            }}
+          />
         </g>
 
         {/* --- RIGHT: WORDMARK & TAGLINE --- */}
-        {/* 'CES' Main Bold Italic Heading */}
-        <text
+        {/* 'CES' Main Bold Italic Heading with Slide-Fade Animation */}
+        <motion.text
           x="150"
           y="105"
-          fontFamily="Inter, system-ui, -apple-system, sans-serif"
+          fontFamily="&quot;Plus Jakarta Sans&quot;, &quot;Inter&quot;, system-ui, -apple-system, sans-serif"
           fontWeight="900"
           fontStyle="italic"
           fontSize="92"
-          fill="#0029FF"
+          fill={blueColor}
           letterSpacing="-3"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.9, ease: "easeOut" }}
+          className="cursor-pointer"
         >
           CES
-        </text>
+        </motion.text>
 
-        {/* 'ENGINEERING SOLUTIONS PVT. LTD.' Tagline */}
-        <text
+        {/* 'ENGINEERING SOLUTIONS PVT. LTD.' Tagline with Elegant Fade */}
+        <motion.text
           x="152"
           y="134"
-          fontFamily="Inter, system-ui, -apple-system, sans-serif"
+          fontFamily="&quot;Plus Jakarta Sans&quot;, &quot;Inter&quot;, system-ui, -apple-system, sans-serif"
           fontWeight="800"
           fontSize="14.5"
-          fill="#334155"
+          fill={taglineColor}
           letterSpacing="0.8"
           textLength="350"
           lengthAdjust="spacingAndGlyphs"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.1, delay: 0.4, ease: "easeOut" }}
         >
           ENGINEERING SOLUTIONS PVT. LTD.
-        </text>
+        </motion.text>
       </svg>
     </div>
   );

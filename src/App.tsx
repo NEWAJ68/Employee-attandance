@@ -1260,7 +1260,7 @@ export default function App() {
               <div className="flex-1">
                 <h3 className="text-base font-black text-slate-900 leading-snug">🚨 Outside Geofence Punch Warning</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Employee transactions registered further than <strong>100 meters</strong> of Calitech HQ (26.118557, 91.539601) are automatically captured below:
+                  Employee transactions registered further than <strong>200 meters</strong> of Calitech HQ (26.118557, 91.539601) are automatically captured below:
                 </p>
               </div>
             </div>

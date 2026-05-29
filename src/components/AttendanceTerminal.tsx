@@ -51,6 +51,11 @@ export default function AttendanceTerminal({
   const cachedLocationRef = React.useRef<string | null>(null);
   const lastLocationFetchTimeRef = React.useRef<number>(0);
 
+  // GPS Blocker modal state variables
+  const [showGpsModal, setShowGpsModal] = useState(false);
+  const [gpsErrorType, setGpsErrorType] = useState<'DENIED' | 'NOT_SUPPORTED' | null>(null);
+  const [isGpsRetrying, setIsGpsRetrying] = useState(false);
+
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | null;
@@ -80,11 +85,17 @@ export default function AttendanceTerminal({
           const { latitude, longitude } = position.coords;
           cachedLocationRef.current = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
           lastLocationFetchTimeRef.current = Date.now();
+          setGpsErrorType(null);
+          setShowGpsModal(false);
         },
         (error) => {
           console.warn('Silent warm-up pre-fetch of geolocation failed:', error);
+          if (error.code === 1) { // PERMISSION_DENIED is 1
+            setGpsErrorType('DENIED');
+            setShowGpsModal(true);
+          }
         },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   }, [selectedEmpId, selfieState?.isOpen]);
@@ -268,9 +279,9 @@ export default function AttendanceTerminal({
         return;
       }
 
-      // If we have a cached coordinate that is less than 3 minutes (180,000 ms) old, return it instantly!
+      // If we have a cached coordinate that is less than 10 seconds (10,000 ms) old, return it instantly!
       const now = Date.now();
-      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 180000)) {
+      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 10000)) {
         console.log('Using optimized zero-latency cached GPS coordinate:', cachedLocationRef.current);
         
         // Asynchronously update the cache in the background for next time
@@ -281,7 +292,7 @@ export default function AttendanceTerminal({
             lastLocationFetchTimeRef.current = Date.now();
           },
           () => {},
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
         
         resolve(cachedLocationRef.current);
@@ -292,8 +303,8 @@ export default function AttendanceTerminal({
       
       const options = {
         enableHighAccuracy: true,
-        timeout: 3000, // Reduced from 5000 for faster fallback resolution
-        maximumAge: 60000 // Allow up to 1-minute-old cached position to resolve instantly
+        timeout: 15000, // 15 seconds to ensure GPS hardware has ample time to lock coordinates with 100% accuracy
+        maximumAge: 0   // Force fresh real-time coordinate fetching with 100% accurate live satellites
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -308,7 +319,9 @@ export default function AttendanceTerminal({
         (error) => {
           setIsFetchingLocation(false);
           console.warn('Geolocation capture failed or was denied:', error);
-          if (settings.strictGeofencing) {
+          if (error.code === 1) { // PERMISSION_DENIED is 1
+            resolve("DENIED");
+          } else if (settings.strictGeofencing) {
             resolve("DENIED");
           } else {
             // Return Calitech office coords on fallback so that users don't get blocked
@@ -320,14 +333,63 @@ export default function AttendanceTerminal({
     });
   };
 
+  const handleRetryGpsVerification = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setGpsErrorType('NOT_SUPPORTED');
+      setShowGpsModal(true);
+      return;
+    }
+
+    setIsGpsRetrying(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsGpsRetrying(false);
+        const { latitude, longitude } = position.coords;
+        const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+        cachedLocationRef.current = coords;
+        lastLocationFetchTimeRef.current = Date.now();
+        
+        setShowGpsModal(false);
+        setGpsErrorType(null);
+        triggerNotification('success', '✅ GPS Signal Verified! You are authorized to log attendance.');
+        playBeep(true);
+      },
+      (error) => {
+        setIsGpsRetrying(false);
+        console.warn('Manual retry geolocation failed:', error);
+        if (error.code === 1) {
+          setGpsErrorType('DENIED');
+          triggerNotification('error', 'Location Access Denied! Please follow the settings guide to allow.');
+          playBeep(false);
+        } else {
+          if (!settings.strictGeofencing) {
+            // Fallback to coordinates
+            const fallbackCoords = `${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`;
+            cachedLocationRef.current = fallbackCoords;
+            lastLocationFetchTimeRef.current = Date.now();
+            setShowGpsModal(false);
+            setGpsErrorType(null);
+            triggerNotification('success', '✅ Backup Geolocation Signal verified successfully.');
+            playBeep(true);
+          } else {
+            triggerNotification('error', `GPS lock failed: ${error.message}. Ensure your device GPS sensor is turned ON.`);
+            playBeep(false);
+          }
+        }
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
   /**
    * Helper that checks if a GPS coordinate is valid and within range.
    * If settings.strictGeofencing is enabled, blocks the action and returns false.
    */
   const validateGeofencingOrBlock = (coords: string): boolean => {
-    if (!settings.strictGeofencing) return true; // not enforced
-
     if (coords === "DENIED" || coords === "NOT_SUPPORTED" || !coords) {
+      setGpsErrorType(coords === "NOT_SUPPORTED" ? "NOT_SUPPORTED" : "DENIED");
+      setShowGpsModal(true);
+      
       triggerNotification(
         'error', 
         'GPS verification failed! You must allow browser space location permissions to record your attendance.'
@@ -336,18 +398,20 @@ export default function AttendanceTerminal({
       return false;
     }
 
+    if (!settings.strictGeofencing) return true; // not enforced
+
     const { isWithinRange, distance, matchedLocationName } = verifyProximityToOffice(coords);
     if (!isWithinRange) {
       triggerNotification(
         'error', 
-        `PUNCH DENIED! You are ${distance}m away from the nearest authorized site. Under company rules, you must be close to any of our certified service sites: Calitech HQ, Ajanta Pharma, Natco Pharma, or Hetero Pharma (Hudumpur) to punch.`
+        `PUNCH DENIED! You are ${distance}m away. Company rules require you to be within 200m of Calitech HQ or our certified sites. (अगर आप ऑफिस में हैं पर GPS एरर आ रहा है, तो Admin से "Strict GPS Geofencing" बंद करने को कहें)`
       );
       playBeep(false);
 
       if (onRaiseNotification) {
         onRaiseNotification(
           'BLOCKED Out-of-Range Punch',
-          `❌ SECURITY BLOCK: ${selectedEmpName || 'Unidentified'} tried punching from ${distance}m away (nearest: ${matchedLocationName}). Coordinate: ${coords}`,
+          `❌ SECURITY BLOCK: ${selectedEmpName || 'Unidentified'} tried punching from ${distance}m away (nearest: ${matchedLocationName}). Ask admin to turn off "Strict GPS Geofencing" if this is a false block. Coordinate: ${coords}`,
           'alert',
           selectedEmpId
         );
@@ -1911,6 +1975,122 @@ export default function AttendanceTerminal({
               >
                 Dismiss
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PERSISTENT BILINGUAL GPS PERMISSION BLOCKER MODAL */}
+      <AnimatePresence>
+        {showGpsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4 overflow-y-auto"
+            style={{ contentVisibility: 'auto' }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl border border-rose-100 flex flex-col space-y-6 my-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Animated pulsating Location Warning Icon */}
+              <div className="flex flex-col items-center text-center space-y-3">
+                <div className="relative">
+                  <motion.div
+                    animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
+                    transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+                    className="absolute inset-0 bg-rose-500/10 rounded-full scale-125"
+                  />
+                  <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center border border-rose-100 relative">
+                    <MapPin className="w-8 h-8 text-rose-600 animate-bounce" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="inline-block bg-rose-100/80 text-rose-800 text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
+                    GPS ACCESS REQUIRED • जीपीएस आवश्यक है
+                  </span>
+                  <h3 className="text-xl md:text-2xl font-black text-slate-850 tracking-tight">
+                    Location Permission Denied
+                  </h3>
+                  <p className="text-sm font-bold text-rose-600">
+                    जीपीएस अनुमति ब्लॉक है - अटेंडेंस दर्ज नहीं की जा सकती
+                  </p>
+                  <p className="text-xs text-slate-500 max-w-sm">
+                    Attendance system requires secure GPS logging to verify office presence. Please turn on location permissions to unlock check-in/out.
+                  </p>
+                </div>
+              </div>
+
+              {/* iPhone Step-by-Step interactive instructions card */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4.5 space-y-4 text-xs">
+                <h4 className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200/50 pb-1.5 flex items-center gap-1.5">
+                  <Navigation className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                  <span>iPhone (iOS) Settings Guide • आईफोन गाइड</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Safari browser instructions */}
+                  <div className="space-y-2">
+                    <span className="font-bold text-indigo-700 block text-2xs uppercase tracking-wide">For Safari (सफ़ारी ब्राउज़र)</span>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-600 leading-relaxed pl-1">
+                      <li>Tap the <strong className="text-slate-800 font-bold">"aA"</strong> or settings key near the URL bar.</li>
+                      <li>Select <strong className="text-slate-800 font-medium">Website Settings</strong>.</li>
+                      <li>Change <strong className="text-indigo-600 font-bold">Location</strong> to <strong className="text-emerald-600 font-bold">Allow / Ask</strong>.</li>
+                      <li>Reload the page.</li>
+                    </ol>
+                  </div>
+
+                  {/* Chrome browser instructions */}
+                  <div className="space-y-2 border-t md:border-t-0 md:border-l border-slate-200/60 pt-3.5 md:pt-0 md:pl-4">
+                    <span className="font-bold text-indigo-700 block text-2xs uppercase tracking-wide">For Google Chrome (क्रोम)</span>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-650 leading-relaxed">
+                      <li>Go to iPhone <strong className="text-slate-800 font-bold">Settings</strong> app.</li>
+                      <li>Select <strong className="text-slate-800 font-medium">Privacy & Security &gt; Location Services</strong>.</li>
+                      <li>Find <strong className="text-slate-800 font-medium">Chrome / Safari</strong> and set to <strong className="text-emerald-600 font-bold">While Using App</strong>.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200/55 pt-3 text-[11px] text-slate-500 leading-relaxed">
+                  <span className="font-bold text-slate-700 block mb-0.5">💡 Still not seeing the allow prompt? (फिर भी समस्या है?)</span>
+                  iPhone Settings &gt; General &gt; Transfer or Reset iPhone &gt; Reset &gt; Reset Location & Privacy. Then refresh this tab!
+                </div>
+              </div>
+
+              {/* Action layout */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  disabled={isGpsRetrying}
+                  onClick={handleRetryGpsVerification}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-rose-600/10 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isGpsRetrying ? (
+                    <>
+                      <span className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                      <span>Verifying GPS...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄 TRY AGAIN / री-वेरीफाई करें</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="py-3 px-4 bg-slate-105 hover:bg-slate-200 text-slate-700 bg-slate-100 rounded-xl text-xs font-extrabold transition-all cursor-pointer text-center"
+                >
+                  📱 Refresh Website
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

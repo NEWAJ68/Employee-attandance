@@ -213,7 +213,7 @@ export const ALLOWED_LOCATIONS: AllowedLocation[] = [
     lat: 26.1185573,
     lng: 91.5396016,
     name: "Calitech Engineering Solutions pvt.ltd",
-    radiusMeters: 100
+    radiusMeters: 200
   },
   {
     lat: 26.1158,

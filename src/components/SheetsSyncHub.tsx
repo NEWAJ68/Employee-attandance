@@ -104,6 +104,15 @@ export default function SheetsSyncHub({
     }
   };
 
+  const handleToggleStrictGeofencing = () => {
+    if (onUpdateSettings) {
+      onUpdateSettings({
+        ...settings,
+        strictGeofencing: !settings.strictGeofencing,
+      });
+    }
+  };
+
   const handleManualSyncAll = () => {
     if (onManualSyncAll) {
       onManualSyncAll();
@@ -738,6 +747,30 @@ function saveSettings(configs) {
                   <span
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       settings.autoSyncSheets ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Strict Geofencing Toggle Component */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5 max-w-[70%]">
+                  <span className="block text-xs font-bold text-slate-800">Strict GPS Geofencing</span>
+                  <span className="block text-[10px] text-slate-500 leading-tight">
+                    If enabled, blocks out-of-range punches. Turn off if employees face GPS calibration errors on site. (अटेंडेंस लोकेशन प्रतिबंध चालू/बंद करें)
+                  </span>
+                </div>
+                <button
+                  id="btn-toggle-strict-geofence"
+                  type="button"
+                  onClick={handleToggleStrictGeofencing}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    settings.strictGeofencing ? 'bg-indigo-650' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      settings.strictGeofencing ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
