@@ -16,7 +16,8 @@ import {
   Grid,
   Camera,
   Upload,
-  Image
+  Image,
+  MapPin
 } from 'lucide-react';
 import { Employee, Settings } from '../types';
 
@@ -54,6 +55,7 @@ export default function EmployeeProfiles({
   const [hourlyRateInput, setHourlyRateInput] = useState<number | string>(25);
   const [statusInput, setStatusInput] = useState<'Active' | 'Inactive'>('Active');
   const [photoUrlInput, setPhotoUrlInput] = useState<string>('');
+  const [addressInput, setAddressInput] = useState('');
 
   const openAddModal = () => {
     // Auto generate next employee ID
@@ -71,6 +73,7 @@ export default function EmployeeProfiles({
     setHourlyRateInput(25);
     setStatusInput('Active');
     setPhotoUrlInput('');
+    setAddressInput('');
     setIsModalOpen(true);
   };
 
@@ -83,6 +86,7 @@ export default function EmployeeProfiles({
     setHourlyRateInput(emp.hourlyRate);
     setStatusInput(emp.status);
     setPhotoUrlInput(emp.photoUrl || '');
+    setAddressInput(emp.address || '');
     setIsModalOpen(true);
   };
 
@@ -108,6 +112,7 @@ export default function EmployeeProfiles({
       joinedDate: editingEmployee ? editingEmployee.joinedDate : new Date().toISOString().split('T')[0],
       status: statusInput,
       photoUrl: photoUrlInput || undefined,
+      address: addressInput.trim() || undefined,
     };
 
     if (editingEmployee) {
@@ -392,6 +397,12 @@ export default function EmployeeProfiles({
                         <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{emp.email}</span>
                       </div>
+                      {emp.address && (
+                        <div className="flex items-start space-x-2 text-slate-500 text-[11px] line-clamp-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span>{emp.address}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-slate-800">
                         <div className="flex items-center space-x-2">
                           <IndianRupee className="w-3.5 h-3.5 text-emerald-500" />
@@ -533,6 +544,19 @@ export default function EmployeeProfiles({
                   onChange={(e) => setEmailInput(e.target.value)}
                   placeholder="contact@company.com"
                   className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:ring-1 focus:ring-indigo-505 outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xs uppercase tracking-wider font-semibold text-slate-500 mb-1 font-mono">
+                  Residential Address (घर का पता / Pata)
+                </label>
+                <textarea
+                  value={addressInput}
+                  onChange={(e) => setAddressInput(e.target.value)}
+                  placeholder="Type full address details (e.g. House No, Gali/Street, City, State, ZIP)..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:ring-1 focus:ring-indigo-550 focus:border-indigo-550 outline-none font-sans"
                 />
               </div>
 

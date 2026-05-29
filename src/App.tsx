@@ -112,7 +112,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('terminal');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
-  const [layoutMode, setLayoutMode] = useState<'mobile' | 'desktop'>('mobile');
+  const [layoutMode, setLayoutMode] = useState<'mobile' | 'desktop'>('desktop');
   
   // Primary application state
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
@@ -971,6 +971,19 @@ export default function App() {
                 <span className="sm:hidden text-[9px]">LOCAL</span>
               </div>
             )}
+
+            {/* View Layout Toggle */}
+            <button
+              onClick={() => {
+                setLayoutMode(layoutMode === 'mobile' ? 'desktop' : 'mobile');
+                setIsSidebarOpen(false);
+              }}
+              className="flex items-center justify-center space-x-1 px-3 py-2 bg-indigo-50 border border-indigo-100/50 hover:bg-indigo-100 hover:border-indigo-200 text-indigo-750 rounded-xl text-xs font-bold transition-all select-none cursor-pointer"
+              title={layoutMode === 'mobile' ? "Switch to Fullscreen Desktop View" : "Switch to Compact Mobile View"}
+            >
+              <Smartphone className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline-block">{layoutMode === 'mobile' ? 'Desktop View' : 'Mobile View'}</span>
+            </button>
 
             {/* Logout Button */}
             <button

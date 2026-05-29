@@ -9,6 +9,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     hourlyRate: 35,
     joinedDate: '2025-01-15',
     status: 'Active',
+    address: 'House No. 12, Zoo Road, Guwahati, Assam - 781024',
   },
   {
     id: 'CES002',
@@ -18,6 +19,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     hourlyRate: 40,
     joinedDate: '2025-02-10',
     status: 'Active',
+    address: 'Calitech Staff Campus, Hudumpur, Guwahati, Assam - 781015',
   },
   {
     id: 'CES003',
@@ -27,6 +29,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     hourlyRate: 38,
     joinedDate: '2025-03-01',
     status: 'Active',
+    address: 'Palashbari Near Airport, Guwahati, Assam - 781122',
   }
 ];
 

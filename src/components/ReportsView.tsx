@@ -15,7 +15,8 @@ import {
   Plus,
   Pencil,
   X,
-  Trash2
+  Trash2,
+  MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 import { calculateEarnings, calculateAttendanceMetrics } from '../utils/calculations';
@@ -264,17 +265,20 @@ export default function ReportsView({
     let csvContent = 'data:text/csv;charset=utf-8,';
     
     // Header Row matching attendance structure
-    csvContent += 'Date,Employee ID,Employee Name,Entry Time,Lunch Out,Lunch In,Exit Time,Total Hours,Overtime,Status,Hourly Rate,Total Earnings\n';
+    csvContent += 'Date,Employee ID,Employee Name,Hourly Wage,Employee Address,Entry Time,Lunch Out,Lunch In,Exit Time,Total Hours,Overtime,Status,Total Earnings\n';
     
     filteredRecords.forEach((rec) => {
       const emp = employees.find((e) => e.id === rec.employeeId);
       const rate = emp ? emp.hourlyRate : 20;
+      const addr = emp?.address ? `"${emp.address.replace(/"/g, '""')}"` : '""';
       const earnings = calculateEarnings(rec.totalHours, rec.overtime, rate, settings.overtimeRateMultiplier);
       
       const row = [
         rec.date,
         rec.employeeId,
         `"${rec.employeeName.replace(/"/g, '""')}"`,
+        rate,
+        addr,
         rec.entryTime || '--:--',
         rec.lunchOut || '--:--',
         rec.lunchIn || '--:--',
@@ -282,7 +286,6 @@ export default function ReportsView({
         rec.totalHours || 0,
         rec.overtime || 0,
         `"${rec.status}"`,
-        rate,
         earnings.totalPay.toFixed(2)
       ].join(',');
       
@@ -340,9 +343,521 @@ export default function ReportsView({
   const grandSummaryNetPay = employeePayrollSummaries.reduce((sum, item) => sum + item.netPay, 0);
   const grandSummaryHours = employeePayrollSummaries.reduce((sum, item) => sum + item.totalHours, 0);
 
+  const activeEmployeeModel = filterType === 'employee' && selectedEmployeeId
+    ? employees.find(e => e.id === selectedEmployeeId)
+    : null;
+
   // EXPORT PDF via window.print CSS print styles
   const handlePrintPDF = () => {
     window.print();
+  };
+
+  // Standalone printable log generation for offline printing/PDF bypass
+  const downloadFilteredLogsHTML = () => {
+    const tableHeader = `
+      <tr>
+        <th style="padding: 10px 12px;">Date</th>
+        <th style="padding: 10px 12px;">Emp ID</th>
+        <th style="padding: 10px 12px;">Employee Name</th>
+        <th style="padding: 10px 12px; text-align: center;">Entry</th>
+        <th style="padding: 10px 12px; text-align: center;">Lunch Out</th>
+        <th style="padding: 10px 12px; text-align: center;">Lunch In</th>
+        <th style="padding: 10px 12px; text-align: center;">Exit</th>
+        <th style="padding: 10px 12px; text-align: center;">Work Hours</th>
+        <th style="padding: 10px 12px; text-align: center;">Overtime</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: right;">Day Earnings</th>
+      </tr>
+    `;
+
+    const tableRows = filteredRecords.length === 0
+      ? `<tr><td colspan="11" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No attendance log entries matched current filters.</td></tr>`
+      : filteredRecords.map((rec) => {
+          const emp = employees.find((e) => e.id === rec.employeeId);
+          const rate = emp?.hourlyRate || 25;
+          const earnings = calculateEarnings(rec.totalHours, rec.overtime, rate, settings.overtimeRateMultiplier);
+          return `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 10px 12px; font-weight: 500; font-family: monospace; color: #334155;">${rec.date}</td>
+              <td style="padding: 10px 12px; font-family: monospace; color: #64748b;">${rec.employeeId}</td>
+              <td style="padding: 10px 12px; font-weight: bold; color: #0f172a;">${rec.employeeName}</td>
+              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.entryTime || '--:--'}</td>
+              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.lunchOut || '--:--'}</td>
+              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.lunchIn || '--:--'}</td>
+              <td style="padding: 10px 12px; text-align: center; font-family: monospace;">${rec.exitTime || '--:--'}</td>
+              <td style="padding: 10px 12px; text-align: center; font-weight: 600;">${(rec.totalHours || 0).toFixed(2)}h</td>
+              <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #4f46e5;">${(rec.overtime || 0).toFixed(2)}h</td>
+              <td style="padding: 10px 12px; text-align: center;">
+                <span style="font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${
+                  rec.status === 'Present' ? '#f0fdf4; color: #166534;' :
+                  rec.status === 'Late' ? '#fef9c3; color: #854d0e;' :
+                  rec.status === 'Overtime' ? '#e0e7ff; color: #3730a3;' :
+                  '#fef2f2; color: #991b1b;'
+                }">${rec.status}</span>
+              </td>
+              <td style="padding: 10px 12px; text-align: right; font-weight: bold; font-family: monospace;">₹${earnings.totalPay.toFixed(2)}</td>
+            </tr>
+          `;
+        }).join('');
+
+    const totalHoursAgg = filteredRecords.reduce((sum, r) => sum + (r.totalHours || 0), 0);
+    const totalOTAgg = filteredRecords.reduce((sum, r) => sum + (r.overtime || 0), 0);
+    const totalPayAgg = filteredRecords.reduce((sum, r) => {
+      const emp = employees.find((e) => e.id === r.employeeId);
+      const rate = emp?.hourlyRate || 25;
+      return sum + calculateEarnings(r.totalHours, r.overtime, rate, settings.overtimeRateMultiplier).totalPay;
+    }, 0);
+
+    const activeEmpDetails = activeEmployeeModel ? `
+      <div style="margin-bottom: 24px; padding: 16px; background: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 12px; font-size: 11px;">
+        <span style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold; color: #4338ca;">Audited Staff Record</span>
+        <h2 style="font-size: 14px; font-weight: 800; color: #1e1b4b; margin: 4px 0 8px 0;">${activeEmployeeModel.name} (ID: ${activeEmployeeModel.id})</h2>
+        <p style="margin: 2px 0;"><strong>Department:</strong> ${activeEmployeeModel.department} &bull; <strong>Work Email:</strong> ${activeEmployeeModel.email}</p>
+        <p style="margin: 2px 0;"><strong>Residential Address (पता):</strong> ${activeEmployeeModel.address || "No address details registered."}</p>
+        <p style="margin: 2px 0;"><strong>Wage Rate:</strong> ₹${activeEmployeeModel.hourlyRate}/hr</p>
+      </div>
+    ` : '';
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance Logs & Audit Report - ${settings.companyName}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #334155;
+      background: white;
+      margin: 40px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .header {
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+      letter-spacing: -0.025em;
+    }
+    .header p {
+      font-family: monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      color: #94a3b8;
+      margin: 4px 0 0 0;
+    }
+    .header .meta {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+    .right-meta {
+      text-align: right;
+      font-family: monospace;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-bottom: 40px;
+    }
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-family: monospace;
+      font-weight: bold;
+      font-size: 9px;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid #cbd5e1;
+    }
+    td {
+      padding: 10px 12px;
+    }
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .footer-row {
+      font-weight: bold;
+      border-top: 2px solid #94a3b8;
+      background: #f1f5f9 !important;
+    }
+    .download-banner {
+      display: block;
+      background: #e2f0fd;
+      border: 1px solid #bce0fd;
+      color: #1e3a8a;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-align: center;
+      margin-bottom: 24px;
+      font-weight: 600;
+      font-family: sans-serif;
+    }
+    @media print {
+      .download-banner {
+        display: none !important;
+      }
+      body {
+        margin: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="download-banner">
+      📄 Press Ctrl+P (or Cmd+P on Mac) to print this page or "Save as PDF" directly to your device! (यह फाइल ऑफलाइन प्रिंट के लिए तैयार है, Ctrl+P दबाएं)
+    </div>
+
+    <div class="header">
+      <div>
+        <h1>${settings.companyName} Logs</h1>
+        <p>TIMECARD & PAYROLL AUDIT SUMMARY</p>
+        <div class="meta">
+          Period: <strong>${filterType} report</strong> &bull;
+          Export Date: <strong>${new Date().toLocaleDateString()}</strong>
+        </div>
+      </div>
+      <div class="right-meta">
+        <p>Report: ATTENDANCE-AUDIT-${new Date().toISOString().split('T')[0].replace(/-/g, '')}</p>
+        <p>Generated At: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+      </div>
+    </div>
+
+    ${activeEmpDetails}
+
+    <table>
+      <thead>
+        ${tableHeader}
+      </thead>
+      <tbody>
+        ${tableRows}
+        <tr class="footer-row">
+          <td colspan="7" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Grand Cumulative Totals:</td>
+          <td style="text-align: center; font-weight: bold;">${totalHoursAgg.toFixed(2)}h</td>
+          <td style="text-align: center; font-weight: bold; color: #4f46e5;">${totalOTAgg.toFixed(2)}h</td>
+          <td></td>
+          <td style="text-align: right; font-weight: 900; color: #1e3a8a;">₹${totalPayAgg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Filtered_Attendance_Report_${filterType}_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  // Standalone printable payroll summary generation for offline printing/PDF bypass
+  const downloadPayrollSummaryHTML = () => {
+    const tableRows = employeePayrollSummaries.length === 0 
+      ? `<tr><td colspan="7" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No active employee payroll summary items found.</td></tr>`
+      : employeePayrollSummaries.map((summary) => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 16px; font-family: monospace; font-weight: 600; color: #64748b;">${summary.employeeId}</td>
+          <td style="padding: 12px 16px; font-weight: bold; color: #0f172a;">${summary.name}</td>
+          <td style="padding: 12px 12px; color: #334155;">${summary.department}</td>
+          <td style="padding: 12px 12px; text-align: center; color: #64748b;">₹${summary.hourlyRate}/hr</td>
+          <td style="padding: 12px 12px; text-align: center; font-weight: 600;">${summary.totalHours.toFixed(2)}h</td>
+          <td style="padding: 12px 12px; text-align: center; font-weight: 600; color: #4f46e5;">${summary.overtimeHours > 0 ? summary.overtimeHours.toFixed(2) + 'h' : '0.00'}</td>
+          <td style="padding: 12px 16px; text-align: right; font-weight: 800; color: #e11d48; font-family: monospace;">₹${summary.netPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        </tr>
+      `).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payroll Summary Report - ${settings.companyName}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #334155;
+      background: white;
+      margin: 40px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .header {
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+      letter-spacing: -0.025em;
+    }
+    .header p {
+      font-family: monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      color: #94a3b8;
+      margin: 4px 0 0 0;
+    }
+    .header .meta {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+    .right-meta {
+      text-align: right;
+      font-family: monospace;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    .status-badge {
+      font-size: 10px;
+      font-weight: bold;
+      color: #16a34a;
+      margin-top: 4px;
+    }
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      background: #f8fafc;
+      border: 1px solid #f1f5f9;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+    }
+    .card .title {
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.05em;
+    }
+    .card .value {
+      font-size: 18px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 4px 0 0 0;
+    }
+    .card .net-value {
+      font-size: 18px;
+      font-weight: 900;
+      color: #4f46e5;
+      margin: 4px 0 0 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-bottom: 40px;
+    }
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-family: monospace;
+      font-weight: bold;
+      font-size: 10px;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 10px 16px;
+      border-bottom: 2px solid #cbd5e1;
+    }
+    td {
+      padding: 10px 16px;
+    }
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .footer-row {
+      font-weight: bold;
+      border-top: 2px solid #94a3b8;
+      background: #f1f5f9 !important;
+    }
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      margin-top: 60px;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 20px;
+    }
+    .signature-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: bold;
+      color: #64748b;
+    }
+    .signature-name {
+      font-size: 12px;
+      font-weight: bold;
+      color: #1e293b;
+      margin-top: 4px;
+    }
+    .signature-sub {
+      font-size: 10px;
+      color: #94a3b8;
+      font-family: monospace;
+    }
+    .download-banner {
+      display: block;
+      background: #e0e7ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-align: center;
+      margin-bottom: 24px;
+      font-weight: 600;
+      font-family: sans-serif;
+    }
+    @media print {
+      .download-banner {
+        display: none !important;
+      }
+      body {
+        margin: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="download-banner">
+      📄 Press Ctrl+P (or Cmd+P on Mac) to print this page or "Save as PDF" directly to your device! (यह फाइल ऑफलाइन प्रिंट के लिए तैयार है, Ctrl+P दबाएं)
+    </div>
+
+    <div class="header">
+      <div>
+        <h1>${settings.companyName}</h1>
+        <p>Official Payroll & Earnings Audit Sheet</p>
+        <div class="meta">
+          Period Filter: <strong>${filterType} summary</strong> &bull;
+          Filter Mode: <strong>${filterType.toUpperCase()}</strong>
+        </div>
+      </div>
+      <div class="right-meta">
+        <p>Document: PAYROLL-REF-\${new Date().toISOString().split('T')[0].replace(/-/g, '')}</p>
+        <p>Generated At: \${new Date().toLocaleDateString()} \${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+        <div class="status-badge">STATUS: AUDITED & LOCKED</div>
+      </div>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <span class="title">Cumulative Hours</span>
+        <p class="value">\${grandSummaryHours.toFixed(2)} hrs</p>
+      </div>
+      <div class="card">
+        <span class="title">Overtime Subtotal</span>
+        <p class="value">₹\${grandSummaryOvertime.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+      </div>
+      <div class="card">
+        <span class="title" style="color: #4f46e5;">Net Payable Budget</span>
+        <p class="net-value">₹\${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Staff ID</th>
+          <th>Employee Name</th>
+          <th>Department</th>
+          <th style="text-align: center;">Hourly Rate</th>
+          <th style="text-align: center;">Total Hours</th>
+          <th style="text-align: center;">Overtime</th>
+          <th style="text-align: right;">Net Payable</th>
+        </tr>
+      </thead>
+      <tbody>
+        \${tableRows}
+        <tr class="footer-row">
+          <td colspan="4" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Summary Cumulative Totals:</td>
+          <td style="text-align: center; font-weight: bold;">\${grandSummaryHours.toFixed(2)}h</td>
+          <td style="text-align: center; font-weight: bold; color: #4f46e5;">\${employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h</td>
+          <td style="text-align: right; font-weight: 900; color: #312e81;">₹\${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="signatures">
+      <div>
+        <span class="signature-title">Prepared & Verified By</span>
+        <p class="signature-name">HR General / Admin Manager</p>
+        <p class="signature-sub">Calitech Finance Operations Desk</p>
+      </div>
+      <div style="text-align: right;">
+        <span class="signature-title">Approved & Signed By</span>
+        <p class="signature-name">Director / Authorized Signatory</p>
+        <p class="signature-sub">Corporate seal and stamp authorization</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Payroll_Summary_Report_${filterType}_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
   };
 
   return (
@@ -376,12 +891,13 @@ export default function ReportsView({
             <span>Export CSV / Excel</span>
           </button>
           <button
-            onClick={handlePrintPDF}
+            onClick={downloadFilteredLogsHTML}
             id="btn-export-pdf"
             className="flex items-center space-x-1 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-semibold cursor-pointer shadow-sm shadow-indigo-600/10 transition-colors"
+            title="Download full report file ready to print or save as PDF"
           >
-            <Printer className="w-4 h-4 text-indigo-200 shrink-0" />
-            <span>Export / Print PDF</span>
+            <DownloadCloud className="w-4 h-4 text-indigo-200 shrink-0" />
+            <span>Print & PDF (Wages Logs)</span>
           </button>
           <button
             onClick={() => setIsPayrollSummaryOpen(true)}
@@ -411,10 +927,17 @@ export default function ReportsView({
           <div>
             <h1 className="text-xl font-bold text-slate-900">{settings.companyName} Logs</h1>
             <p className="text-xs text-slate-500 font-mono mt-0.5">TIMECARD & PAYROLL AUDIT SUMMARY</p>
+            {activeEmployeeModel && (
+              <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-800 space-y-1.5 max-w-2xl">
+                <p><strong>Employee Name (पूरा नाम):</strong> {activeEmployeeModel.name} ({activeEmployeeModel.id})</p>
+                <p><strong>Residential Address (पता):</strong> {activeEmployeeModel.address || "No address details registered."}</p>
+                <p><strong>Department Unit:</strong> {activeEmployeeModel.department} | <strong>Work Email:</strong> {activeEmployeeModel.email} | <strong>Wage Rate:</strong> ₹{activeEmployeeModel.hourlyRate}/hr</p>
+              </div>
+            )}
           </div>
           <div className="text-right text-xs text-slate-400 font-mono">
             <p>Export Date: {new Date().toLocaleDateString()}</p>
-            <p className="uppercase">Period: {filterType} report</p>
+            <p className="uppercase font-semibold">Period: {filterType} report</p>
           </div>
         </div>
       </div>
@@ -522,6 +1045,44 @@ export default function ReportsView({
           )}
         </div>
       </div>
+
+      {/* Selected Employee Detailed Profile - visible on screen and prints */}
+      {activeEmployeeModel && (
+        <div id="active-employee-print-badge" className="bg-gradient-to-r from-slate-55 to-indigo-50/20 p-5 rounded-2xl border border-indigo-100/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3.5">
+            <div className="bg-indigo-600 text-white p-3 rounded-xl shadow-xs shrink-0">
+              <User className="w-5 h-5 text-indigo-100" />
+            </div>
+            <div>
+              <span className="text-[9px] font-mono font-black tracking-widest text-indigo-650 uppercase">
+                Audited Employee Record (कर्मचारी विवरण)
+              </span>
+              <h2 className="text-base font-black text-slate-900 tracking-tight mt-0.5">
+                {activeEmployeeModel.name}
+              </h2>
+              <div className="flex flex-wrap items-center mt-1.5 gap-x-3 gap-y-1 text-2xs text-slate-500 font-medium">
+                <span className="font-mono bg-slate-100 px-1.5 py-0.5 border border-slate-200 text-slate-600 rounded">
+                  ID: {activeEmployeeModel.id}
+                </span>
+                <span>•</span>
+                <span>Dept: <strong className="text-slate-700 font-semibold">{activeEmployeeModel.department}</strong></span>
+                <span>•</span>
+                <span>Email: <strong className="text-slate-700 font-semibold">{activeEmployeeModel.email}</strong></span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="md:text-right font-sans md:max-w-md border-t md:border-t-0 border-indigo-50 pt-3 md:pt-0">
+            <span className="text-[10px] font-mono font-bold text-slate-450 uppercase tracking-widest block">
+              Residential Address (पूर्ण पता)
+            </span>
+            <p className="text-xs font-semibold text-slate-700 mt-1 flex md:justify-end items-center space-x-1">
+              <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span>{activeEmployeeModel.address || "No address details registered."}</span>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Aggregate Payroll metrics summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1051,11 +1612,21 @@ export default function ReportsView({
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={downloadPayrollSummaryHTML}
                   className="flex items-center space-x-1.5 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl text-xs font-bold cursor-pointer shadow-sm transition-colors"
+                  title="Highly recommended: triggers download of offline file ready to print or save to PDF"
                 >
-                  <Printer className="w-4 h-4 text-indigo-100" />
-                  <span>Print PDF Document</span>
+                  <DownloadCloud className="w-4 h-4 text-indigo-100" />
+                  <span>Download & Print PDF file</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center space-x-1.5 px-4 py-2 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                  title="Attempts direct printing through browser workspace iframe setup"
+                >
+                  <Printer className="w-4 h-4 text-slate-500" />
+                  <span>Direct Browser Print</span>
                 </button>
                 <button
                   type="button"

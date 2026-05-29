@@ -8,6 +8,7 @@ export interface Employee {
   status: 'Active' | 'Inactive';
   password?: string; // custom employee login passcode / PIN for privacy protection
   photoUrl?: string; // Base64 or image URL for profile photo
+  address?: string; // residential address / pata
 }
 
 export interface AttendanceRecord {
