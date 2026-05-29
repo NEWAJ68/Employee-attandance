@@ -20,7 +20,8 @@ import {
   MapPin,
   Zap,
   Plus,
-  MessageSquare
+  MessageSquare,
+  Smartphone
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
@@ -111,6 +112,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('terminal');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [layoutMode, setLayoutMode] = useState<'mobile' | 'desktop'>('mobile');
   
   // Primary application state
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
@@ -892,32 +894,61 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] flex" id="main-application-stage">
-      {/* Dynamic Sidebar navigation */}
-      <Sidebar
-        currentView={currentView}
-        onViewChange={handleViewChangeBySelector}
-        isAdminLoggedIn={isAdminLoggedIn}
-        loggedInEmployee={loggedInEmployee}
-        onLogout={handleLogout}
-        onEmployeeLogout={handleEmployeeLogout}
-        companyName={settings.companyName}
-        isOpen={isSidebarOpen}
-        onToggleSidebar={toggleSidebar}
-      />
+    <div className="min-h-screen bg-slate-100 flex flex-col" id="main-application-stage">
+      {/* Device Mode Switcher bar */}
+      <div className="bg-slate-900 text-gray-200 py-2.5 px-4 flex items-center justify-between text-xs select-none border-b border-slate-800 sticky top-0 z-50 print:hidden shadow-sm shrink-0">
+        <div className="flex items-center space-x-2">
+          <Smartphone className="w-4 h-4 text-indigo-400" />
+          <span className="font-extrabold tracking-wider font-mono text-[10px] text-slate-100 uppercase">Layout Simulation Mode</span>
+        </div>
+        <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+          <button 
+            type="button"
+            onClick={() => {
+              setLayoutMode('mobile');
+              setIsSidebarOpen(false);
+            }}
+            className={`px-3 py-1 rounded-md text-[9px] uppercase font-black tracking-wider transition-all cursor-pointer ${layoutMode === 'mobile' ? 'bg-indigo-650 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+          >
+            Mobile (Default)
+          </button>
+          <button 
+            type="button"
+            onClick={() => setLayoutMode('desktop')}
+            className={`px-3 py-1 rounded-md text-[9px] uppercase font-black tracking-wider transition-all cursor-pointer ${layoutMode === 'desktop' ? 'bg-indigo-650 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+          >
+            Desktop Wide
+          </button>
+        </div>
+      </div>
 
-      {/* Main viewport */}
-      <div className="flex-1 flex flex-col lg:pl-72 min-w-0 min-h-screen pb-12">
-        {/* Top bar (for mobile toggle menu / system status indicators) */}
-        <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-4 md:px-6 sticky top-0 z-20 print:hidden select-none">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={toggleSidebar}
-              className="lg:hidden text-slate-500 hover:text-slate-800 bg-slate-100 p-2 rounded-xl transition-all cursor-pointer"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <h2 className="hidden text-xs md:flex items-center space-x-1.5 font-bold uppercase font-mono tracking-widest text-slate-400">
+      <div className={`flex flex-1 w-full bg-[#f3f4f6] min-h-0 relative ${layoutMode === 'mobile' ? 'max-w-[430px] mx-auto bg-white border-r border-l border-slate-200/80 shadow-2xl relative' : ''}`}>
+        {/* Dynamic Sidebar navigation */}
+        <Sidebar
+          currentView={currentView}
+          onViewChange={handleViewChangeBySelector}
+          isAdminLoggedIn={isAdminLoggedIn}
+          loggedInEmployee={loggedInEmployee}
+          onLogout={handleLogout}
+          onEmployeeLogout={handleEmployeeLogout}
+          companyName={settings.companyName}
+          isOpen={isSidebarOpen}
+          onToggleSidebar={toggleSidebar}
+          layoutMode={layoutMode}
+        />
+
+        {/* Main viewport */}
+        <div className={`flex-1 flex flex-col ${layoutMode === 'desktop' ? 'lg:pl-72' : ''} min-w-0 min-h-screen pb-12`}>
+          {/* Top bar (for mobile toggle menu / system status indicators) */}
+          <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-4 md:px-6 sticky top-0 z-20 print:hidden select-none">
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={toggleSidebar}
+                className={`${layoutMode === 'desktop' ? 'lg:hidden' : ''} text-slate-500 hover:text-slate-800 bg-slate-100 p-2 rounded-xl transition-all cursor-pointer`}
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <h2 className="hidden text-xs md:flex items-center space-x-1.5 font-bold uppercase font-mono tracking-widest text-slate-400">
               <span>View:</span>
               <span className="text-slate-650 tracking-normal capitalize font-sans">
                 {currentView === 'terminal' && 'Attendance Kiosk Desk'}
@@ -1316,6 +1347,7 @@ export default function App() {
       )}
 
       {/* 💼 QUICK ACTION MODALS OVERLAYS */}
+      </div>
     </div>
   );
 }

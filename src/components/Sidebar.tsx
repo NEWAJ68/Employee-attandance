@@ -25,6 +25,7 @@ interface SidebarProps {
   companyName: string;
   onToggleSidebar?: () => void;
   isOpen?: boolean;
+  layoutMode?: 'mobile' | 'desktop';
 }
 
 export default function Sidebar({
@@ -36,7 +37,8 @@ export default function Sidebar({
   onEmployeeLogout,
   companyName,
   isOpen = true,
-  onToggleSidebar
+  onToggleSidebar,
+  layoutMode = 'desktop'
 }: SidebarProps) {
   const menuItems = [
     {
@@ -92,12 +94,14 @@ export default function Sidebar({
     },
   ];
 
+  const isFixed = layoutMode === 'desktop';
+
   return (
     <>
       {/* Mobile Sidebar overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden"
+          className={`${isFixed ? 'fixed' : 'absolute'} inset-0 bg-slate-900/40 backdrop-blur-sm z-30 ${layoutMode === 'desktop' ? 'lg:hidden' : ''}`}
           onClick={onToggleSidebar}
         />
       )}
@@ -105,7 +109,9 @@ export default function Sidebar({
       {/* Main Sidebar */}
       <aside 
         id="app-sidebar"
-        className={`fixed top-0 bottom-0 left-0 z-40 w-72 bg-[#111827] text-gray-300 flex flex-col border-r border-[#1f2937] shadow-xl transition-transform duration-300 transform lg:translate-x-0 ${
+        className={`${isFixed ? 'fixed' : 'absolute'} top-0 bottom-0 left-0 z-40 w-72 bg-[#111827] text-gray-300 flex flex-col border-r border-[#1f2937] shadow-xl transition-transform duration-300 transform ${
+          layoutMode === 'desktop' ? 'lg:translate-x-0' : ''
+        } ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -115,7 +121,7 @@ export default function Sidebar({
           {onToggleSidebar && (
             <button 
               onClick={onToggleSidebar}
-              className="lg:hidden text-gray-400 hover:text-white cursor-pointer bg-gray-800/40 p-1.5 rounded-lg border border-gray-800 hover:bg-gray-850"
+              className={`${layoutMode === 'desktop' ? 'lg:hidden' : ''} text-gray-400 hover:text-white cursor-pointer bg-gray-800/40 p-1.5 rounded-lg border border-gray-800 hover:bg-gray-850`}
             >
               <X className="w-4 h-4" />
             </button>
