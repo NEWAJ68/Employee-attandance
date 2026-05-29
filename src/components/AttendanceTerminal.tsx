@@ -962,17 +962,10 @@ export default function AttendanceTerminal({
       </div>
 
       {settings.strictGeofencing && (
-        <div className="bg-indigo-55/90 border border-indigo-100 p-4 rounded-xl flex items-start space-x-3 text-slate-700 animate-fadeIn" id="strict-geo-banner">
-          <MapPin className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5 animate-pulse" />
+        <div className="bg-indigo-55/90 border border-indigo-100 p-4 rounded-xl flex items-center space-x-3 text-slate-700 animate-fadeIn" id="strict-geo-banner">
+          <MapPin className="w-5 h-5 text-indigo-600 shrink-0 animate-pulse" />
           <div className="text-xs">
             <span className="font-bold text-indigo-950 block">🔒 Multi-Site Geofencing Protection Enabled</span>
-            <p className="mt-0.5 text-slate-550 leading-relaxed font-sans">
-              Employees can register punches from Calitech HQ Guwahati or directly from our authorized partner pharma sites: 
-              <strong className="text-slate-900 ml-1">Ajanta Pharma (Guwahati)</strong>, 
-              <strong className="text-slate-900 ml-1">Natco Pharma (Guwahati)</strong>, or 
-              <strong className="text-slate-900 ml-1">Hetero Pharma (Guwahati, Hudumpur)</strong>. 
-              Punches are verified in real-time using secure browser GPS: please snap your verification photo with the office/plant building or gate in your background.
-            </p>
           </div>
         </div>
       )}
