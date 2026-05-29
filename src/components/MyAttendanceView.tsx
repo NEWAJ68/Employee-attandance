@@ -1670,39 +1670,48 @@ export default function MyAttendanceView({
             </div>
           </div>
 
-          {/* Summary Indicators */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Present</div>
-              <div className="text-xs sm:text-sm font-black text-emerald-600 mt-1">{presentDaysCount} Days</div>
+          {/* Unified Statement Grid View */}
+          <div className="grid grid-cols-4 gap-3 bg-slate-50/50 p-4 rounded-xl border border-slate-200">
+            {/* Present Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-600 block">Days Present</span>
+              <div className="text-sm font-black text-emerald-600 mt-1">{presentDaysCount} days</div>
             </div>
-            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Absent</div>
-              <div className="text-xs sm:text-sm font-black text-rose-650 mt-1">{absentDaysCount} Days</div>
-            </div>
-            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Leaves</div>
-              <div className="text-xs sm:text-sm font-black text-indigo-655 mt-1">{leavesCount} Days</div>
-            </div>
-            <div className="border border-slate-200 p-3 rounded-xl text-center bg-slate-50/20">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-400">Work Hours</div>
-              <div className="text-xs sm:text-sm font-black text-slate-800 mt-1">{sumWorkHours.toFixed(1)} Hrs</div>
-            </div>
-          </div>
 
-          {/* Earnings Details */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="border border-slate-150 p-3 rounded-xl text-left bg-slate-50/50">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-450">Standard Earnings</div>
-              <div className="text-xs font-mono font-bold text-slate-800 mt-1">₹{regularPay.toFixed(2)}</div>
+            {/* Absent Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-rose-500 block">Days Absent</span>
+              <div className="text-sm font-black text-rose-600 mt-1">{absentDaysCount} days</div>
             </div>
-            <div className="border border-slate-150 p-3 rounded-xl text-left bg-slate-50/50">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-slate-450">Overtime Earnings</div>
-              <div className="text-xs font-mono font-bold text-indigo-650 mt-1">₹{overtimePay.toFixed(2)}</div>
+
+            {/* Active Leave Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-505 block">Active Leave</span>
+              <div className="text-sm font-black text-indigo-650 mt-1">{leavesCount} days</div>
             </div>
-            <div className="border border-sky-100 p-3 rounded-xl text-left bg-sky-50/30">
-              <div className="text-[8px] font-mono uppercase tracking-wider font-bold text-sky-600 font-extrabold">Net Pay Estimate</div>
-              <div className="text-sm font-extrabold text-blue-800 mt-0.5">₹{totalPay.toFixed(2)}</div>
+
+            {/* Total Work Hours Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Total Work Hours</span>
+              <div className="text-sm font-black text-slate-800 mt-1">{sumWorkHours.toFixed(1)} hrs</div>
+            </div>
+
+            {/* Standard Hours Pay Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Standard Hours Pay</span>
+              <div className="text-sm font-mono font-bold text-slate-800 mt-1">₹{regularPay.toFixed(2)}</div>
+            </div>
+
+            {/* Overtime Compensation Column */}
+            <div className="bg-white border border-slate-150 p-3 rounded-lg text-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-indigo-505 block">Overtime Compensation</span>
+              <div className="text-sm font-mono font-bold text-indigo-650 mt-1">₹{overtimePay.toFixed(2)}</div>
+            </div>
+
+            {/* Calculated Payout Highlight Box (Spans 2 columns) */}
+            <div className="col-span-2 bg-sky-55 border border-sky-200 p-3 rounded-lg text-center flex flex-col justify-center items-center shadow-3xs">
+              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-500 block">Calculated Payout (Net Pay)</span>
+              <div className="text-base font-extrabold text-blue-800 mt-0.5">₹{totalPay.toFixed(2)}</div>
             </div>
           </div>
 
