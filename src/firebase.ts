@@ -81,3 +81,25 @@ export async function testConnection(): Promise<boolean> {
 
 // Trigger initial connection test silently
 testConnection();
+
+/**
+ * Recursively removes any keys with `undefined` values from an object,
+ * preventing Firestore validation errors "Unsupported field value: undefined".
+ */
+export function cleanFirestoreData<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanFirestoreData(item)) as any;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const key of Object.keys(obj)) {
+      const val = (obj as any)[key];
+      if (val !== undefined) {
+        cleaned[key] = cleanFirestoreData(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}

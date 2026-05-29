@@ -3,6 +3,52 @@
  * Provides direct client-side synchronization between local state and custom user Google Spreadsheets.
  */
 
+export async function ensureSheetsExist(accessToken: string, spreadsheetId: string) {
+  try {
+    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!response.ok) {
+      console.warn('Could not inspect spreadsheet metadata: ', await response.text());
+      return;
+    }
+    const data = await response.json();
+    const existingTitles = (data.sheets || []).map((s: any) => s.properties?.title || "");
+    
+    const requiredSheets = ['Attendance', 'Employees', 'Settings'];
+    const missingSheets = requiredSheets.filter(title => !existingTitles.includes(title));
+    
+    if (missingSheets.length > 0) {
+      const batchResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: missingSheets.map(title => ({
+            addSheet: {
+              properties: {
+                title
+              }
+            }
+          }))
+        })
+      });
+      if (!batchResponse.ok) {
+        console.error('Failed to automatically create missing sheets:', await batchResponse.text());
+      } else {
+        console.log('Successfully auto-created missing sheets:', missingSheets);
+      }
+    }
+  } catch (err) {
+    console.error('Error in ensureSheetsExist helper:', err);
+  }
+}
+
 export async function clearSpreadsheetRange(accessToken: string, spreadsheetId: string, range: string) {
   try {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:clear`, {
@@ -46,6 +92,7 @@ export async function createSpreadsheet(accessToken: string, titleStr: string): 
 }
 
 export async function syncEmployeesToSheet(accessToken: string, spreadsheetId: string, employees: any[]) {
+  await ensureSheetsExist(accessToken, spreadsheetId);
   const headers = ["Employee ID", "Employee Name", "Department", "Email", "Hourly Rate", "Joined Date", "Status"];
   const rows = [headers, ...employees.map(emp => [
     emp.id || "",
@@ -79,6 +126,7 @@ export async function syncEmployeesToSheet(accessToken: string, spreadsheetId: s
 }
 
 export async function syncSettingsToSheet(accessToken: string, spreadsheetId: string, settings: any) {
+  await ensureSheetsExist(accessToken, spreadsheetId);
   const rows = [
     ["Key", "Value"],
     ["companyName", settings.companyName || ""],
@@ -112,6 +160,7 @@ export async function syncSettingsToSheet(accessToken: string, spreadsheetId: st
 }
 
 export async function syncAttendanceRecordToSheet(accessToken: string, spreadsheetId: string, record: any) {
+  await ensureSheetsExist(accessToken, spreadsheetId);
   // 1. Fetch current rows to check/match
   const getRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Attendance!A1:N5000`, {
     headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -195,6 +244,7 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
 }
 
 export async function syncAllAttendanceToSheet(accessToken: string, spreadsheetId: string, attendance: any[]) {
+  await ensureSheetsExist(accessToken, spreadsheetId);
   const headers = ["Date", "Employee ID", "Employee Name", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Total Hours", "Overtime", "Status", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In"];
   const rows = [headers, ...attendance.map(rec => [
     rec.date || "",

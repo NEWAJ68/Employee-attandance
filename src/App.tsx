@@ -29,8 +29,14 @@ import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
 
 // Firebase imports
 import { signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth, googleProvider, OperationType, handleFirestoreError, testConnection } from './firebase';
+import { collection, doc, setDoc as firestoreSetDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { db, auth, googleProvider, OperationType, handleFirestoreError, testConnection, cleanFirestoreData } from './firebase';
+
+// Wrapped setDoc to ensure absolute safety against undefined fields in Firestore operations
+const setDoc = (docRef: any, data: any, options?: any) => {
+  const cleaned = cleanFirestoreData(data);
+  return options ? firestoreSetDoc(docRef, cleaned, options) : firestoreSetDoc(docRef, cleaned);
+};
 
 // Google Sheets Service Imports
 import {
