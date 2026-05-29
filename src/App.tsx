@@ -172,6 +172,23 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('synced');
   const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'offline' | 'error'>('connecting');
 
+  // Offline Punch Queue State
+  const [punchQueue, setPunchQueue] = useState<AttendanceRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('offline_punch_queue');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to parse offline punch queue:', e);
+      return [];
+    }
+  });
+  const [isSyncingQueue, setIsSyncingQueue] = useState<boolean>(false);
+
+  // Sync punch queue to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('offline_punch_queue', JSON.stringify(punchQueue));
+  }, [punchQueue]);
+
   // Unified State Loader with real-time Firebase syncing
   useEffect(() => {
     // 1. Initial immediate boot load from LocalStorage as silent offline fallback
@@ -404,6 +421,97 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [attendance, googleAccessToken, googleSpreadsheetId, settings.autoSyncSheets]);
 
+  // Trigger queue sync when connectivity is restored or when forced
+  const syncOfflineQueue = async () => {
+    if (punchQueue.length === 0 || isSyncingQueue) return;
+    setIsSyncingQueue(true);
+    console.log(`Starting synchronization of ${punchQueue.length} offline queued punches...`);
+    
+    const successfullySynced: string[] = [];
+    
+    for (const record of punchQueue) {
+      const docId = `${record.date}_${record.employeeId}`;
+      try {
+        // 1. Sync to Firebase Cloud
+        await setDoc(doc(db, 'attendance', docId), record);
+        
+        // 2. Sync to Google Sheets if settings.autoSyncSheets is true
+        if (settings.autoSyncSheets && googleAccessToken && googleSpreadsheetId) {
+          try {
+            await syncAttendanceRecordToSheet(googleAccessToken, googleSpreadsheetId, record);
+          } catch (err) {
+            console.error(`Google Sheets sync failed for offline punch of ${record.employeeName}:`, err);
+          }
+        }
+        
+        successfullySynced.push(docId);
+        
+        // Raise success alert
+        handleRaiseNotification(
+          'Offline Punch Synced',
+          `Successfully uploaded offline punch record for ${record.employeeName || 'Staff'} (${record.date}) to Cloud database.`,
+          'success',
+          record.employeeId
+        );
+      } catch (err) {
+        console.error(`Failed to sync offline record for ${record.employeeName} (${docId}):`, err);
+        // Break out of loop if Firestore sync is still failing due to connection
+        break;
+      }
+    }
+
+    if (successfullySynced.length > 0) {
+      setPunchQueue(prev => prev.filter(rec => !successfullySynced.includes(`${rec.date}_${rec.employeeId}`)));
+    }
+    setIsSyncingQueue(false);
+  };
+
+  // Run automatically when firebaseStatus becomes 'connected'
+  useEffect(() => {
+    if (firebaseStatus === 'connected' && punchQueue.length > 0 && !isSyncingQueue) {
+      syncOfflineQueue();
+    }
+  }, [firebaseStatus, punchQueue, isSyncingQueue]);
+
+  // Listen for browser online/offline events to dynamically adjust status and trigger sync
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('Browser online event received. Testing Firebase connection...');
+      const isOnline = await testConnection();
+      if (isOnline) {
+        setFirebaseStatus('connected');
+      } else {
+        setFirebaseStatus('offline');
+      }
+    };
+
+    const handleOffline = () => {
+      console.log('Browser offline event received.');
+      setFirebaseStatus('offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Periodic ping to check connection every 15 seconds to ensure real-time accuracy
+    const interval = setInterval(async () => {
+      const isOnline = await testConnection();
+      setFirebaseStatus(prev => {
+        const nextState = isOnline ? 'connected' : 'offline';
+        if (prev !== nextState && (prev === 'connected' || prev === 'offline')) {
+          return nextState;
+        }
+        return prev;
+      });
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
     title: string,
@@ -610,10 +718,31 @@ export default function App() {
       // Optimistic state update: update local state instantly before waiting for DB
       setAttendance((prev) => [...prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId)), newRecord]);
 
-      // Fire Firestore write asynchronously in the background
-      setDoc(doc(db, 'attendance', docId), newRecord).catch(err => {
-        handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
-      });
+      // Determine connection state
+      const isOfflineMode = firebaseStatus === 'offline' || !navigator.onLine;
+
+      if (isOfflineMode) {
+        setPunchQueue(prev => {
+          const filtered = prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId));
+          return [...filtered, newRecord];
+        });
+
+        handleRaiseNotification(
+          'Offline Punch Queued',
+          `Working offline. Stamp registered locally for ${newRecord.employeeName || 'Staff'} & queued for sync.`,
+          'info',
+          newRecord.employeeId
+        );
+      } else {
+        // Fire Firestore write asynchronously in the background
+        setDoc(doc(db, 'attendance', docId), newRecord).catch(err => {
+          console.warn('Firestore direct upload failed, adding punch to offline queue:', err);
+          setPunchQueue(prev => {
+            const filtered = prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId));
+            return [...filtered, newRecord];
+          });
+        });
+      }
 
       const empName = employees.find(e => e.id === newRecord.employeeId)?.name || 'Employee';
 
@@ -645,7 +774,7 @@ export default function App() {
         );
       }
 
-      if (settings.autoSyncSheets) {
+      if (settings.autoSyncSheets && !isOfflineMode) {
         triggerRemoteSheetsSync('syncAttendance', { record: newRecord });
       }
     } catch (err) {
@@ -659,10 +788,31 @@ export default function App() {
       // Optimistic state update: update local state instantly before waiting for DB
       setAttendance((prev) => prev.map(rec => rec.date === updatedRecord.date && rec.employeeId === updatedRecord.employeeId ? updatedRecord : rec));
 
-      // Fire Firestore write asynchronously in the background
-      setDoc(doc(db, 'attendance', docId), updatedRecord).catch(err => {
-        handleFirestoreError(err, OperationType.WRITE, `attendance/${docId}`);
-      });
+      // Determine connection state
+      const isOfflineMode = firebaseStatus === 'offline' || !navigator.onLine;
+
+      if (isOfflineMode) {
+        setPunchQueue(prev => {
+          const filtered = prev.filter(r => !(r.date === updatedRecord.date && r.employeeId === updatedRecord.employeeId));
+          return [...filtered, updatedRecord];
+        });
+
+        handleRaiseNotification(
+          'Offline Punch Queued',
+          `Working offline. Stamp updated locally for ${updatedRecord.employeeName || 'Staff'} & queued for sync.`,
+          'info',
+          updatedRecord.employeeId
+        );
+      } else {
+        // Fire Firestore write asynchronously in the background
+        setDoc(doc(db, 'attendance', docId), updatedRecord).catch(err => {
+          console.warn('Firestore direct write failed, adding updated punch to offline queue:', err);
+          setPunchQueue(prev => {
+            const filtered = prev.filter(r => !(r.date === updatedRecord.date && r.employeeId === updatedRecord.employeeId));
+            return [...filtered, updatedRecord];
+          });
+        });
+      }
 
       // Early Departure alert
       if (updatedRecord.exitTime) {
@@ -681,7 +831,7 @@ export default function App() {
         }
       }
 
-      if (settings.autoSyncSheets) {
+      if (settings.autoSyncSheets && !isOfflineMode) {
         triggerRemoteSheetsSync('syncAttendance', { record: updatedRecord });
       }
     } catch (err) {
@@ -1017,6 +1167,21 @@ export default function App() {
 
           {/* Sync indicator caps */}
           <div className="flex items-center space-x-1.5 sm:space-x-3.5">
+            {punchQueue.length > 0 && (
+              <div 
+                onClick={firebaseStatus === 'connected' ? syncOfflineQueue : undefined}
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border select-none transition-all cursor-pointer ${
+                  firebaseStatus === 'connected' 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-850 hover:bg-emerald-100/90 hover:border-emerald-300' 
+                    : 'bg-amber-50 border-amber-200 text-amber-850 hover:bg-amber-100/90 animate-pulse'
+                }`}
+                title={firebaseStatus === 'connected' ? "Connection restored! Click here to flush and sync queued punches immediately." : `${punchQueue.length} offline punches are locally saved. They will automatically sync when connection is recovered.`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span>Queue: {punchQueue.length} offline</span>
+              </div>
+            )}
+
             <div 
               className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
                 firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' :
