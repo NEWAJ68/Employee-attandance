@@ -30,7 +30,7 @@ import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
 
 // Firebase imports
 import { signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { collection, doc, setDoc as firestoreSetDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc as firestoreSetDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db, auth, googleProvider, OperationType, handleFirestoreError, testConnection, cleanFirestoreData } from './firebase';
 
 // Wrapped setDoc to ensure absolute safety against undefined fields in Firestore operations
@@ -203,10 +203,29 @@ export default function App() {
     // 2. Perform Anonymous Firebase auth login mapping or fallback to unauthenticated
     setFirebaseStatus('connecting');
 
-    const initializeFirestoreSubscriptions = () => {
+    let unsubEmp: (() => void) | null = null;
+    let unsubAttendance: (() => void) | null = null;
+    let unsubSettings: (() => void) | null = null;
+    let unsubLeaves: (() => void) | null = null;
+    let unsubNotifs: (() => void) | null = null;
+    let destroyed = false;
+
+    const setupSubscriptions = async () => {
+      let alreadyInitialized = false;
+      try {
+        const settingsSnap = await getDoc(doc(db, 'settings', 'global'));
+        if (settingsSnap.exists()) {
+          alreadyInitialized = true;
+        }
+      } catch (err) {
+        console.warn('Check initialization failed:', err);
+      }
+
+      if (destroyed) return;
+
       // Snapshot - Employees
-      const unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
-        if (snapshot.empty) {
+      unsubEmp = onSnapshot(collection(db, 'employees'), (snapshot) => {
+        if (snapshot.empty && !alreadyInitialized) {
           // Seed defaults onto Firestore
           INITIAL_EMPLOYEES.forEach((emp) => {
             setDoc(doc(db, 'employees', emp.id), emp).catch(err => {
@@ -226,8 +245,8 @@ export default function App() {
       });
 
       // Snapshot - Attendance
-      const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
-        if (snapshot.empty) {
+      unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        if (snapshot.empty && !alreadyInitialized) {
           // Seed default logs relative to today's date
           const seededLogs = generateInitialAttendance(new Date().toISOString().split('T')[0]);
           seededLogs.forEach((rec) => {
@@ -249,7 +268,7 @@ export default function App() {
       });
 
       // Snapshot - Settings
-      const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
         if (!docSnap.exists()) {
           setDoc(doc(db, 'settings', 'global'), INITIAL_SETTINGS).catch(err => {
             handleFirestoreError(err, OperationType.WRITE, 'settings/global');
@@ -263,8 +282,8 @@ export default function App() {
       });
 
       // Snapshot - Leave Requests
-      const unsubLeaves = onSnapshot(collection(db, 'leaveRequests'), (snapshot) => {
-        if (snapshot.empty) {
+      unsubLeaves = onSnapshot(collection(db, 'leaveRequests'), (snapshot) => {
+        if (snapshot.empty && !alreadyInitialized) {
           INITIAL_LEAVE_REQUESTS.forEach((req) => {
             setDoc(doc(db, 'leaveRequests', req.id), req).catch(err => {
               handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${req.id}`);
@@ -284,8 +303,8 @@ export default function App() {
       });
 
       // Snapshot - Notifications
-      const unsubNotifs = onSnapshot(collection(db, 'notifications'), (snapshot) => {
-        if (snapshot.empty) {
+      unsubNotifs = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+        if (snapshot.empty && !alreadyInitialized) {
           INITIAL_NOTIFICATIONS.forEach((notif) => {
             setDoc(doc(db, 'notifications', notif.id), notif).catch(err => {
               handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`);
@@ -304,37 +323,29 @@ export default function App() {
         console.error('Audit alerts subscription query denied:', err);
         setFirebaseStatus('error');
       });
-
-      return () => {
-        unsubEmp();
-        unsubAttendance();
-        unsubSettings();
-        unsubLeaves();
-        unsubNotifs();
-      };
     };
-
-    let unsubscribes: (() => void) | null = null;
 
     signInAnonymously(auth)
       .then(async () => {
         console.log('Firebase Anonymous Session initialized successfully.');
         const isOnline = await testConnection();
         setFirebaseStatus(isOnline ? 'connected' : 'offline');
-        unsubscribes = initializeFirestoreSubscriptions();
+        setupSubscriptions();
       })
       .catch(async (err) => {
         console.warn('Firebase Anonymous Auth restricted by GCP project policy, proceeding unauthenticated:', err.message);
-        // Fallback: Proceed unauthenticated with connected state if reachable, otherwise offline
         const isOnline = await testConnection();
         setFirebaseStatus(isOnline ? 'connected' : 'offline');
-        unsubscribes = initializeFirestoreSubscriptions();
+        setupSubscriptions();
       });
 
     return () => {
-      if (unsubscribes) {
-        unsubscribes();
-      }
+      destroyed = true;
+      if (unsubEmp) unsubEmp();
+      if (unsubAttendance) unsubAttendance();
+      if (unsubSettings) unsubSettings();
+      if (unsubLeaves) unsubLeaves();
+      if (unsubNotifs) unsubNotifs();
     };
   }, []);
 
@@ -366,6 +377,29 @@ export default function App() {
   useEffect(() => {
     handleSaveToLocalStorage();
   }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
+
+  // Programmatic initial cleanup of default demo profiles (CES001, CES002, CES003) & leaves (LR-101, LR-102) for a completely clean slate
+  useEffect(() => {
+    const defaultIds = ['CES001', 'CES002', 'CES003'];
+    const defaultLeaveIds = ['LR-101', 'LR-102'];
+    
+    if (firebaseStatus === 'connected' && employees.length > 0) {
+      const hasDefaults = employees.some(emp => defaultIds.includes(emp.id));
+      if (hasDefaults) {
+        console.log('User requested fresh database. Programmatically removing default demo profiles.');
+        defaultIds.forEach(id => {
+          deleteDoc(doc(db, 'employees', id)).catch(err => console.error('Delete default employee failed:', id, err));
+        });
+        defaultLeaveIds.forEach(id => {
+          deleteDoc(doc(db, 'leaveRequests', id)).catch(err => console.error('Delete default leave failed:', id, err));
+        });
+        
+        // Wipe local state immediately so user sees clean screen instantly
+        setEmployees(prev => prev.filter(emp => !defaultIds.includes(emp.id)));
+        setLeaveRequests(prev => prev.filter(req => !defaultLeaveIds.includes(req.id)));
+      }
+    }
+  }, [firebaseStatus, employees]);
 
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
@@ -546,6 +580,24 @@ export default function App() {
       triggerRemoteSheetsSync('syncEmployees', { employees: employees.filter((emp) => emp.id !== id) });
     } catch (err) {
       console.error('Failure in handleDeleteEmployee:', err);
+    }
+  };
+
+  const handleClearAllEmployees = async () => {
+    try {
+      const deletePromises = employees.map(emp => {
+        return deleteDoc(doc(db, 'employees', emp.id));
+      });
+      await Promise.all(deletePromises);
+      setEmployees([]);
+      handleRaiseNotification(
+        'Workforce Reset',
+        'All employee profiles have been deleted and cleared as requested.',
+        'info'
+      );
+    } catch (err) {
+      console.error('Error clearing employees:', err);
+      setEmployees([]);
     }
   };
 
@@ -1180,6 +1232,7 @@ export default function App() {
               onAddEmployee={handleAddEmployee}
               onUpdateEmployee={handleUpdateEmployee}
               onDeleteEmployee={handleDeleteEmployee}
+              onClearAllEmployees={handleClearAllEmployees}
               settings={settings}
             />
           )}
