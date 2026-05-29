@@ -378,29 +378,6 @@ export default function App() {
     handleSaveToLocalStorage();
   }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
 
-  // Programmatic initial cleanup of default demo profiles (CES001, CES002, CES003) & leaves (LR-101, LR-102) for a completely clean slate
-  useEffect(() => {
-    const defaultIds = ['CES001', 'CES002', 'CES003'];
-    const defaultLeaveIds = ['LR-101', 'LR-102'];
-    
-    if (firebaseStatus === 'connected' && employees.length > 0) {
-      const hasDefaults = employees.some(emp => defaultIds.includes(emp.id));
-      if (hasDefaults) {
-        console.log('User requested fresh database. Programmatically removing default demo profiles.');
-        defaultIds.forEach(id => {
-          deleteDoc(doc(db, 'employees', id)).catch(err => console.error('Delete default employee failed:', id, err));
-        });
-        defaultLeaveIds.forEach(id => {
-          deleteDoc(doc(db, 'leaveRequests', id)).catch(err => console.error('Delete default leave failed:', id, err));
-        });
-        
-        // Wipe local state immediately so user sees clean screen instantly
-        setEmployees(prev => prev.filter(emp => !defaultIds.includes(emp.id)));
-        setLeaveRequests(prev => prev.filter(req => !defaultLeaveIds.includes(req.id)));
-      }
-    }
-  }, [firebaseStatus, employees]);
-
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
     title: string,

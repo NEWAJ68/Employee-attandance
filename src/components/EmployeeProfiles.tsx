@@ -160,20 +160,6 @@ export default function EmployeeProfiles({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          {employees.length > 0 && (
-            <button
-              onClick={() => {
-                if (window.confirm('क्या आप सच में सभी कर्मचारी प्रोफाइल हटाना चाहते हैं? यह क्रिया वापस नहीं ली जा सकती।\n\nAre you sure you want to delete ALL employee profiles? This action cannot be undone.')) {
-                  onClearAllEmployees();
-                }
-              }}
-              id="btn-clear-all-employees"
-              className="flex items-center justify-center space-x-1 px-4 py-2.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl shadow-sm border border-red-200 hover:border-red-300 cursor-pointer transition-all font-sans"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Delete All Profiles</span>
-            </button>
-          )}
           <button
             onClick={openAddModal}
             id="btn-add-employee-trigger"
