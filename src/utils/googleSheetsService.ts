@@ -3,6 +3,8 @@
  * Provides direct client-side synchronization between local state and custom user Google Spreadsheets.
  */
 
+import { formatDateDMY } from './calculations';
+
 export async function ensureSheetsExist(accessToken: string, spreadsheetId: string) {
   try {
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
@@ -100,7 +102,7 @@ export async function syncEmployeesToSheet(accessToken: string, spreadsheetId: s
     emp.department || "",
     emp.email || "",
     emp.hourlyRate || 0,
-    emp.joinedDate || "",
+    formatDateDMY(emp.joinedDate) || "",
     emp.status || "",
     emp.designation || ""
   ])];
@@ -178,20 +180,23 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
     rows = [headers];
   }
   
-  const recDateStr = record.date;
+  const recDateStr = formatDateDMY(record.date);
   const recEmpId = record.employeeId;
   
   let targetRowIndex = -1;
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    if (row && row[0] === recDateStr && row[1]?.toString() === recEmpId.toString()) {
-      targetRowIndex = i + 1;
-      break;
+    if (row) {
+      const rowDateFormatted = formatDateDMY(row[0]);
+      if (rowDateFormatted === recDateStr && row[1]?.toString() === recEmpId.toString()) {
+        targetRowIndex = i + 1;
+        break;
+      }
     }
   }
   
   const recordValues = [
-    record.date || "",
+    formatDateDMY(record.date) || "",
     record.employeeId || "",
     record.employeeName || "",
     record.status || "",
@@ -248,7 +253,7 @@ export async function syncAllAttendanceToSheet(accessToken: string, spreadsheetI
   await ensureSheetsExist(accessToken, spreadsheetId);
   const headers = ["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime", "Selected Work Location", "GPS Coordinates"];
   const rows = [headers, ...attendance.map(rec => [
-    rec.date || "",
+    formatDateDMY(rec.date) || "",
     rec.employeeId || "",
     rec.employeeName || "",
     rec.status || "",

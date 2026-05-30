@@ -190,140 +190,142 @@ export default function LeaveManagementView({
       <div className={isAdminLoggedIn ? "grid grid-cols-1 lg:grid-cols-3 gap-8" : "grid grid-cols-1 md:grid-cols-2 gap-8"}>
         {/* Left Column: Register Request Bento Box */}
         <div className={isAdminLoggedIn ? "space-y-6" : "space-y-6 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 space-y-0"}>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 mb-4 flex items-center gap-2">
-                <Send className="w-4 h-4 text-indigo-500" />
-                <span>Submit Leave Request</span>
-              </h3>
+          {!isAdminLoggedIn && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 mb-4 flex items-center gap-2">
+                  <Send className="w-4 h-4 text-indigo-500" />
+                  <span>Submit Leave Request</span>
+                </h3>
 
-              <form onSubmit={handleRequestSubmit} className="space-y-4">
-                {/* Select Employee */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                    Your Profile Name
-                  </label>
-                  {loggedInEmployee ? (
-                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
-                      <p className="text-xs font-bold text-slate-800 animate-fadeIn">{loggedInEmployee.name}</p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{loggedInEmployee.id} • Locked Session</p>
+                <form onSubmit={handleRequestSubmit} className="space-y-4">
+                  {/* Select Employee */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                      Your Profile Name
+                    </label>
+                    {loggedInEmployee ? (
+                      <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                        <p className="text-xs font-bold text-slate-800 animate-fadeIn">{loggedInEmployee.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{loggedInEmployee.id} • Locked Session</p>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedEmpId}
+                        onChange={(e) => {
+                          setSelectedEmpId(e.target.value);
+                          setEmployeeFilterId(e.target.value);
+                        }}
+                        required
+                        className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Choose Employee Account --</option>
+                        {activeEmployees.map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name} ({emp.id})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Leave Type */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                        Leave Type
+                      </label>
+                      <select
+                        value={leaveType}
+                        onChange={(e) => setLeaveType(e.target.value as any)}
+                        className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="Vacation">Vacation</option>
+                        <option value="Sick">Sick</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
-                  ) : (
-                    <select
-                      value={selectedEmpId}
-                      onChange={(e) => {
-                        setSelectedEmpId(e.target.value);
-                        setEmployeeFilterId(e.target.value);
-                      }}
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                        Days Limit
+                      </label>
+                      <div className="text-2xs p-3.5 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 flex items-center justify-between font-mono">
+                        <span>Config Allotted</span>
+                        <strong className="text-slate-800">No Limit</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Start Date & End Date */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        required
+                        className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        required
+                        className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
+                      Justification / Reason Notes
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Provide explanatory notes (e.g. sick symptoms, travel notes, appointment cards)..."
+                      value={leaveNotes}
+                      onChange={(e) => setLeaveNotes(e.target.value)}
                       required
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value="">-- Choose Employee Account --</option>
-                      {activeEmployees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name} ({emp.id})
-                        </option>
-                      ))}
-                    </select>
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-400"
+                    />
+                  </div>
+
+                  {/* Feedback Alerts */}
+                  {submissionStatus === 'success' && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>Leave request submitted successfully. Awaiting Admin review!</span>
+                    </div>
                   )}
-                </div>
-
-                {/* Leave Type */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                      Leave Type
-                    </label>
-                    <select
-                      value={leaveType}
-                      onChange={(e) => setLeaveType(e.target.value as any)}
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value="Vacation">Vacation</option>
-                      <option value="Sick">Sick</option>
-                      <option value="Personal">Personal</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                      Days Limit
-                    </label>
-                    <div className="text-2xs p-3.5 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 flex items-center justify-between font-mono">
-                      <span>Config Allotted</span>
-                      <strong className="text-slate-800">No Limit</strong>
+                  {submissionStatus === 'error' && (
+                    <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <span>Invalid input or start date exceeds end date.</span>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-                {/* Start Date & End Date */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      required
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                      End Date
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      required
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1.5">
-                    Justification / Reason Notes
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="Provide explanatory notes (e.g. sick symptoms, travel notes, appointment cards)..."
-                    value={leaveNotes}
-                    onChange={(e) => setLeaveNotes(e.target.value)}
-                    required
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 outline-none focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-400"
-                  />
-                </div>
-
-                {/* Feedback Alerts */}
-                {submissionStatus === 'success' && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span>Leave request submitted successfully. Awaiting Admin review!</span>
-                  </div>
-                )}
-                {submissionStatus === 'error' && (
-                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-                    <span>Invalid input or start date exceeds end date.</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs hover:shadow-indigo-600/10 cursor-pointer transition-all"
-                >
-                  Apply for Time-Off
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs hover:shadow-indigo-600/10 cursor-pointer transition-all"
+                  >
+                    Apply for Time-Off
+                  </button>
+                </form>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Individual Employee History Display */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">

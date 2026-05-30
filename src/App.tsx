@@ -1334,102 +1334,102 @@ export default function App() {
                 onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
                 className="p-2 md:p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
               >
-                <Bell className="w-4 h-4 text-slate-600" />
-                {filteredNotifications.filter(u => !isNotificationRead(u)).length > 0 && (
-                  <span className="absolute top-1 right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center animate-pulse shadow">
-                    {filteredNotifications.filter(u => !isNotificationRead(u)).length}
-                  </span>
-                )}
-              </button>
+                  <Bell className="w-4 h-4 text-slate-600" />
+                  {filteredNotifications.filter(u => !isNotificationRead(u)).length > 0 && (
+                    <span className="absolute top-1 right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center animate-pulse shadow">
+                      {filteredNotifications.filter(u => !isNotificationRead(u)).length}
+                    </span>
+                  )}
+                </button>
 
-              {isNotificationDropdownOpen && (
-                <div className="absolute right-0 mt-2.5 w-76 bg-white border border-slate-100 shadow-xl rounded-2xl z-30 p-4 space-y-3.5 animate-fadeIn font-sans text-left">
-                  <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                    <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Bell className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>{loggedInEmployee ? 'My Personal Alerts' : 'Administrative Shifts Alerts'}</span>
-                    </h3>
-                    {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const unreadFilteredNotifs = filteredNotifications.filter(n => !isNotificationRead(n));
-                            const updated = notifications.map(n => {
-                              const match = unreadFilteredNotifs.find(ufn => ufn.id === n.id);
-                              if (match) {
+                {isNotificationDropdownOpen && (
+                  <div className="absolute right-0 mt-2.5 w-76 bg-white border border-slate-100 shadow-xl rounded-2xl z-30 p-4 space-y-3.5 animate-fadeIn font-sans text-left">
+                    <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                      <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Bell className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{loggedInEmployee ? 'My Personal Alerts' : 'Administrative Shifts Alerts'}</span>
+                      </h3>
+                      {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const unreadFilteredNotifs = filteredNotifications.filter(n => !isNotificationRead(n));
+                              const updated = notifications.map(n => {
+                                const match = unreadFilteredNotifs.find(ufn => ufn.id === n.id);
+                                if (match) {
+                                  if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
+                                    const currentReadBy = n.readByEmployees || [];
+                                    const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
+                                      ? currentReadBy
+                                      : [...currentReadBy, loggedInEmployee.id];
+                                    return { ...n, readByEmployees: nextReadBy };
+                                  } else {
+                                    return { ...n, read: true };
+                                  }
+                                }
+                                return n;
+                              });
+                              setNotifications(updated);
+                              for (const n of unreadFilteredNotifs) {
+                                let updatedN: AppNotification;
                                 if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
                                   const currentReadBy = n.readByEmployees || [];
                                   const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
                                     ? currentReadBy
                                     : [...currentReadBy, loggedInEmployee.id];
-                                  return { ...n, readByEmployees: nextReadBy };
+                                  updatedN = { ...n, readByEmployees: nextReadBy };
                                 } else {
-                                  return { ...n, read: true };
+                                  updatedN = { ...n, read: true };
                                 }
+                                await setDoc(doc(db, 'notifications', n.id), updatedN);
                               }
-                              return n;
-                            });
-                            setNotifications(updated);
-                            for (const n of unreadFilteredNotifs) {
-                              let updatedN: AppNotification;
-                              if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
-                                const currentReadBy = n.readByEmployees || [];
-                                const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
-                                  ? currentReadBy
-                                  : [...currentReadBy, loggedInEmployee.id];
-                                updatedN = { ...n, readByEmployees: nextReadBy };
-                              } else {
-                                updatedN = { ...n, read: true };
-                              }
-                              await setDoc(doc(db, 'notifications', n.id), updatedN);
+                              setIsNotificationDropdownOpen(false);
+                            } catch (err) {
+                              handleFirestoreError(err, OperationType.WRITE, 'notifications');
                             }
-                            setIsNotificationDropdownOpen(false);
-                          } catch (err) {
-                            handleFirestoreError(err, OperationType.WRITE, 'notifications');
-                          }
-                        }}
-                        className="text-[10.5px] text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer"
-                      >
-                        Read All
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
-                    {filteredNotifications.length === 0 ? (
-                      <p className="text-[10px] text-slate-400 font-mono text-center py-6">No notifications collected today.</p>
-                    ) : (
-                      filteredNotifications.slice(0, 5).map(notif => {
-                        const hasBeenRead = isNotificationRead(notif);
-                        return (
-                          <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${hasBeenRead ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
-                            <div className="flex items-center justify-between font-bold text-slate-800">
-                              <span>{notif.title}</span>
-                              <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
-                            </div>
-                            <p className="text-[10px] text-slate-650 leading-normal font-sans">{notif.message}</p>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {!loggedInEmployee && (
-                    <div className="pt-2 text-center border-t border-slate-50">
-                      <button
-                        onClick={() => {
-                          handleViewChangeBySelector('dashboard');
-                          setIsNotificationDropdownOpen(false);
-                        }}
-                        className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold uppercase tracking-wider block w-full text-center"
-                      >
-                        Audit Shift Logs Dashboard
-                      </button>
+                          }}
+                          className="text-[10.5px] text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer"
+                        >
+                          Read All
+                        </button>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+                      {filteredNotifications.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 font-mono text-center py-6">No notifications collected today.</p>
+                      ) : (
+                        filteredNotifications.slice(0, 5).map(notif => {
+                          const hasBeenRead = isNotificationRead(notif);
+                          return (
+                            <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${hasBeenRead ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
+                              <div className="flex items-center justify-between font-bold text-slate-800">
+                                <span>{notif.title}</span>
+                                <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-650 leading-normal font-sans">{notif.message}</p>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {!loggedInEmployee && (
+                      <div className="pt-2 text-center border-t border-slate-50">
+                        <button
+                          onClick={() => {
+                            handleViewChangeBySelector('dashboard');
+                            setIsNotificationDropdownOpen(false);
+                          }}
+                          className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold uppercase tracking-wider block w-full text-center"
+                        >
+                          Audit Shift Logs Dashboard
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
           </div>
         </header>
 
