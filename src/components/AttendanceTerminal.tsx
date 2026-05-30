@@ -9,6 +9,7 @@ import {
   UserCheck, 
   AlertTriangle, 
   CheckCircle,
+  AlertCircle,
   TrendingUp,
   History,
   Info,
@@ -102,19 +103,34 @@ export default function AttendanceTerminal({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [photoClarity, setPhotoClarity] = useState<'clear' | 'blur'>('clear');
 
-  const handleSetCapturedPhoto = (photo: string | null) => {
-    setCapturedPhoto(photo);
-    if (photo) {
-      // Dynamic automatic clarity justification. 
-      // Has ~95% success rate. Only triggers rare mock blurs to allow users to verify the workflow.
-      const isBlurry = photo.length % 35 === 0;
-      setPhotoClarity(isBlurry ? 'blur' : 'clear');
-    } else {
-      setPhotoClarity('clear');
+  const detectBlurFromCanvas = (canvas: HTMLCanvasElement): boolean => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    try {
+      const checkSize = 100;
+      const sx = Math.max(0, Math.floor((canvas.width - checkSize) / 2));
+      const sy = Math.max(0, Math.floor((canvas.height - checkSize) / 2));
+      const imgData = ctx.getImageData(sx, sy, Math.min(checkSize, canvas.width), Math.min(checkSize, canvas.height));
+      const data = imgData.data;
+      
+      let accumGradients = 0;
+      let count = 0;
+      for (let i = 0; i < data.length - 8; i += 4) {
+        const luma1 = (data[i] + data[i+1] + data[i+2]) / 3;
+        const luma2 = (data[i+4] + data[i+5] + data[i+6]) / 3;
+        accumGradients += Math.abs(luma1 - luma2);
+        count++;
+      }
+      const score = accumGradients / count;
+      console.log('Real-time Auto-Clarity Score:', score);
+      
+      // If sharpness score is less than 3.2, there are no edges, hence the picture is blurry.
+      // Crisp clear face photographs average around 5.5 to 14.5.
+      return score < 3.2;
+    } catch (e) {
+      return false;
     }
   };
-
-
 
   // Direct webcam stream control and photo capturing methods
   const stopCamera = () => {
@@ -126,7 +142,8 @@ export default function AttendanceTerminal({
 
   const startCamera = async () => {
     setCameraError(null);
-    handleSetCapturedPhoto(null);
+    setCapturedPhoto(null);
+    setPhotoClarity('clear');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 485 } },
@@ -167,20 +184,17 @@ export default function AttendanceTerminal({
       const videoHeight = video.videoHeight || 480;
       const videoWidth = video.videoWidth || 640;
       
-      // Calculate 3:4 height and width for vertical portrait
       const portraitHeight = videoHeight;
-      const portraitWidth = Math.round(videoHeight * 0.75); // e.g., 360 wide if 480 tall
+      const portraitWidth = Math.round(videoHeight * 0.75);
       
       canvas.width = portraitWidth;
       canvas.height = portraitHeight;
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Crop the landscape video stream center to achieve portrait mode
         const sx = Math.max(0, (videoWidth - portraitWidth) / 2);
         const sy = 0;
         
-        // Mirror horizontally for instinctive user coordination
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
         
@@ -197,8 +211,11 @@ export default function AttendanceTerminal({
         );
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         
+        const isBlurry = detectBlurFromCanvas(canvas);
+        setPhotoClarity(isBlurry ? 'blur' : 'clear');
+        
         const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        handleSetCapturedPhoto(dataUrl);
+        setCapturedPhoto(dataUrl);
         playBeep(true);
       }
     } catch (e) {
@@ -214,14 +231,28 @@ export default function AttendanceTerminal({
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      handleSetCapturedPhoto(base64);
-      playBeep(true);
+      
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width > 300 ? 300 : img.width;
+        canvas.height = img.height > 400 ? 400 : img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const isBlurry = detectBlurFromCanvas(canvas);
+          setPhotoClarity(isBlurry ? 'blur' : 'clear');
+        }
+        setCapturedPhoto(base64);
+        playBeep(true);
+      };
+      img.src = base64;
     };
     reader.readAsDataURL(file);
   };
 
   const triggerSelfieAndPunch = (actionLabel: string, onPunchConfirmed: (selfieBase64: string) => void) => {
-    handleSetCapturedPhoto(null);
+    setCapturedPhoto(null);
     setCameraError(null);
     setPhotoClarity('clear');
     setSelfieState({
@@ -1703,8 +1734,8 @@ export default function AttendanceTerminal({
 
       {/* Selfie Capture Modal */}
       {selfieState?.isOpen && (
-        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white rounded-3xl p-4 sm:p-6 w-[calc(100vw-24px)] xs:w-[calc(100vw-32px)] max-w-xs sm:max-w-sm shadow-2xl border border-slate-100 relative text-center space-y-3 sm:space-y-4 animate-scaleIn">
+        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white rounded-3xl p-4 sm:p-5 w-[calc(100vw-16px)] xs:w-[calc(100vw-24px)] max-w-[340px] xs:max-w-[370px] sm:max-w-[420px] md:max-w-[450px] shadow-2xl border border-slate-100 relative text-center space-y-3 sm:space-y-4 animate-scaleIn">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-xs font-bold text-slate-900 flex items-center space-x-2">
@@ -1752,56 +1783,55 @@ export default function AttendanceTerminal({
               </p>
             )}
 
-            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[220px] xs:max-w-[260px] sm:max-w-[275px] mx-auto flex items-center justify-center border-4 shadow-inner transition-colors duration-300 ${capturedPhoto ? 'border-emerald-100' : 'border-slate-100'}`}>
-              {capturedPhoto ? (
+            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[280px] xs:max-w-[310px] sm:max-w-[350px] md:max-w-[380px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 ${capturedPhoto ? (photoClarity === 'blur' ? 'border-red-200' : 'border-emerald-100') : 'border-slate-100'}`}>
+              {capturedPhoto && (
                 <img 
                   src={capturedPhoto} 
                   alt="Captured Selfie" 
-                  className={`w-full h-full object-cover transition-all duration-300 ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
+                  className={`absolute inset-0 z-10 w-full h-full object-cover transition-all duration-300 ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
                 />
-              ) : (
-                <>
-                  <video
-                    id="selfie-video-preview"
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover scale-x-[-1]"
-                  />
-                  {/* Portrait face contour masking aligner */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4">
-                    <div className="w-11/12 h-5/6 border-2 border-dashed border-white/50 rounded-[120px]/[160px] flex flex-col items-center justify-center animate-pulse bg-slate-900/10">
-                      <div className="text-[8px] text-white/80 uppercase tracking-widest font-mono select-none px-2 py-1 bg-slate-950/40 rounded backdrop-blur-[1px] mt-auto mb-6">
-                        Align Face Here
-                      </div>
-                    </div>
+              )}
+
+              <video
+                id="selfie-video-preview"
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover scale-x-[-1] ${capturedPhoto ? 'hidden' : 'block'}`}
+              />
+
+              {/* Portrait face contour masking aligner */}
+              <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 ${capturedPhoto ? 'hidden' : 'flex'}`}>
+                <div className="w-11/12 h-5/6 border-2 border-dashed border-white/50 rounded-[120px]/[160px] flex flex-col items-center justify-center animate-pulse bg-slate-900/10">
+                  <div className="text-[8px] text-white/80 uppercase tracking-widest font-mono select-none px-2 py-1 bg-slate-950/40 rounded backdrop-blur-[1px] mt-auto mb-6">
+                    Align Face Here
                   </div>
-                  {cameraError && (
-                    <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3">
-                      <AlertTriangle className="w-8 h-8 text-amber-500" />
-                      <p className="text-[10px] text-amber-100 font-mono leading-relaxed">{cameraError}</p>
-                      <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-md transition-all uppercase">
-                        Take Photo Using Phone
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="user"
-                          onChange={handleFileCapture}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  )}
-                </>
+                </div>
+              </div>
+
+              {cameraError && !capturedPhoto && (
+                <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3 z-20">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                  <p className="text-[10px] text-amber-100 font-mono leading-relaxed">{cameraError}</p>
+                  <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-md transition-all uppercase">
+                    Take Photo Using Phone
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      onChange={handleFileCapture}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               )}
             </div>
 
             {/* Quality Check Warning shown ONLY when photo is Blurry */}
             {capturedPhoto && photoClarity === 'blur' && (
-              <div className="bg-red-50 border border-red-205 text-red-800 rounded-xl p-2.5 text-center animate-bounce">
-                <span className="text-[10.5px] font-extrabold flex items-center justify-center gap-1.5">
-                  ⚠️ Clear nahi hua! Please retake.
-                </span>
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl py-1.5 px-3 text-center animate-pulse flex items-center justify-center space-x-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span className="text-[10.5px] font-extrabold">Clear nahi hua! Please retake.</span>
               </div>
             )}
 
@@ -1810,7 +1840,10 @@ export default function AttendanceTerminal({
                 <>
                   <button
                     type="button"
-                    onClick={() => handleSetCapturedPhoto(null)}
+                    onClick={() => {
+                      setCapturedPhoto(null);
+                      setPhotoClarity('clear');
+                    }}
                     className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/40 rounded-xl transition-all cursor-pointer font-sans"
                   >
                     Retake
