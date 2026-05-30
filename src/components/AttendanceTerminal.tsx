@@ -65,6 +65,12 @@ export default function AttendanceTerminal({
     message: string;
   }>({ type: null, message: '' });
   const [isAutoPunchModalOpen, setIsAutoPunchModalOpen] = useState(false);
+  const [hasDismissedAutoPunch, setHasDismissedAutoPunch] = useState(false);
+
+  // Reset the auto punch dismissed state when a different employee logs in
+  useEffect(() => {
+    setHasDismissedAutoPunch(false);
+  }, [loggedInEmployee]);
   const [punchAnimation, setPunchAnimation] = useState<{
     type: 'entry' | 'exit' | 'lunch_in' | 'lunch_out' | 'dinner_in' | 'dinner_out';
     name: string;
@@ -972,12 +978,12 @@ export default function AttendanceTerminal({
   const selectedEmpName = selectedEmpId ? employees.find(e => e.id === selectedEmpId)?.name || '' : '';
 
   useEffect(() => {
-    if (loggedInEmployee && getEmployeeStatus(loggedInEmployee.id) === 'not-entered') {
+    if (loggedInEmployee && getEmployeeStatus(loggedInEmployee.id) === 'not-entered' && !hasDismissedAutoPunch) {
       setIsAutoPunchModalOpen(true);
     } else {
       setIsAutoPunchModalOpen(false);
     }
-  }, [loggedInEmployee, attendance]);
+  }, [loggedInEmployee, attendance, hasDismissedAutoPunch]);
 
   const triggerNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -2019,6 +2025,7 @@ export default function AttendanceTerminal({
                 onClick={() => {
                   handleEntryCheckIn();
                   setIsAutoPunchModalOpen(false);
+                  setHasDismissedAutoPunch(true);
                 }}
                 className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-2xl text-sm transition-all shadow-md shadow-indigo-600/10 cursor-pointer flex items-center justify-center space-x-2"
               >
@@ -2029,7 +2036,10 @@ export default function AttendanceTerminal({
               <button
                 type="button"
                 id="popup-btn-dismiss"
-                onClick={() => setIsAutoPunchModalOpen(false)}
+                onClick={() => {
+                  setIsAutoPunchModalOpen(false);
+                  setHasDismissedAutoPunch(true);
+                }}
                 className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:scale-95 text-slate-500 hover:text-slate-800 font-bold rounded-xl text-2xs uppercase tracking-wider transition-all border border-slate-200 cursor-pointer"
               >
                 Dismiss & View Cabin
@@ -2037,7 +2047,7 @@ export default function AttendanceTerminal({
             </div>
 
             <div className="text-[9px] text-slate-400 font-mono uppercase tracking-widest pt-1">
-              Apex Workforce Suite • Live
+              Calitech Workforce Portal • Live
             </div>
           </div>
         </div>

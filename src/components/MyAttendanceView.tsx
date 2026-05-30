@@ -26,7 +26,9 @@ import {
   Bell,
   ShieldAlert,
   Printer,
-  FileText
+  FileText,
+  Trash,
+  Trash2
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
 import { calculateEarnings, getLocalDateString, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
@@ -41,6 +43,8 @@ interface MyAttendanceViewProps {
   settings?: Settings;
   notifications: AppNotification[];
   onMarkNotificationRead?: (id: string) => void;
+  onDeleteNotification?: (id: string) => void;
+  onClearAllNotifications?: () => void;
 }
 
 export default function MyAttendanceView({
@@ -50,7 +54,9 @@ export default function MyAttendanceView({
   onUpdateEmployee,
   settings,
   notifications = [],
-  onMarkNotificationRead
+  onMarkNotificationRead,
+  onDeleteNotification,
+  onClearAllNotifications
 }: MyAttendanceViewProps) {
   // Toggle states
   const [viewType, setViewType] = useState<'calendar' | 'table'>('calendar');
@@ -293,6 +299,11 @@ export default function MyAttendanceView({
     // Must be targeted at the employee or a general broadcast
     const isTargeted = !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id;
     if (!isTargeted) return false;
+
+    // Filter out if explicitly deleted/dismissed by this employee
+    if (n.deletedByEmployees && n.deletedByEmployees.includes(loggedInEmployee.id)) {
+      return false;
+    }
 
     // Filter out unnecessary/technical system status logs or admin alerts
     return !EXCLUDED_SYSTEM_TITLES.includes(n.title);
@@ -956,7 +967,7 @@ export default function MyAttendanceView({
 
       {/* 📢 PERSISTENT EMPLOYEE NOTICE BOARD & MEMOS */}
       <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4 animate-fadeIn">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100/80 gap-2">
           <div className="flex items-center space-x-2">
             <Megaphone className="w-5 h-5 text-indigo-600 animate-bounce" />
             <div>
@@ -964,11 +975,27 @@ export default function MyAttendanceView({
               <p className="text-[10px] text-slate-400 font-medium">Personal assignments, shift warnings, and administrative memos.</p>
             </div>
           </div>
-          {unreadEmployeeNotifications.length > 0 && (
-            <span className="bg-rose-150 text-rose-800 border border-rose-200/50 text-[10px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
-              {unreadEmployeeNotifications.length} New Message(s)
-            </span>
-          )}
+          <div className="flex items-center space-x-2 shrink-0">
+            {unreadEmployeeNotifications.length > 0 && (
+              <span className="bg-rose-150 text-rose-800 border border-rose-250/50 text-[9px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse shrink-0">
+                {unreadEmployeeNotifications.length} New
+              </span>
+            )}
+            {employeeNotifications.length > 0 && onClearAllNotifications && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Are you sure you want to delete all alert notifications on your Notice Board? (क्या आप सभी नोटिस और अलर्ट हटाना चाहते हैं?)")) {
+                    onClearAllNotifications();
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-150 hover:border-rose-200 rounded-xl text-[9px] font-bold uppercase transition-all shrink-0 cursor-pointer select-none"
+              >
+                <Trash2 className="w-3 h-3 text-rose-650" />
+                <span>Delete All (सभी हटाएं)</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[280px] overflow-y-auto pr-1">
@@ -1029,7 +1056,19 @@ export default function MyAttendanceView({
                             </span>
                           )}
                         </h4>
-                        <span className="text-[9px] font-mono text-slate-400">{notif.timestamp}</span>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <span className="text-[9px] font-mono text-slate-400">{notif.timestamp}</span>
+                          {onDeleteNotification && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteNotification(notif.id)}
+                              className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/80 active:scale-95"
+                              title="Delete notification"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="text-[11px] text-slate-650 leading-relaxed font-semibold">{notif.message}</p>
                       

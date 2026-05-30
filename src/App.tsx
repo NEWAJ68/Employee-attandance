@@ -21,7 +21,8 @@ import {
   Zap,
   Plus,
   MessageSquare,
-  Smartphone
+  Smartphone,
+  Trash
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
@@ -403,6 +404,30 @@ export default function App() {
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(backupObj));
   };
+
+  // One-time automatic deletion of test punches as requested by user
+  useEffect(() => {
+    const isPurgedBefore = localStorage.getItem('calitech_test_purged_v3');
+    if (!isPurgedBefore && attendance.length > 0) {
+      localStorage.setItem('calitech_test_purged_v3', 'yes');
+      
+      console.log('User requested automatic deletion of all test punch records. Purging Firestore attendance logs...');
+      const deletePromises = attendance.map(rec => {
+        const docId = `${rec.date}_${rec.employeeId}`;
+        return deleteDoc(doc(db, 'attendance', docId)).catch(err => {
+          console.error('Error deleting test punch record:', docId, err);
+        });
+      });
+      
+      Promise.all(deletePromises).then(() => {
+        handleRaiseNotification(
+          'Test Records Cleared',
+          'All historical test punches have been successfully cleared out as requested!',
+          'success'
+        );
+      });
+    }
+  }, [attendance]);
 
   // Sync to localCache as reactive backup automatically on React states variations
   useEffect(() => {
@@ -1022,6 +1047,83 @@ export default function App() {
     }
   };
 
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      const target = notifications.find(n => n.id === id);
+      if (!target) return;
+
+      if (loggedInEmployee && (!target.employeeId || target.employeeId === "" || target.employeeId === "all" || target.employeeId === "broadcast")) {
+        // Broadcast notification: append current user ID to deleted list to hide it for them
+        const currentDeletedBy = target.deletedByEmployees || [];
+        const nextDeletedBy = currentDeletedBy.includes(loggedInEmployee.id)
+          ? currentDeletedBy
+          : [...currentDeletedBy, loggedInEmployee.id];
+        const updatedTarget = { ...target, deletedByEmployees: nextDeletedBy };
+        
+        const updated = notifications.map(n => n.id === id ? updatedTarget : n);
+        setNotifications(updated);
+        await setDoc(doc(db, 'notifications', id), updatedTarget);
+      } else {
+        // Direct private notification: delete fully from Firestore
+        const updated = notifications.filter(n => n.id !== id);
+        setNotifications(updated);
+        await deleteDoc(doc(db, 'notifications', id));
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `notifications/${id}`);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      if (loggedInEmployee) {
+        // Delete or hide all notifications currently matching filteredNotifications
+        const deletePromises = filteredNotifications.map(async (target) => {
+          if (!target.employeeId || target.employeeId === "" || target.employeeId === "all" || target.employeeId === "broadcast") {
+            const currentDeletedBy = target.deletedByEmployees || [];
+            const nextDeletedBy = currentDeletedBy.includes(loggedInEmployee.id)
+              ? currentDeletedBy
+              : [...currentDeletedBy, loggedInEmployee.id];
+            const updatedTarget = { ...target, deletedByEmployees: nextDeletedBy };
+            return setDoc(doc(db, 'notifications', target.id), updatedTarget);
+          } else {
+            return deleteDoc(doc(db, 'notifications', target.id));
+          }
+        });
+        await Promise.all(deletePromises);
+
+        // Update local React state filter matches
+        const updated = notifications.map(n => {
+          const isF = filteredNotifications.some(fn => fn.id === n.id);
+          if (isF) {
+            if (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast") {
+              const currentDeletedBy = n.deletedByEmployees || [];
+              const nextDeletedBy = currentDeletedBy.includes(loggedInEmployee.id)
+                ? currentDeletedBy
+                : [...currentDeletedBy, loggedInEmployee.id];
+              return { ...n, deletedByEmployees: nextDeletedBy };
+            }
+          }
+          return n;
+        }).filter(n => {
+          if (n.employeeId === loggedInEmployee.id) {
+            const isF = filteredNotifications.some(fn => fn.id === n.id);
+            return !isF;
+          }
+          return true;
+        });
+        setNotifications(updated);
+      } else {
+        // Admin context: Clear all notifications in view
+        const deletePromises = filteredNotifications.map(n => deleteDoc(doc(db, 'notifications', n.id)));
+        await Promise.all(deletePromises);
+        setNotifications([]);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'notifications/clear-all');
+    }
+  };
+
   const handleManualSyncAll = async () => {
     setIsSyncing(true);
 
@@ -1181,7 +1283,14 @@ export default function App() {
 
   // Filter notifications for logged-in employee privacy
   const filteredNotifications = loggedInEmployee 
-    ? notifications.filter(n => !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id)
+    ? notifications.filter(n => {
+        const isTargeted = !n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast" || n.employeeId === loggedInEmployee.id;
+        if (!isTargeted) return false;
+        if (n.deletedByEmployees && n.deletedByEmployees.includes(loggedInEmployee.id)) {
+          return false;
+        }
+        return true;
+      })
     : notifications;
 
   const isNotificationRead = (n: AppNotification) => {
@@ -1201,6 +1310,7 @@ export default function App() {
             companyName={settings.companyName}
             employees={employees}
             onAddEmployee={handleAddEmployee}
+            onUpdateEmployee={handleUpdateEmployee}
           />
         </div>
       </div>
@@ -1347,52 +1457,72 @@ export default function App() {
                     <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                         <Bell className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>{loggedInEmployee ? 'My Personal Alerts' : 'Administrative Shifts Alerts'}</span>
+                        <span>{loggedInEmployee ? 'Alerts' : 'Shift Alerts'}</span>
                       </h3>
-                      {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
-                        <button
-                          onClick={async () => {
-                            try {
-                              const unreadFilteredNotifs = filteredNotifications.filter(n => !isNotificationRead(n));
-                              const updated = notifications.map(n => {
-                                const match = unreadFilteredNotifs.find(ufn => ufn.id === n.id);
-                                if (match) {
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const unreadFilteredNotifs = filteredNotifications.filter(n => !isNotificationRead(n));
+                                const updated = notifications.map(n => {
+                                  const match = unreadFilteredNotifs.find(ufn => ufn.id === n.id);
+                                  if (match) {
+                                    if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
+                                      const currentReadBy = n.readByEmployees || [];
+                                      const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
+                                        ? currentReadBy
+                                        : [...currentReadBy, loggedInEmployee.id];
+                                      return { ...n, readByEmployees: nextReadBy };
+                                    } else {
+                                      return { ...n, read: true };
+                                    }
+                                  }
+                                  return n;
+                                });
+                                setNotifications(updated);
+                                for (const n of unreadFilteredNotifs) {
+                                  let updatedN: AppNotification;
                                   if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
                                     const currentReadBy = n.readByEmployees || [];
                                     const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
                                       ? currentReadBy
                                       : [...currentReadBy, loggedInEmployee.id];
-                                    return { ...n, readByEmployees: nextReadBy };
+                                    updatedN = { ...n, readByEmployees: nextReadBy };
                                   } else {
-                                    return { ...n, read: true };
+                                    updatedN = { ...n, read: true };
                                   }
+                                  await setDoc(doc(db, 'notifications', n.id), updatedN);
                                 }
-                                return n;
-                              });
-                              setNotifications(updated);
-                              for (const n of unreadFilteredNotifs) {
-                                let updatedN: AppNotification;
-                                if (loggedInEmployee && (!n.employeeId || n.employeeId === "" || n.employeeId === "all" || n.employeeId === "broadcast")) {
-                                  const currentReadBy = n.readByEmployees || [];
-                                  const nextReadBy = currentReadBy.includes(loggedInEmployee.id)
-                                    ? currentReadBy
-                                    : [...currentReadBy, loggedInEmployee.id];
-                                  updatedN = { ...n, readByEmployees: nextReadBy };
-                                } else {
-                                  updatedN = { ...n, read: true };
-                                }
-                                await setDoc(doc(db, 'notifications', n.id), updatedN);
+                                setIsNotificationDropdownOpen(false);
+                              } catch (err) {
+                                handleFirestoreError(err, OperationType.WRITE, 'notifications');
                               }
-                              setIsNotificationDropdownOpen(false);
-                            } catch (err) {
-                              handleFirestoreError(err, OperationType.WRITE, 'notifications');
-                            }
-                          }}
-                          className="text-[10.5px] text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer"
-                        >
-                          Read All
-                        </button>
-                      )}
+                            }}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer hover:underline"
+                          >
+                            Read All
+                          </button>
+                        )}
+                        {filteredNotifications.length > 0 && (
+                          <>
+                            {filteredNotifications.filter(n => !isNotificationRead(n)).length > 0 && (
+                              <span className="text-slate-250 text-[10px] select-none">|</span>
+                            )}
+                            <button
+                              onClick={async () => {
+                                if (confirm("Are you sure you want to delete all alert notifications? (क्या आप सभी नोटिस और अलर्ट हटाना चाहते हैं?)")) {
+                                  await handleClearAllNotifications();
+                                  setIsNotificationDropdownOpen(false);
+                                }
+                              }}
+                              className="text-[10px] text-rose-650 hover:text-rose-800 font-extrabold cursor-pointer hover:underline"
+                            >
+                              Clear All
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
@@ -1402,12 +1532,23 @@ export default function App() {
                         filteredNotifications.slice(0, 5).map(notif => {
                           const hasBeenRead = isNotificationRead(notif);
                           return (
-                            <div key={notif.id} className={`p-2 rounded-xl border text-[11px] leading-normal space-y-0.5 ${hasBeenRead ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
-                              <div className="flex items-center justify-between font-bold text-slate-800">
-                                <span>{notif.title}</span>
-                                <span className="text-[8px] font-mono text-slate-400 font-normal">{notif.timestamp}</span>
+                            <div key={notif.id} className={`p-2.5 rounded-xl border text-[11px] leading-normal space-y-0.5 relative group ${hasBeenRead ? 'bg-slate-50/50 border-slate-100 text-slate-500' : 'bg-rose-50/20 border-rose-100 text-slate-700 font-medium'}`}>
+                              <div className="flex items-center justify-between font-bold text-slate-800 pr-6">
+                                <span className="truncate max-w-[130px]">{notif.title}</span>
+                                <span className="text-[8px] font-mono text-slate-400 font-normal shrink-0">{notif.timestamp}</span>
                               </div>
-                              <p className="text-[10px] text-slate-650 leading-normal font-sans">{notif.message}</p>
+                              <p className="text-[10px] text-slate-600 leading-normal font-sans pr-6">{notif.message}</p>
+                              
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await handleDeleteNotification(notif.id);
+                                }}
+                                className="absolute right-2 top-2.5 p-1 bg-slate-50 hover:bg-rose-100/50 text-slate-400 hover:text-rose-700 rounded-lg transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                title="Delete notification"
+                              >
+                                <Trash className="w-3 h-3" />
+                              </button>
                             </div>
                           );
                         })
@@ -1453,6 +1594,7 @@ export default function App() {
               companyName={settings.companyName}
               employees={employees}
               onAddEmployee={handleAddEmployee}
+              onUpdateEmployee={handleUpdateEmployee}
             />
           )}
 
@@ -1551,6 +1693,8 @@ export default function App() {
               onUpdateEmployee={handleUpdateEmployee}
               settings={settings}
               notifications={notifications}
+              onDeleteNotification={handleDeleteNotification}
+              onClearAllNotifications={handleClearAllNotifications}
               onMarkNotificationRead={async (id) => {
                 const target = notifications.find(n => n.id === id);
                 if (target) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ShieldAlert, UserCheck, LogIn, Lock, HelpCircle, Users, UserPlus, Mail, Briefcase, IndianRupee, CheckCircle } from 'lucide-react';
+import { KeyRound, ShieldAlert, UserCheck, LogIn, Lock, HelpCircle, Users, UserPlus, Mail, Briefcase, IndianRupee, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { Employee } from '../types';
 import CESLogo from './CESLogo';
 
@@ -8,9 +8,10 @@ interface LoginScreenProps {
   companyName: string;
   employees: Employee[];
   onAddEmployee: (employee: Employee) => void;
+  onUpdateEmployee?: (employee: Employee, originalId?: string) => void;
 }
 
-export default function LoginScreen({ onLogin, companyName, employees, onAddEmployee }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, companyName, employees, onAddEmployee, onUpdateEmployee }: LoginScreenProps) {
   const [activeTab, setActiveTab] = useState<'admin' | 'employee'>('employee'); // default to employee since they check in/out most!
   
   // Admin form states
@@ -50,6 +51,10 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotId, setForgotId] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
@@ -63,17 +68,25 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
     setForgotError('');
     setForgotSuccess('');
 
-    if (!forgotId.trim()) {
-      setForgotError('Employee ID is required.');
+    if (!forgotId) {
+      setForgotError('Please select your profile name.');
       return;
     }
-    if (!forgotEmail.trim()) {
-      setForgotError('Registered email address is required.');
+    if (!forgotNewPassword.trim()) {
+      setForgotError('Please enter a new password passcode.');
+      return;
+    }
+    if (forgotNewPassword.length < 4) {
+      setForgotError('Passcode / Password must be at least 4 characters long.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Confirm password does not match new password.');
       return;
     }
 
     const targetEmp = employees.find(
-      emp => emp.id.toUpperCase().trim() === forgotId.toUpperCase().trim()
+      emp => emp.id === forgotId
     );
 
     if (!targetEmp) {
@@ -81,14 +94,20 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
       return;
     }
 
-    if (targetEmp.email.toLowerCase().trim() !== forgotEmail.toLowerCase().trim()) {
-      setForgotError('The provided email does not match our records for this ID.');
-      return;
+    // Success: change the password and call the update handler
+    if (onUpdateEmployee) {
+      const updatedEmp: Employee = {
+        ...targetEmp,
+        password: forgotNewPassword.trim()
+      };
+      onUpdateEmployee(updatedEmp);
     }
 
-    // Success: reveal current password or fallback to ID
-    const recoveredPassword = targetEmp.password || targetEmp.id;
-    setForgotSuccess(`Verification Successful! Your private password / passcode is: "${recoveredPassword}". You can use it to login now.`);
+    setForgotSuccess(`Your private password was successfully changed to your new passcode. You can now close this door and log in!`);
+    
+    // Auto-prefill password inputs for quick login
+    setSelectedEmpId(forgotId);
+    setEmpPin(forgotNewPassword.trim());
   };
 
   // Generate next Employee ID when opening registration
@@ -456,7 +475,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 flex flex-col items-center">
         <CESLogo size="lg" className="mb-3" />
         <h2 className="text-center text-xl font-bold text-slate-900 tracking-tight">
-          Workforce Kiosk Portal
+          Calitech Workforce Portal
         </h2>
         <p className="mt-1 text-center text-xs text-slate-500">
           Sign in to log shifts, manage leave sheets, or administer workforce operations.
@@ -656,12 +675,12 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
             </button>
             
             <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-50 pb-3">
-              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600">
-                <HelpCircle className="w-5 h-5 animate-pulse" />
+              <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600">
+                <KeyRound className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Password Recovery Desk</h3>
-                <p className="text-[9px] text-slate-400 font-mono tracking-wide uppercase">Identity Verification</p>
+                <h3 className="text-sm font-bold text-slate-800">Secure Password Reset Desk</h3>
+                <p className="text-[9px] text-slate-400 font-mono tracking-wide uppercase">Profile Verification</p>
               </div>
             </div>
 
@@ -670,7 +689,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                 <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3.5 rounded-xl text-xs space-y-1.5 leading-normal">
                   <p className="font-bold flex items-center gap-1.5 text-emerald-955">
                     <CheckCircle className="w-4 h-4 text-emerald-600" />
-                    <span>Identity Verified!</span>
+                    <span>Password Reset Successful!</span>
                   </p>
                   <p className="font-sans font-medium text-slate-700">{forgotSuccess}</p>
                 </div>
@@ -685,7 +704,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
             ) : (
               <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
                 <p className="text-[11.5px] text-slate-500 leading-relaxed font-medium">
-                  Please identify your registered Employee ID and core email address to automatically retrieve your private passcode PIN:
+                  Select your profile name and set a new login passcode:
                 </p>
 
                 {forgotError && (
@@ -696,30 +715,67 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
 
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
-                    Employee ID Key
+                    Select Your Profile Name
                   </label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    placeholder="e.g. CES001"
                     value={forgotId}
-                    onChange={(e) => setForgotId(e.target.value.toUpperCase().trim())}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-400"
-                  />
+                    onChange={(e) => setForgotId(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold cursor-pointer text-slate-800"
+                  >
+                    <option value="">-- Choose your profile --</option>
+                    {activeEmployees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} ({emp.id})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
-                    Registered Email
+                    Create New Passcode
                   </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. nabadip@calitech.com"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-400 font-semibold"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      required
+                      placeholder="Enter new 4+ digit passcode"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-400 font-semibold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 text-slate-400 hover:text-slate-650 transition-colors p-1"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
+                    Confirm New Passcode
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      required
+                      placeholder="Confirm new passcode"
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-400 font-semibold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 text-slate-400 hover:text-slate-650 transition-colors p-1"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-2 flex items-center space-x-3 text-xs font-bold">
@@ -734,7 +790,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                     type="submit"
                     className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all cursor-pointer text-center"
                   >
-                    Verify & Reveal
+                    Reset Password
                   </button>
                 </div>
               </form>

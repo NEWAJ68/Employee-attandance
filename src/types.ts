@@ -85,6 +85,7 @@ export interface AppNotification {
   isAdmin: boolean;
   employeeId?: string; // relevant employee record
   readByEmployees?: string[]; // track which employees read a broadcast notification
+  deletedByEmployees?: string[]; // track which employees deleted a broadcast notification
 }
 
 export interface AppState {
