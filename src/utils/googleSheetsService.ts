@@ -93,7 +93,7 @@ export async function createSpreadsheet(accessToken: string, titleStr: string): 
 
 export async function syncEmployeesToSheet(accessToken: string, spreadsheetId: string, employees: any[]) {
   await ensureSheetsExist(accessToken, spreadsheetId);
-  const headers = ["Employee ID", "Employee Name", "Department", "Email", "Hourly Rate", "Joined Date", "Status"];
+  const headers = ["Employee ID", "Employee Name", "Department", "Email", "Hourly Rate", "Joined Date", "Status", "Designation"];
   const rows = [headers, ...employees.map(emp => [
     emp.id || "",
     emp.name || "",
@@ -101,10 +101,11 @@ export async function syncEmployeesToSheet(accessToken: string, spreadsheetId: s
     emp.email || "",
     emp.hourlyRate || 0,
     emp.joinedDate || "",
-    emp.status || ""
+    emp.status || "",
+    emp.designation || ""
   ])];
   
-  await clearSpreadsheetRange(accessToken, spreadsheetId, 'Employees!A1:G2000');
+  await clearSpreadsheetRange(accessToken, spreadsheetId, 'Employees!A1:H2000');
   
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Employees!A1?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
@@ -245,7 +246,7 @@ export async function syncAttendanceRecordToSheet(accessToken: string, spreadshe
 
 export async function syncAllAttendanceToSheet(accessToken: string, spreadsheetId: string, attendance: any[]) {
   await ensureSheetsExist(accessToken, spreadsheetId);
-  const headers = ["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime"];
+  const headers = ["Date", "Employee ID", "Employee Name", "Status", "Entry Time", "Lunch Out", "Lunch In", "Exit Time", "Entry Time 2", "Exit Time 2", "Dinner Out", "Dinner In", "Total Hours", "Overtime", "Selected Work Location", "GPS Coordinates"];
   const rows = [headers, ...attendance.map(rec => [
     rec.date || "",
     rec.employeeId || "",
@@ -260,10 +261,12 @@ export async function syncAllAttendanceToSheet(accessToken: string, spreadsheetI
     rec.dinnerOut || "",
     rec.dinnerIn || "",
     rec.totalHours !== undefined ? rec.totalHours : "0",
-    rec.overtime !== undefined ? rec.overtime : "0"
+    rec.overtime !== undefined ? rec.overtime : "0",
+    rec.selectedWorkLocation || "",
+    rec.locationIn || rec.locationEntry2 || ""
   ])];
   
-  await clearSpreadsheetRange(accessToken, spreadsheetId, 'Attendance!A1:N5000');
+  await clearSpreadsheetRange(accessToken, spreadsheetId, 'Attendance!A1:P5000');
   
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Attendance!A1?valueInputOption=USER_ENTERED`, {
     method: 'PUT',

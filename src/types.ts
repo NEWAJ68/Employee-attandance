@@ -10,6 +10,7 @@ export interface Employee {
   password?: string; // custom employee login passcode / PIN for privacy protection
   photoUrl?: string; // Base64 or image URL for profile photo
   address?: string; // residential address / pata
+  designation?: string; // employee title or designation
 }
 
 export interface AttendanceRecord {
@@ -46,6 +47,7 @@ export interface AttendanceRecord {
   photoDinnerIn?: string;
   photoEntry2?: string;
   photoExit2?: string;
+  selectedWorkLocation?: string;
 }
 
 export interface Settings {

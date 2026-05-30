@@ -26,7 +26,8 @@ import {
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
-import { verifyProximityToOffice, OFFICE_COORDS } from './utils/calculations';
+import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString } from './utils/calculations';
+import WorkLocationModal from './components/WorkLocationModal';
 
 // Firebase imports
 import { signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -708,12 +709,39 @@ export default function App() {
     }
   };
 
-  const handleUpdateEmployee = async (updatedEmp: Employee) => {
+  const handleUpdateEmployee = async (updatedEmp: Employee, originalId?: string) => {
     try {
+      const actualOldId = originalId || updatedEmp.id;
+
       // 1. Optimistic state updates
-      setEmployees((prev) => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
-      if (loggedInEmployee && loggedInEmployee.id === updatedEmp.id) {
+      setEmployees((prev) => prev.map(e => e.id === actualOldId ? updatedEmp : e));
+      if (loggedInEmployee && loggedInEmployee.id === actualOldId) {
         setLoggedInEmployee(updatedEmp);
+      }
+
+      // If ID changed: clean up old Firestore documents and migrate attendance logs
+      if (originalId && originalId !== updatedEmp.id) {
+        const affectedAttendance = attendance.filter(att => att.employeeId === originalId);
+        
+        // Update local attendance state
+        setAttendance((prev) => 
+          prev.map(att => att.employeeId === originalId ? { ...att, employeeId: updatedEmp.id } : att)
+        );
+
+        // Delete old docs and recreate with new ID in Firestore
+        affectedAttendance.forEach((rec) => {
+          const oldDocId = `${rec.date}_${originalId}`;
+          const newDocId = `${rec.date}_${updatedEmp.id}`;
+          const updatedRecord = { ...rec, employeeId: updatedEmp.id };
+          
+          deleteDoc(doc(db, 'attendance', oldDocId)).catch(err => console.warn(err));
+          setDoc(doc(db, 'attendance', newDocId), updatedRecord).catch(err => console.warn(err));
+        });
+
+        // Delete old employee record
+        deleteDoc(doc(db, 'employees', originalId)).catch((err) => {
+          console.warn('Background Firestore old employee delete failed:', err);
+        });
       }
 
       // 2. Background Firestore write
@@ -722,7 +750,8 @@ export default function App() {
       });
 
       // 3. Trigger Sheets sync async
-      triggerRemoteSheetsSync('syncEmployees', { employees: employees.map((emp) => emp.id === updatedEmp.id ? updatedEmp : emp) });
+      const localUpdatedEmployees = employees.map(emp => emp.id === actualOldId ? updatedEmp : emp);
+      triggerRemoteSheetsSync('syncEmployees', { employees: localUpdatedEmployees });
     } catch (err) {
       console.error('Failure in handleUpdateEmployee:', err);
     }
@@ -1637,6 +1666,32 @@ export default function App() {
       )}
 
       {/* 💼 QUICK ACTION MODALS OVERLAYS */}
+      {loggedInEmployee && (() => {
+        const todayStr = getLocalDateString(new Date());
+        const loggedInEmpTodayRecord = attendance.find(
+          (rec) => rec.employeeId === loggedInEmployee.id && rec.date === todayStr
+        );
+        const isCheckedInButNoWorkLocation = 
+          loggedInEmpTodayRecord && 
+          (loggedInEmpTodayRecord.entryTime || loggedInEmpTodayRecord.entryTime2) && 
+          !loggedInEmpTodayRecord.selectedWorkLocation;
+          
+        if (isCheckedInButNoWorkLocation) {
+          return (
+            <WorkLocationModal
+              employeeName={loggedInEmployee.name}
+              onConfirm={(confirmedLoc) => {
+                const updatedRecord = {
+                  ...loggedInEmpTodayRecord,
+                  selectedWorkLocation: confirmedLoc
+                };
+                handleUpdateAttendance(updatedRecord);
+              }}
+            />
+          );
+        }
+        return null;
+      })()}
       </div>
     </div>
   );

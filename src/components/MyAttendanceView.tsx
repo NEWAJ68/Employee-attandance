@@ -606,6 +606,10 @@ export default function MyAttendanceView({
         <div class="meta-val">${loggedInEmployee.department}</div>
       </div>
       <div class="meta-item">
+        <div class="meta-label">Designation / Role</div>
+        <div class="meta-val">${loggedInEmployee.designation || 'Staff'}</div>
+      </div>
+      <div class="meta-item">
         <div class="meta-label">Joined Date</div>
         <div class="meta-val">${loggedInEmployee.joinedDate}</div>
       </div>
@@ -791,7 +795,10 @@ export default function MyAttendanceView({
               {/* ID Details */}
               <div className="space-y-0.5 sm:space-y-1">
                 <h3 className="text-sm font-black tracking-tight text-white">{loggedInEmployee.name}</h3>
-                <p className="text-2xs text-slate-350 font-mono">{loggedInEmployee.id} • {loggedInEmployee.department}</p>
+                <p className="text-2xs text-slate-350 font-mono">
+                  {loggedInEmployee.id} • {loggedInEmployee.department}
+                  {loggedInEmployee.designation ? ` • ${loggedInEmployee.designation}` : ''}
+                </p>
                 <div className="text-[10px] text-slate-400">
                   <span className="font-mono">Joined:</span> <span>{loggedInEmployee.joinedDate}</span>
                 </div>
@@ -1335,13 +1342,14 @@ export default function MyAttendanceView({
                   <th className="py-3 px-4">Lunch Breakout</th>
                   <th className="py-3 px-4">Lunch Return</th>
                   <th className="py-3 px-4">Punch Out</th>
+                  <th className="py-3 px-4">Work Location & GPS</th>
                   <th className="py-3 px-4">Total Clocked Hours</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                 {filteredLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center">
+                    <td colSpan={8} className="py-12 text-center">
                       <div className="max-w-xs mx-auto flex flex-col items-center">
                         <Search className="w-8 h-8 text-slate-300 stroke-1 mb-2" />
                         <p className="font-bold text-slate-805">No matches found</p>
@@ -1484,6 +1492,27 @@ export default function MyAttendanceView({
                           </div>
                         </td>
 
+                        {/* Selected Work Location & GPS Coordinates */}
+                        <td className="py-3 px-4 h-12">
+                          <div className="flex flex-col text-left">
+                            <span className="font-extrabold text-slate-805">
+                              {log.rawRecord?.selectedWorkLocation || '--'}
+                            </span>
+                            {(log.rawRecord?.locationIn || log.rawRecord?.locationEntry2) && (
+                              <a
+                                href={`https://www.google.com/maps?q=${log.rawRecord.locationIn || log.rawRecord.locationEntry2}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-teal-650 hover:text-teal-850 hover:underline font-mono inline-flex items-center space-x-0.5 mt-0.5"
+                                title="See location coordinates on map"
+                              >
+                                <MapPin className="w-2.5 h-2.5 inline shrink-0" />
+                                <span>GPS Details</span>
+                              </a>
+                            )}
+                          </div>
+                        </td>
+
                         {/* Log Hours */}
                         <td className="py-3 px-4 h-12">
                           {log.hours > 0 ? (
@@ -1570,8 +1599,10 @@ export default function MyAttendanceView({
                     <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.id}</div>
                   </td>
                   <td style={{ width: '33.33%' }}>
-                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department</div>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{loggedInEmployee.department}</div>
+                    <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department & Designation</div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
+                      {loggedInEmployee.department} {loggedInEmployee.designation ? `• ${loggedInEmployee.designation}` : ''}
+                    </div>
                   </td>
                 </tr>
                 <tr>

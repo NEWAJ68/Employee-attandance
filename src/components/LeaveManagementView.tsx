@@ -17,6 +17,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, LeaveRequest } from '../types';
+import { formatDateDMY } from '../utils/calculations';
 
 interface LeaveManagementViewProps {
   employees: Employee[];
@@ -598,7 +599,7 @@ export default function LeaveManagementView({
                             ) : (
                               contextEmployeeStats?.recentRecords.map((rec) => (
                                 <tr key={rec.date} className="hover:bg-slate-50/20">
-                                  <td className="p-2 font-bold">{rec.date}</td>
+                                  <td className="p-2 font-bold">{formatDateDMY(rec.date)}</td>
                                   <td className="p-2">
                                     {rec.entryTime ? `${rec.entryTime} → ${rec.exitTime || '--:--'}` : 'Excused / Paid'}
                                   </td>

@@ -19,7 +19,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee } from '../utils/calculations';
+import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
 
 interface ReportsViewProps {
   employees: Employee[];
@@ -431,21 +431,21 @@ export default function ReportsView({
   const downloadFilteredLogsHTML = () => {
     const tableHeader = `
       <tr>
-        <th style="padding: 10px 8px; text-align: left;">Date</th>
-        <th style="padding: 10px 8px; text-align: left;">Emp ID</th>
-        <th style="padding: 10px 8px; text-align: left;">Employee Name</th>
-        <th style="padding: 10px 6px; text-align: center;">Entry Time</th>
-        <th style="padding: 10px 6px; text-align: center;">Lunch Out</th>
-        <th style="padding: 10px 6px; text-align: center;">Lunch In</th>
-        <th style="padding: 10px 6px; text-align: center;">Exit Time</th>
-        <th style="padding: 10px 6px; text-align: center;">Entry Time 2</th>
-        <th style="padding: 10px 6px; text-align: center;">Dinner Out</th>
-        <th style="padding: 10px 6px; text-align: center;">Dinner In</th>
-        <th style="padding: 10px 6px; text-align: center;">Exit Time 2</th>
-        <th style="padding: 10px 8px; text-align: center;">Work Hours</th>
-        <th style="padding: 10px 8px; text-align: center;">Overtime</th>
-        <th style="padding: 10px 8px; text-align: center;">Status</th>
-        <th style="padding: 10px 8px; text-align: right;">Day Earnings</th>
+        <th style="padding: 6px 4px; text-align: left; white-space: nowrap; min-width: 80px;">Date</th>
+        <th style="padding: 6px 4px; text-align: left; white-space: nowrap; min-width: 65px;">Emp ID</th>
+        <th style="padding: 6px 4px; text-align: left; white-space: nowrap; min-width: 130px;">Employee Name</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Entry Time</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Lunch Out</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Lunch In</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Exit Time</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Entry Time 2</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Dinner Out</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Dinner In</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Exit Time 2</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 65px;">Work Hours</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 65px;">Overtime</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 60px;">Status</th>
+        <th style="padding: 6px 4px; text-align: right; white-space: nowrap; min-width: 80px;">Day Earnings</th>
       </tr>
     `;
 
@@ -467,21 +467,21 @@ export default function ReportsView({
           );
           return `
             <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 10px 8px; font-weight: 500; font-family: monospace; color: #334155;">${rec.date}</td>
-              <td style="padding: 10px 8px; font-family: monospace; color: #64748b;">${rec.employeeId}</td>
-              <td style="padding: 10px 8px; font-weight: bold; color: #0f172a;">${rec.employeeName}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace;">${rec.entryTime || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #64748b;">${rec.lunchOut || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #64748b;">${rec.lunchIn || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace;">${rec.exitTime || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #4f46e5;">${rec.entryTime2 || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #b91c1c;">${rec.dinnerOut || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #b91c1c;">${rec.dinnerIn || '--:--'}</td>
-              <td style="padding: 10px 6px; text-align: center; font-family: monospace; color: #4f46e5;">${rec.exitTime2 || '--:--'}</td>
-              <td style="padding: 10px 8px; text-align: center; font-weight: 600;">${(rec.totalHours || 0).toFixed(2)}h</td>
-              <td style="padding: 10px 8px; text-align: center; font-weight: 600; color: #4f46e5;">${(rec.overtime || 0).toFixed(2)}h</td>
-              <td style="padding: 10px 12px; text-align: center;">
-                <span style="font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${
+              <td style="padding: 6px 4px; font-weight: 550; font-family: monospace; color: #334155; white-space: nowrap; text-align: left;">${formatDateDMY(rec.date)}</td>
+              <td style="padding: 6px 4px; font-family: monospace; color: #64748b; white-space: nowrap; text-align: left;">${rec.employeeId}</td>
+              <td style="padding: 6px 4px; font-weight: bold; color: #0f172a; white-space: nowrap; text-align: left;">${rec.employeeName}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; white-space: nowrap;">${rec.entryTime || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #64748b; white-space: nowrap;">${rec.lunchOut || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #64748b; white-space: nowrap;">${rec.lunchIn || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; white-space: nowrap;">${rec.exitTime || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #4f46e5; white-space: nowrap;">${rec.entryTime2 || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #b91c1c; white-space: nowrap;">${rec.dinnerOut || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #b91c1c; white-space: nowrap;">${rec.dinnerIn || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #4f46e5; white-space: nowrap;">${rec.exitTime2 || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-weight: 600; white-space: nowrap;">${(rec.totalHours || 0).toFixed(2)}h</td>
+              <td style="padding: 6px 4px; text-align: center; font-weight: 600; color: #4f46e5; white-space: nowrap;">${(rec.overtime || 0).toFixed(2)}h</td>
+              <td style="padding: 6px 4px; text-align: center; white-space: nowrap;">
+                <span style="font-weight: bold; font-size: 9px; padding: 2px 6px; border-radius: 4px; display: inline-block; background: ${
                   rec.status.includes('2nd Shift') ? '#f3e8ff; color: #6b21a8;' :
                   rec.status.includes('Half Day') ? '#fef3c7; color: #b45309;' :
                   rec.status.includes('Present') ? '#f0fdf4; color: #166534;' :
@@ -490,7 +490,7 @@ export default function ReportsView({
                   '#fef2f2; color: #991b1b;'
                 }">${rec.status}</span>
               </td>
-              <td style="padding: 10px 12px; text-align: right; font-weight: bold; font-family: monospace;">₹${earnings.totalPay.toFixed(2)}</td>
+              <td style="padding: 6px 4px; text-align: right; font-weight: bold; font-family: monospace; white-space: nowrap;">₹${earnings.totalPay.toFixed(2)}</td>
             </tr>
           `;
         }).join('');
@@ -527,7 +527,7 @@ export default function ReportsView({
       <div style="margin-bottom: 24px; padding: 16px; background: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 12px; font-size: 11px;">
         <span style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold; color: #4338ca;">Audited Staff Record</span>
         <h2 style="font-size: 14px; font-weight: 800; color: #1e1b4b; margin: 4px 0 8px 0;">${activeEmployeeModel.name} (ID: ${activeEmployeeModel.id})</h2>
-        <p style="margin: 2px 0;"><strong>Department:</strong> ${activeEmployeeModel.department} &bull; <strong>Work Email:</strong> ${activeEmployeeModel.email}</p>
+        <p style="margin: 2px 0;"><strong>Department:</strong> ${activeEmployeeModel.department} ${activeEmployeeModel.designation ? `&bull; <strong>Designation:</strong> ${activeEmployeeModel.designation}` : ''} &bull; <strong>Work Email:</strong> ${activeEmployeeModel.email}</p>
         <p style="margin: 2px 0;"><strong>Residential Address (पता):</strong> ${activeEmployeeModel.address || "No address details registered."}</p>
         <p style="margin: 2px 0;"><strong>Wage Rate:</strong> ₹${activeEmployeeModel.hourlyRate}/hr</p>
       </div>
@@ -544,10 +544,11 @@ export default function ReportsView({
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: #334155;
       background: white;
-      margin: 40px;
+      margin: 20px;
     }
     .container {
-      max-width: 1000px;
+      max-width: 1400px;
+      width: 98%;
       margin: 0 auto;
     }
     .header {
@@ -588,7 +589,7 @@ export default function ReportsView({
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 11px;
+      font-size: 10px;
       margin-bottom: 40px;
       zoom: ${tableZoom}%;
     }
@@ -599,12 +600,14 @@ export default function ReportsView({
       font-weight: bold;
       font-size: 9px;
       text-transform: uppercase;
-      text-align: left;
-      padding: 10px 12px;
+      text-align: center;
+      padding: 6px 4px;
       border-bottom: 2px solid #cbd5e1;
+      white-space: nowrap;
     }
     td {
-      padding: 10px 12px;
+      padding: 6px 4px;
+      white-space: nowrap;
     }
     tr:nth-child(even) {
       background: #f8fafc;
@@ -628,11 +631,20 @@ export default function ReportsView({
       font-family: sans-serif;
     }
     @media print {
+      @page {
+        size: landscape;
+        margin: 8mm;
+      }
       .download-banner {
         display: none !important;
       }
       body {
-        margin: 20px;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 100%;
+        width: 100%;
       }
     }
   </style>
@@ -1048,7 +1060,7 @@ export default function ReportsView({
               <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-800 space-y-1.5 max-w-2xl">
                 <p><strong>Employee Name (पूरा नाम):</strong> {activeEmployeeModel.name} ({activeEmployeeModel.id})</p>
                 <p><strong>Residential Address (पता):</strong> {activeEmployeeModel.address || "No address details registered."}</p>
-                <p><strong>Department Unit:</strong> {activeEmployeeModel.department} | <strong>Work Email:</strong> {activeEmployeeModel.email} | <strong>Wage Rate:</strong> ₹{activeEmployeeModel.hourlyRate}/hr</p>
+                <p><strong>Department Unit:</strong> {activeEmployeeModel.department} {activeEmployeeModel.designation ? `| Designation: ${activeEmployeeModel.designation}` : ''} | <strong>Work Email:</strong> {activeEmployeeModel.email} | <strong>Wage Rate:</strong> ₹{activeEmployeeModel.hourlyRate}/hr</p>
               </div>
             )}
           </div>
@@ -1183,6 +1195,12 @@ export default function ReportsView({
                 </span>
                 <span>•</span>
                 <span>Dept: <strong className="text-slate-700 font-semibold">{activeEmployeeModel.department}</strong></span>
+                {activeEmployeeModel.designation && (
+                  <>
+                    <span>•</span>
+                    <span>Title: <strong className="text-slate-700 font-semibold">{activeEmployeeModel.designation}</strong></span>
+                  </>
+                )}
                 <span>•</span>
                 <span>Email: <strong className="text-slate-700 font-semibold">{activeEmployeeModel.email}</strong></span>
               </div>
@@ -1346,6 +1364,7 @@ export default function ReportsView({
                 <th className="py-3 px-6">Date</th>
                 <th className="py-3 px-4">Staff ID & Name</th>
                 <th className="py-3 px-4">Time Logs (In/Out)</th>
+                <th className="py-3 px-4 text-center">Selected Site Location</th>
                 <th className="py-3 px-4 text-center">Standard Shift</th>
                 <th className="py-3 px-4 text-center">Overtime</th>
                 <th className="py-3 px-4 text-center font-mono">Hourly Rate</th>
@@ -1356,7 +1375,7 @@ export default function ReportsView({
             <tbody className="divide-y divide-slate-100 text-slate-750 text-xs">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 text-2xs font-mono">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 text-2xs font-mono">
                     No active attendance sheets found within specified calendar filter criteria.
                   </td>
                 </tr>
@@ -1380,7 +1399,7 @@ export default function ReportsView({
                   return (
                     <tr key={`${rec.employeeId}-${rec.date}`} className="hover:bg-slate-50/20">
                       <td className="py-3 px-6 font-mono font-semibold text-slate-600">
-                        {rec.date}
+                        {formatDateDMY(rec.date)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex flex-col">
@@ -1419,7 +1438,26 @@ export default function ReportsView({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-center font-mono font-medium text-slate-650">
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="font-extrabold text-slate-805 text-xs text-center leading-tight">
+                            {rec.selectedWorkLocation || '--'}
+                          </span>
+                          {(rec.locationIn || rec.locationEntry2) && (
+                            <a
+                              href={`https://www.google.com/maps?q=${rec.locationIn || rec.locationEntry2}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-0.5 text-[9px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-1.5 py-0.5 border border-teal-100 rounded mt-1.5 transition-colors"
+                              title="Verify GPS on Google Map"
+                            >
+                              <MapPin className="w-2.5 h-2.5" />
+                              <span>Verify GPS</span>
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-medium text-slate-655">
                         {Math.max(0, rec.totalHours - rec.overtime).toFixed(2)} hrs
                       </td>
                       <td className="py-3 px-4 text-center font-mono text-indigo-650 font-bold">
@@ -2020,6 +2058,10 @@ export default function ReportsView({
               {/* Special print header styles to override everything on printers */}
               <style>{`
                 @media print {
+                  @page {
+                    size: landscape;
+                    margin: 8mm;
+                  }
                   body * {
                     visibility: hidden;
                   }
@@ -2060,7 +2102,7 @@ export default function ReportsView({
                     <span className="text-[9px] text-indigo-600 uppercase tracking-wider font-extrabold font-mono block">Audited Staff Member</span>
                     <h2 className="text-sm font-black text-slate-800">{activeEmployeeModel.name} (ID: {activeEmployeeModel.id})</h2>
                     <p className="text-2xs text-slate-500 font-sans">
-                      Department: <strong>{activeEmployeeModel.department || 'General'}</strong> &bull; Email: <strong>{activeEmployeeModel.email}</strong>
+                      Department: <strong>{activeEmployeeModel.department || 'General'}</strong> {activeEmployeeModel.designation ? `&bull; Designation: <strong>${activeEmployeeModel.designation}</strong>` : ''} &bull; Email: <strong>{activeEmployeeModel.email}</strong>
                     </p>
                     <p className="text-2xs text-slate-500 font-sans">
                       Residence Address (पता): <strong>{activeEmployeeModel.address || "No address registered."}</strong>
@@ -2123,26 +2165,27 @@ export default function ReportsView({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-slate-500 font-bold text-[9px] uppercase font-mono tracking-wider border-b border-slate-200">
-                      <th className="py-2 px-4">Date</th>
-                      <th className="py-2 px-3">Emp ID & Name</th>
-                      <th className="py-2 px-2 text-center">Entry Time</th>
-                      <th className="py-2 px-2 text-center">Lunch Out</th>
-                      <th className="py-2 px-2 text-center">Lunch In</th>
-                      <th className="py-2 px-2 text-center">Exit Time</th>
-                      <th className="py-2 px-2 text-center">Entry Time 2</th>
-                      <th className="py-2 px-2 text-center">Dinner Out</th>
-                      <th className="py-2 px-2 text-center">Dinner In</th>
-                      <th className="py-2 px-2 text-center">Exit Time 2</th>
-                      <th className="py-2 px-3 text-center">Work Hours</th>
-                      <th className="py-2 px-3 text-center">Overtime</th>
-                      <th className="py-2 px-3 text-center">Wage Rate</th>
-                      <th className="py-2 px-4 text-right">Computed Pay</th>
+                      <th className="py-2 px-4 whitespace-nowrap">Date</th>
+                      <th className="py-2 px-3 whitespace-nowrap">Emp ID & Name</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Entry Time</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Lunch Out</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Lunch In</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Exit Time</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Entry Time 2</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Dinner Out</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Dinner In</th>
+                      <th className="py-2 px-2 text-center whitespace-nowrap">Exit Time 2</th>
+                      <th className="py-2 px-3 text-center whitespace-nowrap">Site Location</th>
+                      <th className="py-2 px-3 text-center whitespace-nowrap">Work Hours</th>
+                      <th className="py-2 px-3 text-center whitespace-nowrap">Overtime</th>
+                      <th className="py-2 px-3 text-center whitespace-nowrap">Wage Rate</th>
+                      <th className="py-2 px-4 text-right whitespace-nowrap">Computed Pay</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={14} className="py-8 text-center text-slate-400 text-xs font-mono">
+                        <td colSpan={15} className="py-8 text-center text-slate-400 text-xs font-mono">
                            No active logs inside the preview. Use the report filters to adjust selections.
                         </td>
                       </tr>
@@ -2163,49 +2206,52 @@ export default function ReportsView({
                         );
                         return (
                           <tr key={`preview-${rec.employeeId}-${rec.date}`} className="hover:bg-slate-50/55 print:hover:bg-white text-3xs sm:text-2xs">
-                            <td className="py-2 px-4 font-mono font-semibold text-slate-600">
-                              {rec.date}
+                            <td className="py-2 px-4 font-mono font-semibold text-slate-600 whitespace-nowrap">
+                              {formatDateDMY(rec.date)}
                             </td>
-                            <td className="py-2 px-3">
+                            <td className="py-2 px-3 whitespace-nowrap">
                               <div className="flex flex-col text-left">
-                                <span className="font-bold text-slate-800">{rec.employeeName}</span>
-                                <span className="text-[9px] text-slate-400 font-mono">{rec.employeeId}</span>
+                                <span className="font-bold text-slate-800 whitespace-nowrap">{rec.employeeName}</span>
+                                <span className="text-[9px] text-slate-400 font-mono whitespace-nowrap">{rec.employeeId}</span>
                               </div>
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-700">
+                            <td className="py-2 px-2 text-center font-mono text-slate-700 whitespace-nowrap">
                               {rec.entryTime || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-450">
+                            <td className="py-2 px-2 text-center font-mono text-slate-450 whitespace-nowrap">
                               {rec.lunchOut || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-450">
+                            <td className="py-2 px-2 text-center font-mono text-slate-450 whitespace-nowrap">
                               {rec.lunchIn || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-700">
+                            <td className="py-2 px-2 text-center font-mono text-slate-700 whitespace-nowrap">
                               {rec.exitTime || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-indigo-600">
+                            <td className="py-2 px-2 text-center font-mono text-indigo-600 whitespace-nowrap">
                               {rec.entryTime2 || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-rose-500">
+                            <td className="py-2 px-2 text-center font-mono text-rose-500 whitespace-nowrap">
                               {rec.dinnerOut || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-rose-500">
+                            <td className="py-2 px-2 text-center font-mono text-rose-500 whitespace-nowrap">
                               {rec.dinnerIn || '--:--'}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-indigo-600">
+                            <td className="py-2 px-2 text-center font-mono text-indigo-600 whitespace-nowrap">
                               {rec.exitTime2 || '--:--'}
                             </td>
-                            <td className="py-2 px-3 text-center font-mono font-semibold text-slate-800">
+                            <td className="py-2 px-3 text-center text-slate-800 font-bold whitespace-nowrap">
+                              {rec.selectedWorkLocation || '--'}
+                            </td>
+                            <td className="py-2 px-3 text-center font-mono font-semibold text-slate-800 whitespace-nowrap">
                               {rec.totalHours.toFixed(2)}h
                             </td>
-                            <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600">
+                            <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600 whitespace-nowrap">
                               {rec.overtime > 0 ? `+${rec.overtime.toFixed(2)}h` : '--'}
                             </td>
-                            <td className="py-2 px-3 text-center font-mono">
+                            <td className="py-2 px-3 text-center font-mono whitespace-nowrap">
                               ₹{rate}/hr
                             </td>
-                            <td className="py-2 px-4 text-right font-mono font-bold text-slate-950">
+                            <td className="py-2 px-4 text-right font-mono font-bold text-slate-950 whitespace-nowrap">
                               ₹{earnings.totalPay.toFixed(2)}
                             </td>
                           </tr>

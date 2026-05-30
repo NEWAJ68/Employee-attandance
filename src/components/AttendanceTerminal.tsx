@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
 import { calculateAttendanceMetrics, verifyProximityToOffice, OFFICE_COORDS, getLocalDateString } from '../utils/calculations';
+import WorkLocationModal from './WorkLocationModal';
 
 interface AttendanceTerminalProps {
   employees: Employee[];
@@ -49,6 +50,7 @@ export default function AttendanceTerminal({
   loggedInEmployee,
 }: AttendanceTerminalProps) {
   const [selectedEmpId, setSelectedEmpId] = useState('');
+  const [pendingLocationRecord, setPendingLocationRecord] = useState<AttendanceRecord | null>(null);
   const cachedLocationRef = React.useRef<string | null>(null);
   const lastLocationFetchTimeRef = React.useRef<number>(0);
 
@@ -1024,16 +1026,7 @@ export default function AttendanceTerminal({
     };
 
     newRecord = checkProximityAndFlag(coords, 'initial entry check-in', newRecord);
-    onAddAttendance(newRecord);
-    triggerNotification(
-      'success', 
-      `${selectedEmpName} checked in successfully for ${isNightShift ? 'Night Shift' : 'Day Shift'} at ${timeStr}.`
-    );
-    setPunchAnimation({
-      type: 'entry',
-      name: selectedEmpName,
-      time: timeStr
-    });
+    setPendingLocationRecord(newRecord);
   };
 
   const handleLunchOut = async (selfiePhoto?: string) => {
@@ -1217,13 +1210,7 @@ export default function AttendanceTerminal({
         photoEntry2: selfiePhoto,
       };
       newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
-      onAddAttendance(newRecord);
-      triggerNotification('success', `${selectedEmpName} registered night shift entry at ${timeStr}.`);
-      setPunchAnimation({
-        type: 'entry',
-        name: selectedEmpName,
-        time: timeStr
-      });
+      setPendingLocationRecord(newRecord);
     } else {
       let updatedRecord: AttendanceRecord = {
         ...currentRecord,
@@ -2478,6 +2465,31 @@ export default function AttendanceTerminal({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {pendingLocationRecord && (
+        <WorkLocationModal
+          employeeName={pendingLocationRecord.employeeName}
+          onConfirm={(confirmedLoc) => {
+            const completedRecord = {
+              ...pendingLocationRecord,
+              selectedWorkLocation: confirmedLoc
+            };
+            onAddAttendance(completedRecord);
+            setPendingLocationRecord(null);
+            
+            triggerNotification(
+              'success', 
+              `Attendance marked successfully for ${confirmedLoc}`
+            );
+            
+            setPunchAnimation({
+              type: 'entry',
+              name: completedRecord.employeeName,
+              time: completedRecord.entryTime || completedRecord.entryTime2 || 'Now'
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

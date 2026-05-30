@@ -26,6 +26,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regDept, setRegDept] = useState('Engineering');
+  const [regDesignation, setRegDesignation] = useState('');
   const [regRate, setRegRate] = useState('25');
   const [regMonthlySalary, setRegMonthlySalary] = useState('15000');
 
@@ -146,6 +147,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
       id: cleanId,
       name: regName.trim(),
       department: regDept,
+      designation: regDesignation.trim() || undefined,
       email: regEmail.trim(),
       hourlyRate: parseFloat(regRate) || 25,
       monthlySalary: parseFloat(regMonthlySalary) || 0,
@@ -165,6 +167,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
     setRegName('');
     setRegEmail('');
     setRegDept('Engineering');
+    setRegDesignation('');
     setRegRate('25');
     setRegMonthlySalary('15000');
     setRegId('');
@@ -316,6 +319,20 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   >
                     <option value="Engineering">Engineering</option>
                   </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="reg-designation" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
+                    Designation
+                  </label>
+                  <input
+                    id="reg-designation"
+                    type="text"
+                    value={regDesignation}
+                    onChange={(e) => setRegDesignation(e.target.value)}
+                    placeholder="e.g. Technician / Engineer"
+                    className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs transition-all font-semibold"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

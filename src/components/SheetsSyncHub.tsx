@@ -20,6 +20,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
+import { formatDateDMY } from '../utils/calculations';
 
 interface SheetsSyncHubProps {
   employees: Employee[];
@@ -271,18 +272,19 @@ function getEmployeesFromSheet() {
   const headers = rows[0];
   const list = [];
   
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    list.push({
-      id: row[0],
-      name: row[1],
-      department: row[2],
-      email: row[3],
-      hourlyRate: Number(row[4]) || 20,
-      joinedDate: row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), "yyyy-MM-dd") : "",
-      status: row[6] || "Active"
-    });
-  }
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      list.push({
+        id: row[0],
+        name: row[1],
+        department: row[2],
+        email: row[3],
+        hourlyRate: Number(row[4]) || 20,
+        joinedDate: row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), "yyyy-MM-dd") : "",
+        status: row[6] || "Active",
+        designation: row[7] || ""
+      });
+    }
   return list;
 }
 
@@ -311,7 +313,9 @@ function getAttendanceFromSheet() {
       dinnerOut: row[10] || "",
       dinnerIn: row[11] || "",
       totalHours: Number(row[12]) || 0,
-      overtime: Number(row[13]) || 0
+      overtime: Number(row[13]) || 0,
+      selectedWorkLocation: row[14] || "",
+      locationIn: row[15] || ""
     });
   }
   return list;
@@ -1004,7 +1008,7 @@ function saveSettings(configs) {
                         <tbody className="divide-y divide-slate-150 text-slate-600">
                           {attendance.slice(0, 5).map((rec, i) => (
                             <tr key={i} className="hover:bg-slate-55/20 text-3xs">
-                              <td className="py-2 px-4 border-r font-semibold text-slate-900">{rec.date}</td>
+                              <td className="py-2 px-4 border-r font-semibold text-slate-900">{formatDateDMY(rec.date)}</td>
                               <td className="py-2 px-3 border-r font-black text-indigo-600">{rec.employeeId}</td>
                               <td className="py-2 px-3 border-r text-slate-800 font-sans font-semibold">{rec.employeeName}</td>
                               <td className="py-2 px-3 border-r capitalize font-semibold text-slate-700">{rec.status}</td>
@@ -1032,7 +1036,8 @@ function saveSettings(configs) {
                             <th className="py-2.5 px-3 border-r">D: Email Address</th>
                             <th className="py-2.5 px-3 border-r">E: Hourly Rate</th>
                             <th className="py-2.5 px-3 border-r">F: Joined Date</th>
-                            <th className="py-2.5 px-3">G: Status</th>
+                            <th className="py-2.5 px-3 border-r">G: Status</th>
+                            <th className="py-2.5 px-3">H: Designation</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-150 text-slate-600 text-3xs">
@@ -1044,7 +1049,8 @@ function saveSettings(configs) {
                               <td className="py-2 px-3 border-r text-slate-500">{emp.email}</td>
                               <td className="py-2 px-3 border-r font-bold text-slate-900">₹{emp.hourlyRate?.toFixed(2)}</td>
                               <td className="py-2 px-3 border-r">{emp.joinedDate}</td>
-                              <td className="py-2 px-3 uppercase font-bold text-indigo-500">{emp.status}</td>
+                              <td className="py-2 px-3 border-r uppercase font-bold text-indigo-500">{emp.status}</td>
+                              <td className="py-2 px-3 font-semibold text-slate-700">{emp.designation || 'N/A'}</td>
                             </tr>
                           ))}
                         </tbody>

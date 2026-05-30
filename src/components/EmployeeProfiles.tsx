@@ -24,7 +24,7 @@ import { Employee, Settings } from '../types';
 interface EmployeeProfilesProps {
   employees: Employee[];
   onAddEmployee: (employee: Employee) => void;
-  onUpdateEmployee: (employee: Employee) => void;
+  onUpdateEmployee: (employee: Employee, originalId?: string) => void;
   onDeleteEmployee: (id: string) => void;
   onClearAllEmployees: () => void;
   settings: Settings;
@@ -53,9 +53,10 @@ export default function EmployeeProfiles({
   const [empIdInput, setEmpIdInput] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [deptInput, setDeptInput] = useState('Engineering');
+  const [designationInput, setDesignationInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [hourlyRateInput, setHourlyRateInput] = useState<number | string>(25);
-  const [monthlySalaryInput, setMonthlySalaryInput] = useState<number | string>(15000);
+  const [monthlySalaryInput, setMonthlySalaryInput] = useState<number | string>(15500);
 
   const handleMonthlySalaryChange = (value: string) => {
     setMonthlySalaryInput(value);
@@ -85,6 +86,7 @@ export default function EmployeeProfiles({
     setEmpIdInput(`EMP-${nextNum}`);
     setNameInput('');
     setDeptInput('Engineering');
+    setDesignationInput('');
     setEmailInput('');
     setHourlyRateInput(25);
     setMonthlySalaryInput(15000);
@@ -99,6 +101,7 @@ export default function EmployeeProfiles({
     setEmpIdInput(emp.id);
     setNameInput(emp.name);
     setDeptInput(emp.department);
+    setDesignationInput(emp.designation || '');
     setEmailInput(emp.email);
     setHourlyRateInput(emp.hourlyRate);
     setMonthlySalaryInput(emp.monthlySalary || 0);
@@ -125,6 +128,7 @@ export default function EmployeeProfiles({
       id: empIdInput.trim().toUpperCase(),
       name: nameInput.trim(),
       department: deptInput,
+      designation: designationInput.trim() || undefined,
       email: emailInput.trim() || `${nameInput.trim().toLowerCase().replace(/\s+/g, '.')}@company.com`,
       hourlyRate: Number(hourlyRateInput) || 20,
       monthlySalary: Number(monthlySalaryInput) || 0,
@@ -135,7 +139,11 @@ export default function EmployeeProfiles({
     };
 
     if (editingEmployee) {
-      onUpdateEmployee(employeePayload);
+      if (employeePayload.id !== editingEmployee.id && employees.some(e => e.id === employeePayload.id)) {
+        alert('This newly specified Employee ID already exists. Please choose a unique identifier.');
+        return;
+      }
+      onUpdateEmployee(employeePayload, editingEmployee.id);
     } else {
       // Check for unique ID constraint
       if (employees.some(e => e.id === employeePayload.id)) {
@@ -309,9 +317,14 @@ export default function EmployeeProfiles({
 
                   {/* Info Text */}
                   <div className="w-full text-center">
-                    <h3 className="font-bold text-xs text-slate-800 line-clamp-1 mb-1" title={emp.name}>
+                    <h3 className="font-bold text-xs text-slate-800 line-clamp-1 mb-0.5" title={emp.name}>
                       {emp.name}
                     </h3>
+                    {emp.designation && (
+                      <div className="text-[10px] text-slate-500 font-semibold line-clamp-1 mb-1" title={emp.designation}>
+                        {emp.designation}
+                      </div>
+                    )}
                     <div className="font-mono text-[9px] text-slate-400 font-bold mb-2">
                       {emp.id}
                     </div>
@@ -392,9 +405,16 @@ export default function EmployeeProfiles({
                         )}
                         <div>
                           <h3 className="font-bold text-sm text-slate-800 line-clamp-1">{emp.name}</h3>
-                          <span className="text-3xs font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/30 uppercase tracking-wider font-bold">
-                            {emp.id}
-                          </span>
+                          <div className="flex items-center space-x-1 px-0.5 mt-0.5">
+                            <span className="text-3xs font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/30 uppercase tracking-wider font-bold">
+                              {emp.id}
+                            </span>
+                            {emp.designation && (
+                              <span className="text-[10px] text-slate-500 font-medium line-clamp-1 border-l border-slate-200 pl-1.5 leading-none">
+                                {emp.designation}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -534,11 +554,10 @@ export default function EmployeeProfiles({
                   <input
                     type="text"
                     required
-                    disabled={!!editingEmployee}
                     value={empIdInput}
                     onChange={(e) => setEmpIdInput(e.target.value)}
                     placeholder="e.g. EMP-101"
-                    className="w-full px-3 py-2 border border-slate-200 bg-slate-50 font-mono font-bold text-xs rounded-xl focus:ring-1 focus:ring-indigo-501 outline-none text-slate-700 disabled:opacity-50"
+                    className="w-full px-3 py-2 border border-slate-200 bg-slate-50 font-mono font-bold text-xs rounded-xl focus:ring-1 focus:ring-indigo-501 outline-none text-slate-700"
                   />
                 </div>
                 <div>
@@ -566,6 +585,19 @@ export default function EmployeeProfiles({
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
                   placeholder="Sarah Connor"
+                  className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:ring-1 focus:ring-indigo-501 outline-none text-slate-750 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xs uppercase tracking-wider font-semibold text-slate-500 mb-1 font-mono">
+                  Designation (पद / Title)
+                </label>
+                <input
+                  type="text"
+                  value={designationInput}
+                  onChange={(e) => setDesignationInput(e.target.value)}
+                  placeholder="e.g. Senior Software Engineer / General Manager"
                   className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:ring-1 focus:ring-indigo-501 outline-none text-slate-750 font-medium"
                 />
               </div>

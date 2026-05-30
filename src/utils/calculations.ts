@@ -11,6 +11,24 @@ export const getLocalDateString = (date: Date = new Date()): string => {
 };
 
 /**
+ * Formats a YYYY-MM-DD date string nicely to Date Month Year (DD-MM-YYYY) format.
+ * E.g., "2026-05-30" becomes "30-05-2026"
+ */
+export const formatDateDMY = (dateStr: string | undefined | null): string => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    if (year.length === 4) {
+      return `${day}-${month}-${year}`;
+    }
+  }
+  return dateStr;
+};
+
+/**
  * Converts "HH:MM" (or "HH:MM AM/PM") string to minutes from start of day.
  * Robustly parses both 24-hour and 12-hour AM/PM formats.
  */
