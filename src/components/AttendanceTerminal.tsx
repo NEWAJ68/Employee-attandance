@@ -1713,12 +1713,12 @@ export default function AttendanceTerminal({
             <div className="flex items-center justify-center space-x-1.5 pt-1 pb-1">
               <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700'}`}>
                 <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${!capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>1</span>
-                <span>Photo (फ़ोटो)</span>
+                <span>Photo</span>
               </div>
               <div className="w-3 h-px bg-slate-200"></div>
               <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
                 <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-500'}`}>2</span>
-                <span>Confirm (पुष्टि)</span>
+                <span>Confirm</span>
               </div>
             </div>
 
@@ -1726,7 +1726,7 @@ export default function AttendanceTerminal({
               <div className="bg-emerald-50/40 rounded-2xl p-3 border border-emerald-100/80 space-y-2 animate-fadeIn text-left">
                 <div className="flex items-center space-x-1.5 text-emerald-700 font-bold text-[10px]">
                   <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                  <span>Photo Captured! (फ़ोटो ले ली गई है)</span>
+                  <span>Photo Captured!</span>
                 </div>
                 <p className="text-[10px] text-slate-600 font-sans leading-relaxed">
                   Please review the preview below for <strong className="text-slate-900">{selfieState.actionLabel}</strong>. Make sure your face is clearly visible.
@@ -1791,7 +1791,7 @@ export default function AttendanceTerminal({
                 </div>
                 
                 <p className="text-[10px] text-amber-950 leading-relaxed font-sans font-medium">
-                  यदि आपकी फ़ोटो या बैकग्राउंड <strong className="text-red-600">साफ नहीं है (NOT CLEAR)</strong> तो तुरंत नीचे दिए गए <strong className="text-indigo-700">Retake (फिर से लें)</strong> बटन को दबाकर दोबारा फ़ोटो लें!
+                  If your photo or background is <strong className="text-red-600">NOT CLEAR</strong>, tap the <strong className="text-indigo-700">Retake</strong> button below immediately to snap it again!
                 </p>
                 <div className="flex items-center space-x-1.5 text-slate-600 text-[10px] pt-0.5">
                   <span className="text-amber-500 font-bold">⚠️</span>
@@ -1808,7 +1808,7 @@ export default function AttendanceTerminal({
                     onClick={() => setCapturedPhoto(null)}
                     className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/40 rounded-xl transition-all cursor-pointer font-sans"
                   >
-                    Retake (फिर से लें)
+                    Retake
                   </button>
                   <button
                     type="button"

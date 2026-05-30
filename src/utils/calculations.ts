@@ -435,7 +435,8 @@ export function verifyProximityToOffice(coordStr: string): {
     }
   }
 
-  const isWithinRange = minDistance <= closestLocation.radiusMeters;
+  // Radius enforcement bypassed entirely as requested to prevent false GPS blockages
+  const isWithinRange = true;
 
   return {
     isWithinRange,
