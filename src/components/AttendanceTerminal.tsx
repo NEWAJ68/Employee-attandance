@@ -367,37 +367,28 @@ export default function AttendanceTerminal({
             // Ideal horizontal & vertical center coordinates of alignment guide are (0.50, 0.46)
             const normCx = cx / 160;
             const normCy = cy / 120;
-            const dx = Math.abs(normCx - 0.50);
-            const dy = Math.abs(normCy - 0.46);
-
-            // Subtract play-area tolerances so alignment isn't overly rigid 
-            const dxAdjusted = Math.max(0, dx - 0.08);
-            const dyAdjusted = Math.max(0, dy - 0.08);
-            const distToCenter = Math.hypot(dxAdjusted, dyAdjusted);
-
-            const posScore = Math.max(0, 100 - distToCenter * 140);
-
+            const normW = w / 160;
             const normH = h / 120;
-            let sizeScore = 100;
-            if (normH < 0.40) {
-              // Too far / small
-              sizeScore = Math.max(0, 100 - (0.40 - normH) * 160);
-            } else if (normH > 0.68) {
-              // Too close / large
-              sizeScore = Math.max(0, 100 - (normH - 0.68) * 160);
-            } else {
-              sizeScore = 100; // Perfect visual envelope
-            }
 
-            // Weighted combination of center-offset and scale-proximity
-            const rawScore = Math.round(posScore * 0.6 + sizeScore * 0.4);
+            // Highly generous boundaries to consider a face "inside" the target circle/oval:
+            // Centered horizontally within 0.26 range (from 0.24 to 0.76)
+            // Centered vertically within 0.26 range (from 0.20 to 0.72)
+            // Face height is reasonable (between 20% and 85% of viewport height)
+            const isInsideOval = Math.abs(normCx - 0.50) < 0.26 && 
+                                 Math.abs(normCy - 0.46) < 0.26 && 
+                                 normH >= 0.20 && normH <= 0.85;
 
-            // Alignment Booster: If face is within general bounds and is well-sized,
-            // we smoothly boost it to 90% - 100% so the user gets successful auto-capture feedback
-            if (posScore >= 80 && sizeScore >= 80) {
-              alignedPercent = Math.min(100, Math.round(91 + (rawScore - 80) * (9 / 20)));
+            if (isInsideOval) {
+              // As soon as the face is in this zone, set alignment to 100% so it immediately turns green!
+              alignedPercent = 100;
             } else {
-              alignedPercent = Math.min(90, Math.round(rawScore * 0.95));
+              // Outside the zone: calculate helpful approach score so they know how to adjust
+              const dx = Math.abs(normCx - 0.50);
+              const dy = Math.abs(normCy - 0.46);
+              const distToCenter = Math.hypot(dx, dy);
+              const posScore = Math.max(10, 100 - distToCenter * 110);
+              const sizeScore = normH < 0.20 ? (normH / 0.20) * 80 : 80;
+              alignedPercent = Math.min(88, Math.round(posScore * 0.6 + sizeScore * 0.4));
             }
           }
 
@@ -434,14 +425,14 @@ export default function AttendanceTerminal({
             setCountdown(null);
             holdDuration = 0;
           } else if (alignedPercent < 90) {
-            setFaceStateMsg('Align your face inside the circle by at least 90%');
+            setFaceStateMsg('Align your face inside the circle');
             setCountdown(null);
             holdDuration = 0;
           } else {
-            setFaceStateMsg('Hold still...');
+            setFaceStateMsg('Hold still... Capturing');
             holdDuration += deltaTime;
 
-            const remaining = Math.max(0, 1.5 - holdDuration / 1000);
+            const remaining = Math.max(0, 0.5 - holdDuration / 1000);
             setCountdown(remaining);
 
             if (remaining <= 0) {
@@ -2132,8 +2123,8 @@ export default function AttendanceTerminal({
             {/* Custom Status Display Banner */}
             <div className={`border rounded-xl py-1.5 px-3 text-center transition-all ${
               capturedPhoto ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
-              countdown !== null ? 'bg-emerald-500 border-emerald-600 text-white animate-pulse font-extrabold' :
-              faceStatus.detected && faceStatus.alignedPercent >= 90 ? 'bg-indigo-50 border-indigo-200 text-indigo-805' :
+              countdown !== null ? 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-600 text-white animate-pulse font-extrabold' :
+              faceStatus.detected && faceStatus.alignedPercent >= 90 ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-extrabold' :
               faceStatus.detected ? 'bg-amber-50 border-amber-200 text-amber-800 font-bold' :
               faceStatus.multiple ? 'bg-rose-50 border-rose-200 text-rose-800 font-bold' :
               'bg-slate-50 border-slate-100 text-slate-500'
