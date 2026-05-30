@@ -328,7 +328,7 @@ export default function AttendanceTerminal({
               multiple = true;
             }
 
-            // Calculate lighting of the face region
+            // Calculate lighting of the face region (using slightly more lenient boundaries)
             let faceLumaSum = 0;
             let faceLumaCount = 0;
             for (let y = Math.floor(minY); y < maxY; y += 2) {
@@ -339,14 +339,14 @@ export default function AttendanceTerminal({
               }
             }
             const faceLuma = faceLumaSum / (faceLumaCount || 1);
-            lightingValid = faceLuma > 60 && faceLuma < 240;
+            lightingValid = faceLuma > 42 && faceLuma < 248;
 
-            // Calculate head shape skew & tilt (centroid vs bounding box middle)
+            // Calculate head shape skew & tilt (slightly more lenient to accommodate natural head angles)
             const midX = (minX + maxX) / 2;
             const diffFromMid = Math.abs(cx - midX) / (w || 1);
-            tiltValid = diffFromMid < 0.16;
+            tiltValid = diffFromMid < 0.22;
 
-            // Eyes open and visible validation using pixel contrasts
+            // Eyes open and visible validation using pixel contrasts (lenient standard deviation checks)
             let eyeMinY = Math.floor(minY + h * 0.18);
             let eyeMaxY = Math.floor(minY + h * 0.42);
             let eyePixels: number[] = [];
@@ -361,20 +361,44 @@ export default function AttendanceTerminal({
               const avgEyeLuma = eyePixels.reduce((a, b) => a + b, 0) / eyePixels.length;
               const variance = eyePixels.reduce((acc, val) => acc + Math.pow(val - avgEyeLuma, 2), 0) / eyePixels.length;
               const stdDev = Math.sqrt(variance);
-              eyesValid = stdDev > 3.8; // Active, eyes open/eyebrows high variance
+              eyesValid = stdDev > 2.0; 
             }
 
-            // Ideal coordinate of alignment guide is (0.5, 0.45). Size height ~ 0.35 to 0.50
+            // Ideal horizontal & vertical center coordinates of alignment guide are (0.50, 0.46)
             const normCx = cx / 160;
             const normCy = cy / 120;
-            const distToCenter = Math.hypot(normCx - 0.5, normCy - 0.45);
+            const dx = Math.abs(normCx - 0.50);
+            const dy = Math.abs(normCy - 0.46);
+
+            // Subtract play-area tolerances so alignment isn't overly rigid 
+            const dxAdjusted = Math.max(0, dx - 0.08);
+            const dyAdjusted = Math.max(0, dy - 0.08);
+            const distToCenter = Math.hypot(dxAdjusted, dyAdjusted);
+
+            const posScore = Math.max(0, 100 - distToCenter * 140);
 
             const normH = h / 120;
-            const sizeDiff = Math.abs(normH - 0.40);
+            let sizeScore = 100;
+            if (normH < 0.40) {
+              // Too far / small
+              sizeScore = Math.max(0, 100 - (0.40 - normH) * 160);
+            } else if (normH > 0.68) {
+              // Too close / large
+              sizeScore = Math.max(0, 100 - (normH - 0.68) * 160);
+            } else {
+              sizeScore = 100; // Perfect visual envelope
+            }
 
-            const posScore = Math.max(0, 100 - distToCenter * 260);
-            const sizeScore = Math.max(0, 100 - sizeDiff * 250);
-            alignedPercent = Math.min(100, Math.round((posScore + sizeScore) / 2));
+            // Weighted combination of center-offset and scale-proximity
+            const rawScore = Math.round(posScore * 0.6 + sizeScore * 0.4);
+
+            // Alignment Booster: If face is within general bounds and is well-sized,
+            // we smoothly boost it to 90% - 100% so the user gets successful auto-capture feedback
+            if (posScore >= 80 && sizeScore >= 80) {
+              alignedPercent = Math.min(100, Math.round(91 + (rawScore - 80) * (9 / 20)));
+            } else {
+              alignedPercent = Math.min(90, Math.round(rawScore * 0.95));
+            }
           }
 
           const currentFaceStatus = {
@@ -2183,31 +2207,31 @@ export default function AttendanceTerminal({
                   </div>
                 )}
 
-                {/* Circular face alignment guide in the absolute center */}
+                {/* Face-silhouette vertical oval alignment guide in the absolute center */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className={`w-[145px] h-[145px] xs:w-[165px] xs:h-[165px] border-4 rounded-full flex flex-col items-center justify-center transition-all duration-300 relative ${
+                  <div className={`w-[170px] h-[225px] xs:w-[200px] xs:h-[265px] border-4 rounded-[85px/112.5px] xs:rounded-[100px/132.5px] flex flex-col items-center justify-center transition-all duration-300 relative ${
                     countdown !== null 
-                      ? 'border-emerald-500 bg-emerald-600/10 shadow-[0_0_20px_rgba(16,185,129,0.95)] scale-105' 
+                      ? 'border-emerald-500 bg-emerald-600/10 shadow-[0_0_22px_rgba(16,185,129,0.95)] scale-[1.03]' 
                       : faceStatus.detected && faceStatus.alignedPercent >= 90
-                      ? 'border-indigo-500 bg-indigo-500/5'
+                      ? 'border-indigo-500 bg-indigo-500/10 shadow-[0_0_18px_rgba(99,102,241,0.7)]'
                       : faceStatus.detected
-                      ? 'border-amber-400 bg-amber-500/5 shadow-[0_0_10px_rgba(245,158,11,0.5)]'
-                      : 'border-white/40 bg-slate-900/10 border-dashed animate-pulse'
+                      ? 'border-amber-400 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.6)]'
+                      : 'border-white/40 bg-slate-900/15 border-dashed animate-pulse'
                   }`}>
                     {countdown !== null ? (
                       <div className="text-white text-center select-none font-sans">
-                        <div className="text-[26px] font-black tracking-tighter leading-none animate-ping">
+                        <div className="text-[28px] font-black tracking-tighter leading-none animate-ping">
                           {countdown.toFixed(1)}s
                         </div>
-                        <div className="text-[7px] uppercase tracking-widest font-mono font-bold mt-1 text-emerald-100">
+                        <div className="text-[7.5px] uppercase tracking-widest font-mono font-black mt-1 text-emerald-100">
                           Hold Still
                         </div>
                       </div>
                     ) : (
-                      <div className={`text-[7.5px] uppercase tracking-widest font-mono select-none px-2 py-0.8 rounded backdrop-blur-[1.5px] ${
+                      <div className={`text-[7.5px] uppercase tracking-widest font-mono select-none px-2 py-1 rounded backdrop-blur-[1.5px] ${
                         faceStatus.detected && faceStatus.alignedPercent >= 90 
-                          ? 'bg-indigo-600 text-white' 
-                          : 'bg-slate-950/50 text-white/80'
+                          ? 'bg-indigo-600 text-white shadow-sm' 
+                          : 'bg-slate-950/60 text-white/90'
                       }`}>
                         {faceStatus.detected ? `Align: ${faceStatus.alignedPercent}%` : 'Align Face'}
                       </div>
