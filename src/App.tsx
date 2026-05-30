@@ -1069,7 +1069,8 @@ export default function App() {
         handleRaiseNotification(
           'Google Account Connected',
           'Successfully linked Google Sheets and Google Drive to sync attendance records.',
-          'success'
+          'success',
+          'admin'
         );
       }
     } catch (error: any) {
@@ -1077,7 +1078,8 @@ export default function App() {
       handleRaiseNotification(
         'Google Authentication Failed',
         error.message || 'An error occurred during authentication.',
-        'alert'
+        'alert',
+        'admin'
       );
     }
   };
@@ -1087,7 +1089,8 @@ export default function App() {
     handleRaiseNotification(
       'Google Account Disconnected',
       'Direct Google Sheets sync has been disabled.',
-      'info'
+      'info',
+      'admin'
     );
   };
 
@@ -1102,7 +1105,8 @@ export default function App() {
       handleRaiseNotification(
         'New Spreadsheet Created',
         `Successfully created Google Sheet: "${title}" in your Google Drive.`,
-        'success'
+        'success',
+        'admin'
       );
       // Run initial background sync to populate data immediately
       try {
