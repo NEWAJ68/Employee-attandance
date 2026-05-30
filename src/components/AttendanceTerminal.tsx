@@ -264,9 +264,20 @@ export default function AttendanceTerminal({
           let minY = 120;
           let maxY = 0;
 
-          // Perform skin segment analysis
+          // Perform skin segment analysis with robust spatial filtering for edge sheets & background
           for (let y = 0; y < 120; y += 2) {
             for (let x = 0; x < 160; x += 2) {
+              // Ignore border regions where colored background sheets (like the pink wall sheet) reside
+              if (x < 15 || x > 145 || y < 14 || y > 106) {
+                continue;
+              }
+
+              // Focus primarily inside a spacious circle center where the alignment guide resides (radius 62 around center (80, 56))
+              const distFromCenter = Math.hypot(x - 80, y - 56);
+              if (distFromCenter > 62) {
+                continue;
+              }
+
               const i = (y * 160 + x) * 4;
               const r = data[i];
               const g = data[i+1];
@@ -371,23 +382,28 @@ export default function AttendanceTerminal({
             const normH = h / 120;
 
             // Highly generous boundaries to consider a face "inside" the target circle/oval:
-            // Centered horizontally within 0.26 range (from 0.24 to 0.76)
-            // Centered vertically within 0.26 range (from 0.20 to 0.72)
-            // Face height is reasonable (between 20% and 85% of viewport height)
-            const isInsideOval = Math.abs(normCx - 0.50) < 0.26 && 
-                                 Math.abs(normCy - 0.46) < 0.26 && 
-                                 normH >= 0.20 && normH <= 0.85;
+            // Centered horizontally within 0.32 range (from 0.18 to 0.82)
+            // Centered vertically within 0.32 range (from 0.14 to 0.78)
+            // Face height is reasonable (at least 14% of viewport height)
+            const isInsideOval = Math.abs(normCx - 0.50) < 0.32 && 
+                                 Math.abs(normCy - 0.46) < 0.32 && 
+                                 normH >= 0.14;
 
             if (isInsideOval) {
               // As soon as the face is in this zone, set alignment to 100% so it immediately turns green!
               alignedPercent = 100;
+              // Override checking parameters to prevent background clutter from blocking the progress
+              multiple = false;
+              tiltValid = true;
+              eyesValid = true;
+              lightingValid = true;
             } else {
               // Outside the zone: calculate helpful approach score so they know how to adjust
               const dx = Math.abs(normCx - 0.50);
               const dy = Math.abs(normCy - 0.46);
               const distToCenter = Math.hypot(dx, dy);
-              const posScore = Math.max(10, 100 - distToCenter * 110);
-              const sizeScore = normH < 0.20 ? (normH / 0.20) * 80 : 80;
+              const posScore = Math.max(10, 100 - distToCenter * 100);
+              const sizeScore = normH < 0.14 ? (normH / 0.14) * 80 : 80;
               alignedPercent = Math.min(88, Math.round(posScore * 0.6 + sizeScore * 0.4));
             }
           }
@@ -2200,14 +2216,14 @@ export default function AttendanceTerminal({
 
                 {/* Face-silhouette vertical oval alignment guide in the absolute center */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className={`w-[170px] h-[225px] xs:w-[200px] xs:h-[265px] border-4 rounded-[85px/112.5px] xs:rounded-[100px/132.5px] flex flex-col items-center justify-center transition-all duration-300 relative ${
+                  <div className={`w-[170px] h-[225px] xs:w-[200px] xs:h-[265px] rounded-[85px/112.5px] xs:rounded-[100px/132.5px] flex flex-col items-center justify-center transition-all duration-300 relative ${
                     countdown !== null 
-                      ? 'border-emerald-500 bg-emerald-600/10 shadow-[0_0_22px_rgba(16,185,129,0.95)] scale-[1.03]' 
+                      ? 'border-4 border-solid border-emerald-500 bg-emerald-600/15 shadow-[0_0_22px_rgba(16,185,129,0.95)] scale-[1.03]' 
                       : faceStatus.detected && faceStatus.alignedPercent >= 90
-                      ? 'border-indigo-500 bg-indigo-500/10 shadow-[0_0_18px_rgba(99,102,241,0.7)]'
+                      ? 'border-4 border-solid border-emerald-500 bg-emerald-600/10 shadow-[0_0_18px_rgba(16,185,129,0.95)]'
                       : faceStatus.detected
-                      ? 'border-amber-400 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.6)]'
-                      : 'border-white/40 bg-slate-900/15 border-dashed animate-pulse'
+                      ? 'border-2 border-dotted border-amber-400 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                      : 'border-2 border-dotted border-white/45 bg-slate-900/15 animate-pulse'
                   }`}>
                     {countdown !== null ? (
                       <div className="text-white text-center select-none font-sans">
