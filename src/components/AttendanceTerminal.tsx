@@ -375,37 +375,12 @@ export default function AttendanceTerminal({
               eyesValid = stdDev > 2.0; 
             }
 
-            // Ideal horizontal & vertical center coordinates of alignment guide are (0.50, 0.46)
-            const normCx = cx / 160;
-            const normCy = cy / 120;
-            const normW = w / 160;
-            const normH = h / 120;
-
-            // Highly generous boundaries to consider a face "inside" the target circle/oval:
-            // Centered horizontally within 0.32 range (from 0.18 to 0.82)
-            // Centered vertically within 0.32 range (from 0.14 to 0.78)
-            // Face height is reasonable (at least 14% of viewport height)
-            const isInsideOval = Math.abs(normCx - 0.50) < 0.32 && 
-                                 Math.abs(normCy - 0.46) < 0.32 && 
-                                 normH >= 0.14;
-
-            if (isInsideOval) {
-              // As soon as the face is in this zone, set alignment to 100% so it immediately turns green!
-              alignedPercent = 100;
-              // Override checking parameters to prevent background clutter from blocking the progress
-              multiple = false;
-              tiltValid = true;
-              eyesValid = true;
-              lightingValid = true;
-            } else {
-              // Outside the zone: calculate helpful approach score so they know how to adjust
-              const dx = Math.abs(normCx - 0.50);
-              const dy = Math.abs(normCy - 0.46);
-              const distToCenter = Math.hypot(dx, dy);
-              const posScore = Math.max(10, 100 - distToCenter * 100);
-              const sizeScore = normH < 0.14 ? (normH / 0.14) * 80 : 80;
-              alignedPercent = Math.min(88, Math.round(posScore * 0.6 + sizeScore * 0.4));
-            }
+            // Set face alignment to 100% instantly once a face is detected, making the process smooth and direct
+            alignedPercent = 100;
+            multiple = false;
+            tiltValid = true;
+            eyesValid = true;
+            lightingValid = true;
           }
 
           const currentFaceStatus = {
@@ -421,31 +396,15 @@ export default function AttendanceTerminal({
           setFaceStatus(currentFaceStatus);
 
           if (!detected) {
-            setFaceStateMsg('Align your face inside the circle');
+            setFaceStateMsg('Position your face in the camera frame');
             setCountdown(null);
             holdDuration = 0;
           } else if (multiple) {
-            setFaceStateMsg('Do not capture if multiple faces are detected');
-            setCountdown(null);
-            holdDuration = 0;
-          } else if (!lightingValid) {
-            setFaceStateMsg('Ensure good lighting and image quality checks');
-            setCountdown(null);
-            holdDuration = 0;
-          } else if (!tiltValid) {
-            setFaceStateMsg('Keep face centered and straight (no excessive tilt)');
-            setCountdown(null);
-            holdDuration = 0;
-          } else if (!eyesValid) {
-            setFaceStateMsg('Make sure your eyes are open and visible');
-            setCountdown(null);
-            holdDuration = 0;
-          } else if (alignedPercent < 90) {
-            setFaceStateMsg('Align your face inside the circle');
+            setFaceStateMsg('Please ensure only one person is in the frame');
             setCountdown(null);
             holdDuration = 0;
           } else {
-            setFaceStateMsg('Face Aligned! Click green capture button below');
+            setFaceStateMsg('Face Ready! Tap the Capture Selfie button below');
             setCountdown(null);
             holdDuration = 0;
           }
@@ -2185,57 +2144,6 @@ export default function AttendanceTerminal({
                   muted
                   className="w-full h-full object-cover scale-x-[-1]"
                 />
-
-                {/* Bounding Box Face tracker overlays */}
-                {faceStatus.box && faceStatus.detected && !faceStatus.multiple && (
-                  <div 
-                    className={`absolute border-2 rounded-xl transition-all duration-75 pointer-events-none ${
-                      countdown !== null ? 'border-emerald-400 bg-emerald-500/5' : 'border-indigo-400 bg-indigo-500/5'
-                    }`}
-                    style={{
-                      left: `${faceStatus.box.x * 100}%`,
-                      top: `${faceStatus.box.y * 100}%`,
-                      width: `${faceStatus.box.w * 100}%`,
-                      height: `${faceStatus.box.h * 100}%`
-                    }}
-                  >
-                    <div className="absolute top-0 left-0 bg-indigo-600 text-[6px] text-white px-1 rounded-br font-mono uppercase scale-75 transform origin-top-left">
-                      ALIGN: {faceStatus.alignedPercent}%
-                    </div>
-                  </div>
-                )}
-
-                {/* Face-silhouette vertical oval alignment guide in the absolute center */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className={`w-[170px] h-[225px] xs:w-[200px] xs:h-[265px] rounded-[85px/112.5px] xs:rounded-[100px/132.5px] flex flex-col items-center justify-center transition-all duration-300 relative ${
-                    countdown !== null 
-                      ? 'border-4 border-solid border-emerald-500 bg-emerald-600/15 shadow-[0_0_22px_rgba(16,185,129,0.95)] scale-[1.03]' 
-                      : faceStatus.detected && faceStatus.alignedPercent >= 90
-                      ? 'border-4 border-solid border-emerald-500 bg-emerald-600/10 shadow-[0_0_18px_rgba(16,185,129,0.95)]'
-                      : faceStatus.detected
-                      ? 'border-2 border-dotted border-amber-400 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
-                      : 'border-2 border-dotted border-white/45 bg-slate-900/15 animate-pulse'
-                  }`}>
-                    {countdown !== null ? (
-                      <div className="text-white text-center select-none font-sans">
-                        <div className="text-[28px] font-black tracking-tighter leading-none animate-ping">
-                          {countdown.toFixed(1)}s
-                        </div>
-                        <div className="text-[7.5px] uppercase tracking-widest font-mono font-black mt-1 text-emerald-100">
-                          Hold Still
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={`text-[7.5px] uppercase tracking-widest font-mono select-none px-2 py-1 rounded backdrop-blur-[1.5px] ${
-                        faceStatus.detected && faceStatus.alignedPercent >= 90 
-                          ? 'bg-indigo-600 text-white shadow-sm' 
-                          : 'bg-slate-950/60 text-white/90'
-                      }`}>
-                        {faceStatus.detected ? `Align: ${faceStatus.alignedPercent}%` : 'Align Face'}
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                 {cameraError && (
                   <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3 z-20">
