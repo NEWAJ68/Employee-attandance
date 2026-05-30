@@ -124,6 +124,10 @@ export default function AttendanceTerminal({
       const score = accumGradients / count;
       console.log('Real-time Auto-Clarity Score:', score);
       
+      // If the screen is completely black or the camera hasn't fully painted the frame yet (score is ~0),
+      // we do not falsely trigger blur alerts.
+      if (score < 0.1) return false;
+      
       // If sharpness score is less than 3.2, there are no edges, hence the picture is blurry.
       // Crisp clear face photographs average around 5.5 to 14.5.
       return score < 3.2;
@@ -216,6 +220,7 @@ export default function AttendanceTerminal({
         
         const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
         setCapturedPhoto(dataUrl);
+        stopCamera();
         playBeep(true);
       }
     } catch (e) {
@@ -227,6 +232,8 @@ export default function AttendanceTerminal({
   const handleFileCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    stopCamera();
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -1734,12 +1741,12 @@ export default function AttendanceTerminal({
 
       {/* Selfie Capture Modal */}
       {selfieState?.isOpen && (
-        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white rounded-3xl p-4 sm:p-5 w-[calc(100vw-16px)] xs:w-[calc(100vw-24px)] max-w-[340px] xs:max-w-[370px] sm:max-w-[420px] md:max-w-[450px] shadow-2xl border border-slate-100 relative text-center space-y-3 sm:space-y-4 animate-scaleIn">
+        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 xs:p-3 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn overflow-y-auto pt-3 xs:pt-6 sm:pt-4">
+          <div className="bg-white rounded-3xl p-3 sm:p-5 w-[calc(100vw-12px)] xs:w-[calc(100vw-20px)] max-w-[340px] xs:max-w-[365px] sm:max-w-[420px] md:max-w-[450px] shadow-2xl border border-slate-100 relative text-center space-y-2.5 sm:space-y-4 animate-scaleIn select-none">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-xs font-bold text-slate-900 flex items-center space-x-2">
-                <span className="h-2 w-2 rounded-full bg-indigo-600 animate-ping"></span>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-[11px] font-bold text-slate-900 flex items-center space-x-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 animate-ping"></span>
                 <span>Selfie Verification Required</span>
               </h3>
               <button
@@ -1748,42 +1755,37 @@ export default function AttendanceTerminal({
                   stopCamera();
                   setSelfieState(null);
                 }}
-                className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-lg cursor-pointer transition-colors"
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1 rounded-lg cursor-pointer transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {/* Step Indicators */}
-            <div className="flex items-center justify-center space-x-1.5 pt-1 pb-1">
-              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700'}`}>
-                <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${!capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>1</span>
+            <div className="flex items-center justify-center space-x-1.5 pt-0.5 pb-0.5">
+              <div className={`flex items-center space-x-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700'}`}>
+                <span className={`h-3 w-3 rounded-full flex items-center justify-center text-[8px] font-black ${!capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>1</span>
                 <span>Photo</span>
               </div>
               <div className="w-3 h-px bg-slate-200"></div>
-              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
-                <span className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] font-black ${capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-500'}`}>2</span>
+              <div className={`flex items-center space-x-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
+                <span className={`h-3 w-3 rounded-full flex items-center justify-center text-[8px] font-black ${capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-500'}`}>2</span>
                 <span>Confirm</span>
               </div>
             </div>
 
             {capturedPhoto ? (
-              <div className="bg-emerald-50/40 rounded-2xl p-3 border border-emerald-100/80 space-y-2 animate-fadeIn text-left">
-                <div className="flex items-center space-x-1.5 text-emerald-700 font-bold text-[10px]">
-                  <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                  <span>Photo Captured!</span>
-                </div>
-                <p className="text-[10px] text-slate-600 font-sans leading-relaxed">
-                  Please review the preview below for <strong className="text-slate-900">{selfieState.actionLabel}</strong>. Make sure your face is clearly visible.
-                </p>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl py-1 px-2.5 inline-flex items-center space-x-1 justify-center animate-fadeIn mx-auto">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="text-[10px] text-emerald-750 font-bold">Photo Captured!</span>
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500 font-medium font-sans leading-normal">
-                To verify your check-in integrity, snap a live selfie. Please ensure the background of your location is clear and visible.
-              </p>
+              <div className="text-[10.5px] text-slate-500 font-medium leading-tight max-w-[280px] mx-auto">
+                Snap a clear face photo to complete <strong className="text-indigo-600 font-semibold">{selfieState.actionLabel}</strong>.
+              </div>
             )}
 
-            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[280px] xs:max-w-[310px] sm:max-w-[350px] md:max-w-[380px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 ${capturedPhoto ? (photoClarity === 'blur' ? 'border-red-200' : 'border-emerald-100') : 'border-slate-100'}`}>
+            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[305px] xs:max-w-[335px] sm:max-w-[365px] md:max-w-[395px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 ${capturedPhoto ? (photoClarity === 'blur' ? 'border-red-200' : 'border-emerald-100') : 'border-slate-100'}`}>
               {capturedPhoto && (
                 <img 
                   src={capturedPhoto} 
@@ -1830,7 +1832,7 @@ export default function AttendanceTerminal({
             {/* Quality Check Warning shown ONLY when photo is Blurry */}
             {capturedPhoto && photoClarity === 'blur' && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl py-1.5 px-3 text-center animate-pulse flex items-center justify-center space-x-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500 animate-bounce" />
                 <span className="text-[10.5px] font-extrabold">Clear nahi hua! Please retake.</span>
               </div>
             )}
@@ -1841,8 +1843,7 @@ export default function AttendanceTerminal({
                   <button
                     type="button"
                     onClick={() => {
-                      setCapturedPhoto(null);
-                      setPhotoClarity('clear');
+                      startCamera();
                     }}
                     className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/40 rounded-xl transition-all cursor-pointer font-sans"
                   >
@@ -1890,7 +1891,7 @@ export default function AttendanceTerminal({
                       <input
                         type="file"
                         accept="image/*"
-                        capture="user"
+                         capture="user"
                         onChange={handleFileCapture}
                         className="hidden"
                       />
