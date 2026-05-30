@@ -102,6 +102,29 @@ export default function AttendanceTerminal({
   }, [selectedEmpId, selfieState?.isOpen]);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [photoClarity, setPhotoClarity] = useState<'clear' | 'blur'>('clear');
+  const [lastSavedFaceCrop, setLastSavedFaceCrop] = useState<string | null>(null);
+
+  // Advanced face detection and tracking states
+  const [faceStatus, setFaceStatus] = useState<{
+    detected: boolean;
+    multiple: boolean;
+    alignedPercent: number;
+    tiltValid: boolean;
+    eyesValid: boolean;
+    lightingValid: boolean;
+    box: { x: number; y: number; w: number; h: number } | null;
+  }>({
+    detected: false,
+    multiple: false,
+    alignedPercent: 0,
+    tiltValid: true,
+    eyesValid: true,
+    lightingValid: true,
+    box: null
+  });
+
+  const [faceStateMsg, setFaceStateMsg] = useState('Align your face inside the circle');
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const detectBlurFromCanvas = (canvas: HTMLCanvasElement): boolean => {
     const ctx = canvas.getContext('2d');
@@ -124,12 +147,7 @@ export default function AttendanceTerminal({
       const score = accumGradients / count;
       console.log('Real-time Auto-Clarity Score:', score);
       
-      // If the screen is completely black or the camera hasn't fully painted the frame yet (score is ~0),
-      // we do not falsely trigger blur alerts.
       if (score < 0.1) return false;
-      
-      // If sharpness score is less than 3.2, there are no edges, hence the picture is blurry.
-      // Crisp clear face photographs average around 5.5 to 14.5.
       return score < 3.2;
     } catch (e) {
       return false;
@@ -148,6 +166,18 @@ export default function AttendanceTerminal({
     setCameraError(null);
     setCapturedPhoto(null);
     setPhotoClarity('clear');
+    setLastSavedFaceCrop(null);
+    setCountdown(null);
+    setFaceStatus({
+      detected: false,
+      multiple: false,
+      alignedPercent: 0,
+      tiltValid: true,
+      eyesValid: true,
+      lightingValid: true,
+      box: null
+    });
+    setFaceStateMsg('Align your face inside the circle');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 485 } },
@@ -179,7 +209,242 @@ export default function AttendanceTerminal({
     };
   }, [selfieState?.isOpen]);
 
-  const captureSnapshot = () => {
+  // Real-time camera processing loop for face alignment guide, tilt, light, multi-face and automatic trigger
+  useEffect(() => {
+    if (!cameraStream) {
+      setFaceStatus({
+        detected: false,
+        multiple: false,
+        alignedPercent: 0,
+        tiltValid: true,
+        eyesValid: true,
+        lightingValid: true,
+        box: null
+      });
+      setFaceStateMsg('Align your face inside the circle');
+      setCountdown(null);
+      return;
+    }
+
+    let active = true;
+    let frameId: number;
+    let lastTime = Date.now();
+    let holdDuration = 0; // accumulated milliseconds of perfect alignment
+    
+    const hiddenCanvas = document.createElement('canvas');
+    hiddenCanvas.width = 160;
+    hiddenCanvas.height = 120;
+    const ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+
+    const processFrame = () => {
+      if (!active) return;
+      
+      const video = document.getElementById('selfie-video-preview') as HTMLVideoElement;
+      if (video && video.readyState >= video.HAVE_CURRENT_DATA) {
+        const currentTimeTick = Date.now();
+        const deltaTime = currentTimeTick - lastTime;
+        lastTime = currentTimeTick;
+
+        if (ctx) {
+          // Draw video mirrored horizontally 
+          ctx.save();
+          ctx.translate(160, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, 0, 0, 160, 120);
+          ctx.restore();
+
+          const imgData = ctx.getImageData(0, 0, 160, 120);
+          const data = imgData.data;
+
+          let skinCount = 0;
+          let sumX = 0;
+          let sumY = 0;
+          let minX = 160;
+          let maxX = 0;
+          let minY = 120;
+          let maxY = 0;
+
+          // Perform skin segment analysis
+          for (let y = 0; y < 120; y += 2) {
+            for (let x = 0; x < 160; x += 2) {
+              const i = (y * 160 + x) * 4;
+              const r = data[i];
+              const g = data[i+1];
+              const b = data[i+2];
+
+              // Skin detection formula
+              const isSkin = r > 70 && g > 35 && b > 15 &&
+                             r > g && r > b &&
+                             (r - Math.min(g, b)) > 12 &&
+                             Math.abs(r - g) > 8;
+
+              if (isSkin) {
+                skinCount++;
+                sumX += x;
+                sumY += y;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+          }
+
+          const detected = skinCount > 80;
+          let multiple = false;
+          let alignedPercent = 0;
+          let tiltValid = true;
+          let eyesValid = true;
+          let lightingValid = true;
+          let box: { x: number; y: number; w: number; h: number } | null = null;
+
+          if (detected) {
+            const cx = sumX / skinCount;
+            const cy = sumY / skinCount;
+            const w = maxX - minX;
+            const h = maxY - minY;
+
+            box = {
+              x: minX / 160,
+              y: minY / 120,
+              w: w / 160,
+              h: h / 120
+            };
+
+            // Detect multiple faces check
+            let outPixels = 0;
+            for (let y = 0; y < 120; y += 4) {
+              for (let x = 0; x < 160; x += 4) {
+                const i = (y * 160 + x) * 4;
+                if (data[i] > 70 && data[i+1] > 35 && data[i+2] > 15) {
+                  const dist = Math.hypot(x - cx, y - cy);
+                  if (dist > Math.max(w, h) * 1.6) {
+                    outPixels++;
+                  }
+                }
+              }
+            }
+            if (outPixels > 70) {
+              multiple = true;
+            }
+
+            // Calculate lighting of the face region
+            let faceLumaSum = 0;
+            let faceLumaCount = 0;
+            for (let y = Math.floor(minY); y < maxY; y += 2) {
+              for (let x = Math.floor(minX); x < maxX; x += 2) {
+                const i = (y * 160 + x) * 4;
+                faceLumaSum += (data[i] + data[i+1] + data[i+2]) / 3;
+                faceLumaCount++;
+              }
+            }
+            const faceLuma = faceLumaSum / (faceLumaCount || 1);
+            lightingValid = faceLuma > 60 && faceLuma < 240;
+
+            // Calculate head shape skew & tilt (centroid vs bounding box middle)
+            const midX = (minX + maxX) / 2;
+            const diffFromMid = Math.abs(cx - midX) / (w || 1);
+            tiltValid = diffFromMid < 0.16;
+
+            // Eyes open and visible validation using pixel contrasts
+            let eyeMinY = Math.floor(minY + h * 0.18);
+            let eyeMaxY = Math.floor(minY + h * 0.42);
+            let eyePixels: number[] = [];
+            for (let y = Math.max(0, eyeMinY); y < Math.min(120, eyeMaxY); y++) {
+              for (let x = Math.max(0, Math.floor(minX + w * 0.15)); x < Math.min(160, Math.floor(maxX - w * 0.15)); x += 2) {
+                const i = (y * 160 + x) * 4;
+                const lumaVal = (data[i] + data[i+1] + data[i+2]) / 3;
+                eyePixels.push(lumaVal);
+              }
+            }
+            if (eyePixels.length > 0) {
+              const avgEyeLuma = eyePixels.reduce((a, b) => a + b, 0) / eyePixels.length;
+              const variance = eyePixels.reduce((acc, val) => acc + Math.pow(val - avgEyeLuma, 2), 0) / eyePixels.length;
+              const stdDev = Math.sqrt(variance);
+              eyesValid = stdDev > 3.8; // Active, eyes open/eyebrows high variance
+            }
+
+            // Ideal coordinate of alignment guide is (0.5, 0.45). Size height ~ 0.35 to 0.50
+            const normCx = cx / 160;
+            const normCy = cy / 120;
+            const distToCenter = Math.hypot(normCx - 0.5, normCy - 0.45);
+
+            const normH = h / 120;
+            const sizeDiff = Math.abs(normH - 0.40);
+
+            const posScore = Math.max(0, 100 - distToCenter * 260);
+            const sizeScore = Math.max(0, 100 - sizeDiff * 250);
+            alignedPercent = Math.min(100, Math.round((posScore + sizeScore) / 2));
+          }
+
+          const currentFaceStatus = {
+            detected,
+            multiple,
+            alignedPercent,
+            tiltValid,
+            eyesValid,
+            lightingValid,
+            box
+          };
+
+          setFaceStatus(currentFaceStatus);
+
+          if (!detected) {
+            setFaceStateMsg('Align your face inside the circle');
+            setCountdown(null);
+            holdDuration = 0;
+          } else if (multiple) {
+            setFaceStateMsg('Do not capture if multiple faces are detected');
+            setCountdown(null);
+            holdDuration = 0;
+          } else if (!lightingValid) {
+            setFaceStateMsg('Ensure good lighting and image quality checks');
+            setCountdown(null);
+            holdDuration = 0;
+          } else if (!tiltValid) {
+            setFaceStateMsg('Keep face centered and straight (no excessive tilt)');
+            setCountdown(null);
+            holdDuration = 0;
+          } else if (!eyesValid) {
+            setFaceStateMsg('Make sure your eyes are open and visible');
+            setCountdown(null);
+            holdDuration = 0;
+          } else if (alignedPercent < 90) {
+            setFaceStateMsg('Align your face inside the circle by at least 90%');
+            setCountdown(null);
+            holdDuration = 0;
+          } else {
+            setFaceStateMsg('Hold still...');
+            holdDuration += deltaTime;
+
+            const remaining = Math.max(0, 1.5 - holdDuration / 1000);
+            setCountdown(remaining);
+
+            if (remaining <= 0) {
+              setCountdown(0);
+              active = false;
+              setFaceStateMsg('Photo captured successfully');
+              autoTriggerCapture(currentFaceStatus.box);
+            }
+          }
+        }
+      }
+      
+      if (active) {
+        frameId = requestAnimationFrame(processFrame);
+      }
+    };
+
+    frameId = requestAnimationFrame(processFrame);
+
+    return () => {
+      active = false;
+      cancelAnimationFrame(frameId);
+    };
+  }, [cameraStream]);
+
+  // Automated trigger with detailed stamping
+  const autoTriggerCapture = (optBox: { x: number; y: number; w: number; h: number } | null) => {
     const video = document.getElementById('selfie-video-preview') as HTMLVideoElement;
     if (!video) return;
 
@@ -215,18 +480,70 @@ export default function AttendanceTerminal({
         );
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         
+        // Quality check
         const isBlurry = detectBlurFromCanvas(canvas);
         setPhotoClarity(isBlurry ? 'blur' : 'clear');
         
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        // Apply Metadata Stamping
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+        ctx.fillRect(0, portraitHeight - 40, portraitWidth, 40);
+
+        ctx.font = '750 11px monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        
+        const currentEmpId = loggedInEmployee?.id || selectedEmpId || 'ADMIN';
+        ctx.fillText(`EMP ID: ${currentEmpId}`, 15, portraitHeight - 16);
+
+        ctx.textAlign = 'right';
+        const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        ctx.fillText(`DATE-UTC: ${nowStr}`, portraitWidth - 15, portraitHeight - 16);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
         setCapturedPhoto(dataUrl);
+
+        // Circular cropped face thumbnail for right preview panel
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = 160;
+        cropCanvas.height = 160;
+        const cropCtx = cropCanvas.getContext('2d');
+        if (cropCtx) {
+          cropCtx.beginPath();
+          cropCtx.arc(80, 80, 80, 0, Math.PI * 2);
+          cropCtx.closePath();
+          cropCtx.clip();
+
+          let fx = portraitWidth * 0.15;
+          let fy = portraitHeight * 0.15;
+          let fsize = portraitWidth * 0.65;
+
+          if (optBox) {
+            fx = Math.max(0, optBox.x * portraitWidth - 15);
+            fy = Math.max(0, optBox.y * portraitHeight - 20);
+            fsize = Math.min(portraitWidth, optBox.w * portraitWidth + 30);
+          }
+
+          cropCtx.drawImage(
+            canvas,
+            fx, fy, fsize, fsize,
+            0, 0, 160, 160
+          );
+
+          const cropUrl = cropCanvas.toDataURL('image/png');
+          setLastSavedFaceCrop(cropUrl);
+        }
+
         stopCamera();
         playBeep(true);
       }
     } catch (e) {
-      console.error('Failed snapshot capture:', e);
-      setCameraError('Camera capture interface failed. Please utilize the standard selfie file uploader.');
+      console.error('Failed auto snapshot capture:', e);
+      setCameraError('Camera capture interface failed. Please utilize the standard uploader.');
     }
+  };
+
+  const captureSnapshot = () => {
+    autoTriggerCapture(faceStatus.box);
   };
 
   const handleFileCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,6 +568,7 @@ export default function AttendanceTerminal({
           setPhotoClarity(isBlurry ? 'blur' : 'clear');
         }
         setCapturedPhoto(base64);
+        setLastSavedFaceCrop(base64); // use fallback crop
         playBeep(true);
       };
       img.src = base64;
@@ -262,6 +580,18 @@ export default function AttendanceTerminal({
     setCapturedPhoto(null);
     setCameraError(null);
     setPhotoClarity('clear');
+    setLastSavedFaceCrop(null);
+    setCountdown(null);
+    setFaceStatus({
+      detected: false,
+      multiple: false,
+      alignedPercent: 0,
+      tiltValid: true,
+      eyesValid: true,
+      lightingValid: true,
+      box: null
+    });
+    setFaceStateMsg('Align your face inside the circle');
     setSelfieState({
       isOpen: true,
       actionLabel,
@@ -1741,13 +2071,13 @@ export default function AttendanceTerminal({
 
       {/* Selfie Capture Modal */}
       {selfieState?.isOpen && (
-        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 xs:p-3 sm:p-4 bg-slate-900/80 backdrop-blur-md animate-fadeIn overflow-y-auto pt-3 xs:pt-6 sm:pt-4">
-          <div className="bg-white rounded-3xl p-3 sm:p-5 w-[calc(100vw-12px)] xs:w-[calc(100vw-20px)] max-w-[340px] xs:max-w-[365px] sm:max-w-[420px] md:max-w-[450px] shadow-2xl border border-slate-100 relative text-center space-y-2.5 sm:space-y-4 animate-scaleIn select-none">
+        <div id="selfie-capture-overlay" className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 xs:p-3 sm:p-4 bg-slate-900/85 backdrop-blur-md animate-fadeIn overflow-y-auto pt-3 xs:pt-6 sm:pt-4">
+          <div className="bg-white rounded-3xl p-3 sm:p-5 w-[calc(100vw-12px)] xs:w-[calc(100vw-20px)] max-w-[340px] xs:max-w-[420px] sm:max-w-[460px] md:max-w-[500px] shadow-2xl border border-slate-100 relative text-center space-y-3.5 sm:space-y-4 animate-scaleIn select-none">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="text-[11px] font-bold text-slate-900 flex items-center space-x-1.5">
+              <h3 className="text-[11px] sm:text-xs font-black text-slate-900 flex items-center space-x-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 animate-ping"></span>
-                <span>Selfie Verification Required</span>
+                <span>Selfie Integrity Terminal</span>
               </h3>
               <button
                 type="button"
@@ -1756,88 +2086,163 @@ export default function AttendanceTerminal({
                   setSelfieState(null);
                 }}
                 className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1 rounded-lg cursor-pointer transition-colors"
+                id="close-selfie-modal-btn"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {/* Step Indicators */}
-            <div className="flex items-center justify-center space-x-1.5 pt-0.5 pb-0.5">
-              <div className={`flex items-center space-x-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700'}`}>
+            <div className="flex items-center justify-center space-x-2 pb-0.5">
+              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold transition-all ${!capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-250' : 'bg-emerald-50 text-emerald-700'}`}>
                 <span className={`h-3 w-3 rounded-full flex items-center justify-center text-[8px] font-black ${!capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>1</span>
-                <span>Photo</span>
+                <span>Auto-Track</span>
               </div>
               <div className="w-3 h-px bg-slate-200"></div>
-              <div className={`flex items-center space-x-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
+              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold transition-all ${capturedPhoto ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-250' : 'bg-slate-50 text-slate-400'}`}>
                 <span className={`h-3 w-3 rounded-full flex items-center justify-center text-[8px] font-black ${capturedPhoto ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-500'}`}>2</span>
                 <span>Confirm</span>
               </div>
             </div>
 
+            {/* Custom Status Display Banner */}
+            <div className={`border rounded-xl py-1.5 px-3 text-center transition-all ${
+              capturedPhoto ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+              countdown !== null ? 'bg-emerald-500 border-emerald-600 text-white animate-pulse font-extrabold' :
+              faceStatus.detected && faceStatus.alignedPercent >= 90 ? 'bg-indigo-50 border-indigo-200 text-indigo-805' :
+              faceStatus.detected ? 'bg-amber-50 border-amber-200 text-amber-800 font-bold' :
+              faceStatus.multiple ? 'bg-rose-50 border-rose-200 text-rose-800 font-bold' :
+              'bg-slate-50 border-slate-100 text-slate-500'
+            }`}>
+              <div className="text-[10px] sm:text-[11px] leading-tight flex items-center justify-center space-x-1">
+                {countdown !== null && <span className="text-[12px] font-black animate-ping mr-1">•</span>}
+                <span>
+                  {capturedPhoto ? 'Verification Photo Completed!' : faceStateMsg}
+                </span>
+              </div>
+            </div>
+
+            {/* Split Dual-Preview Layout when captured, or Camera viewport when active */}
             {capturedPhoto ? (
-              <div className="bg-emerald-50 border border-emerald-100 rounded-xl py-1 px-2.5 inline-flex items-center space-x-1 justify-center animate-fadeIn mx-auto">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="text-[10px] text-emerald-750 font-bold">Photo Captured!</span>
+              <div className="grid grid-cols-2 gap-3 py-1">
+                {/* Full context image with surrounding context - Left Side */}
+                <div className="flex flex-col space-y-1.5 text-center">
+                  <div className="relative bg-slate-100 rounded-2xl overflow-hidden aspect-[3/4] border border-slate-200 shadow-sm">
+                    <img 
+                      src={capturedPhoto} 
+                      alt="Full Context Screen" 
+                      className={`w-full h-full object-cover transition-all ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
+                    />
+                    <div className="absolute bottom-1 right-1 bg-slate-900/60 backdrop-blur-[1px] text-[6px] text-white px-1 py-0.5 rounded font-mono scale-75">
+                      Context Screen
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">Backdrop Verified</span>
+                </div>
+
+                {/* Cropped Personal Face Circle Preview - Right Side */}
+                <div className="flex flex-col space-y-1.5 text-center items-center justify-center">
+                  <div className="relative rounded-full overflow-hidden aspect-square w-[90px] xs:w-[105px] sm:w-[125px] h-[90px] xs:h-[105px] sm:h-[125px] border-4 border-indigo-600 shadow-lg bg-slate-100 flex items-center justify-center transition-transform hover:scale-105">
+                    <img 
+                      src={lastSavedFaceCrop || capturedPhoto} 
+                      alt="Crop Thumbnail" 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                  <span className="text-[8px] font-extrabold text-indigo-700 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-full mt-1">
+                    Face Preview Crop
+                  </span>
+                </div>
               </div>
             ) : (
-              <div className="text-[10.5px] text-slate-500 font-medium leading-tight max-w-[280px] mx-auto">
-                Snap a clear face photo to complete <strong className="text-indigo-600 font-semibold">{selfieState.actionLabel}</strong>.
-              </div>
-            )}
-
-            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[305px] xs:max-w-[335px] sm:max-w-[365px] md:max-w-[395px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 ${capturedPhoto ? (photoClarity === 'blur' ? 'border-red-200' : 'border-emerald-100') : 'border-slate-100'}`}>
-              {capturedPhoto && (
-                <img 
-                  src={capturedPhoto} 
-                  alt="Captured Selfie" 
-                  className={`absolute inset-0 z-10 w-full h-full object-cover transition-all duration-300 ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
+              <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[280px] xs:max-w-[320px] sm:max-w-[350px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 border-slate-150`}>
+                <video
+                  id="selfie-video-preview"
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
                 />
-              )}
 
-              <video
-                id="selfie-video-preview"
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover scale-x-[-1] ${capturedPhoto ? 'hidden' : 'block'}`}
-              />
+                {/* Bounding Box Face tracker overlays */}
+                {faceStatus.box && faceStatus.detected && !faceStatus.multiple && (
+                  <div 
+                    className={`absolute border-2 rounded-xl transition-all duration-75 pointer-events-none ${
+                      countdown !== null ? 'border-emerald-400 bg-emerald-500/5' : 'border-indigo-400 bg-indigo-500/5'
+                    }`}
+                    style={{
+                      left: `${faceStatus.box.x * 100}%`,
+                      top: `${faceStatus.box.y * 100}%`,
+                      width: `${faceStatus.box.w * 100}%`,
+                      height: `${faceStatus.box.h * 100}%`
+                    }}
+                  >
+                    <div className="absolute top-0 left-0 bg-indigo-600 text-[6px] text-white px-1 rounded-br font-mono uppercase scale-75 transform origin-top-left">
+                      ALIGN: {faceStatus.alignedPercent}%
+                    </div>
+                  </div>
+                )}
 
-              {/* Portrait face contour masking aligner */}
-              <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 ${capturedPhoto ? 'hidden' : 'flex'}`}>
-                <div className="w-11/12 h-5/6 border-2 border-dashed border-white/50 rounded-[120px]/[160px] flex flex-col items-center justify-center animate-pulse bg-slate-900/10">
-                  <div className="text-[8px] text-white/80 uppercase tracking-widest font-mono select-none px-2 py-1 bg-slate-950/40 rounded backdrop-blur-[1px] mt-auto mb-6">
-                    Align Face Here
+                {/* Circular face alignment guide in the absolute center */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className={`w-[145px] h-[145px] xs:w-[165px] xs:h-[165px] border-4 rounded-full flex flex-col items-center justify-center transition-all duration-300 relative ${
+                    countdown !== null 
+                      ? 'border-emerald-500 bg-emerald-600/10 shadow-[0_0_20px_rgba(16,185,129,0.95)] scale-105' 
+                      : faceStatus.detected && faceStatus.alignedPercent >= 90
+                      ? 'border-indigo-500 bg-indigo-500/5'
+                      : faceStatus.detected
+                      ? 'border-amber-400 bg-amber-500/5 shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                      : 'border-white/40 bg-slate-900/10 border-dashed animate-pulse'
+                  }`}>
+                    {countdown !== null ? (
+                      <div className="text-white text-center select-none font-sans">
+                        <div className="text-[26px] font-black tracking-tighter leading-none animate-ping">
+                          {countdown.toFixed(1)}s
+                        </div>
+                        <div className="text-[7px] uppercase tracking-widest font-mono font-bold mt-1 text-emerald-100">
+                          Hold Still
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`text-[7.5px] uppercase tracking-widest font-mono select-none px-2 py-0.8 rounded backdrop-blur-[1.5px] ${
+                        faceStatus.detected && faceStatus.alignedPercent >= 90 
+                          ? 'bg-indigo-600 text-white' 
+                          : 'bg-slate-950/50 text-white/80'
+                      }`}>
+                        {faceStatus.detected ? `Align: ${faceStatus.alignedPercent}%` : 'Align Face'}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              {cameraError && !capturedPhoto && (
-                <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3 z-20">
-                  <AlertTriangle className="w-8 h-8 text-amber-500" />
-                  <p className="text-[10px] text-amber-100 font-mono leading-relaxed">{cameraError}</p>
-                  <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-md transition-all uppercase">
-                    Take Photo Using Phone
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="user"
-                      onChange={handleFileCapture}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
+                {cameraError && (
+                  <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center space-y-3 z-20">
+                    <AlertTriangle className="w-8 h-8 text-amber-500" />
+                    <p className="text-[10px] text-amber-100 font-mono leading-relaxed">{cameraError}</p>
+                    <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg cursor-pointer shadow-md transition-all uppercase">
+                      Take Photo Using Phone
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="user"
+                        onChange={handleFileCapture}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Quality Check Warning shown ONLY when photo is Blurry */}
             {capturedPhoto && photoClarity === 'blur' && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl py-1.5 px-3 text-center animate-pulse flex items-center justify-center space-x-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500 animate-bounce" />
-                <span className="text-[10.5px] font-extrabold">Clear nahi hua! Please retake.</span>
+                <span className="text-[10.5px] font-black">Frame blurred! Please retake a steady photo.</span>
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+            <div className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-slate-50">
               {capturedPhoto ? (
                 <>
                   <button
@@ -1845,7 +2250,8 @@ export default function AttendanceTerminal({
                     onClick={() => {
                       startCamera();
                     }}
-                    className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/40 rounded-xl transition-all cursor-pointer font-sans"
+                    className="flex-1 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/50 rounded-xl transition-all cursor-pointer font-sans"
+                    id="retake-selfie-btn"
                   >
                     Retake
                   </button>
@@ -1855,7 +2261,8 @@ export default function AttendanceTerminal({
                       selfieState.onCapture(capturedPhoto);
                       stopCamera();
                     }}
-                    className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-600/10 cursor-pointer flex items-center justify-center space-x-1.5 font-sans"
+                    className="flex-1 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-600/10 cursor-pointer flex items-center justify-center space-x-1.5 font-sans transition-all active:scale-95"
+                    id="confirm-punch-btn"
                   >
                     <span>Confirm & Punch</span>
                   </button>
@@ -1868,7 +2275,8 @@ export default function AttendanceTerminal({
                       stopCamera();
                       setSelfieState(null);
                     }}
-                    className="flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-xl transition-all cursor-pointer font-sans"
+                    className="flex-1 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-xl transition-all cursor-pointer font-sans"
+                    id="cancel-selfie-btn"
                   >
                     Cancel
                   </button>
@@ -1877,15 +2285,16 @@ export default function AttendanceTerminal({
                     <button
                       type="button"
                       onClick={captureSnapshot}
-                      className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans"
+                      className="flex-1 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans transition-all active:scale-95"
+                      id="manual-capture-btn"
                     >
                       <Camera className="w-3.5 h-3.5" />
-                      <span>Take Selfie</span>
+                      <span>Capture Manual</span>
                     </button>
                   )}
                   
                   {cameraError && (
-                    <label className="flex-1 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans">
+                    <label className="flex-1 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans">
                       <Camera className="w-3.5 h-3.5" />
                       <span>Upload Photo</span>
                       <input
@@ -1901,8 +2310,8 @@ export default function AttendanceTerminal({
               )}
             </div>
             
-            <div className="text-[9px] text-slate-400 font-mono uppercase tracking-widest pt-1 border-t border-slate-50">
-              Face verification active
+            <div className="text-[8.5px] text-slate-400 font-mono uppercase tracking-widest pt-1">
+              Face detection suite active
             </div>
           </div>
         </div>
