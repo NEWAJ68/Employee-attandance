@@ -30,7 +30,7 @@ interface EmployeeProfilesProps {
   settings: Settings;
 }
 
-const DEPARTMENTS = ['Engineering', 'Operations', 'Human Resources', 'Sales', 'Administration'];
+const DEPARTMENTS = ['Engineering'];
 
 export default function EmployeeProfiles({
   employees,

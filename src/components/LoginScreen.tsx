@@ -312,13 +312,9 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                     id="reg-dept"
                     value={regDept}
                     onChange={(e) => setRegDept(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold"
+                    className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-505 font-semibold"
                   >
                     <option value="Engineering">Engineering</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Human Resources">Human Resources</option>
-                    <option value="Sales">Sales & Marketing</option>
-                    <option value="Administration">Administration</option>
                   </select>
                 </div>
 
