@@ -12,7 +12,7 @@ const PREDEFINED_LOCATIONS = [
   "Hetero Palashbari",
   "Natco Pharma",
   "Hetero Changsari",
-  "Caltech Office"
+  "Calitech Office"
 ];
 
 export default function WorkLocationModal({

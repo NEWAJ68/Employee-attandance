@@ -1261,7 +1261,12 @@ export default function AttendanceTerminal({
       timeStr,
       currentRecord.lunchOut,
       currentRecord.lunchIn || (currentRecord.lunchOut ? timeStr : ''), // auto balance lunch in if they check out directly
-      settings
+      settings,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      currentRecord.selectedWorkLocation
     );
 
     let updatedRecord: AttendanceRecord = {
@@ -1314,7 +1319,8 @@ export default function AttendanceTerminal({
       currentRecord.entryTime2,
       timeStr,
       currentRecord.dinnerOut,
-      currentRecord.dinnerIn || (currentRecord.dinnerOut ? timeStr : '') // auto balance dinner return
+      currentRecord.dinnerIn || (currentRecord.dinnerOut ? timeStr : ''), // auto balance dinner return
+      currentRecord.selectedWorkLocation
     );
 
     let updatedRecord: AttendanceRecord = {
@@ -2477,10 +2483,22 @@ export default function AttendanceTerminal({
             onAddAttendance(completedRecord);
             setPendingLocationRecord(null);
             
-            triggerNotification(
-              'success', 
-              `Attendance marked successfully for ${confirmedLoc}`
+            const isFixedShift = confirmedLoc && (
+              (settings?.fixedShiftLocations?.some(loc => loc.trim().toLowerCase() === confirmedLoc.trim().toLowerCase())) ||
+              (confirmedLoc.trim().toLowerCase() === 'hetero changsari')
             );
+            
+            if (isFixedShift) {
+              triggerNotification(
+                'success', 
+                `${confirmedLoc} site visit detected. Full Day Shift (8 Hours) has been credited as per company policy.`
+              );
+            } else {
+              triggerNotification(
+                'success', 
+                `Attendance marked successfully for ${confirmedLoc}`
+              );
+            }
             
             setPunchAnimation({
               type: 'entry',

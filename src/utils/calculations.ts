@@ -105,7 +105,8 @@ export const calculateAttendanceMetrics = (
   entry2?: string,
   exit2?: string,
   dinnerOut?: string,
-  dinnerIn?: string
+  dinnerIn?: string,
+  selectedWorkLocation?: string
 ): {
   totalHours: number;
   overtime: number;
@@ -240,39 +241,51 @@ export const calculateAttendanceMetrics = (
   let isHalfDay = false;
   let isAbsent = false;
 
-  // Evaluate new rules
-  if (!isCurrentlyActive) {
-    // Fully checked out or absent
-    if (totalHours < 3) {
-      isAbsent = true;
-    } else {
-      // Standard late morning arrival (Shift 1 check-in > 10:00 AM)
-      const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
-      
-      // Standard early check-out (Final exit < 17:00 / 5 PM)
-      const lastExit = s2Exit || s1Exit;
-      const earlyExit = lastExit ? (timeToMinutes(lastExit) < timeToMinutes("17:00")) : false;
-      
-      if (morningLate || earlyExit) {
-        isHalfDay = true;
-      } else if (totalHours < (settings.standardHours || 8)) {
-        // Not standard late (>10:00) and not early (<17:00).
-        // Let's check if they completed a full-day span:
-        // Did they check in by 10:00 AM AND stay at least until 17:00 PM?
-        const hasFullDaySpan = (s1Entry && timeToMinutes(s1Entry) <= timeToMinutes("10:00")) &&
-                               (lastExit && timeToMinutes(lastExit) >= timeToMinutes("17:00"));
-        if (hasFullDaySpan) {
-          isHalfDay = false; // It's a FULL DAY (Present) as they worked the whole required duration!
-        } else {
+  const isFixedShift = !!(selectedWorkLocation && (
+    (settings?.fixedShiftLocations?.some(loc => loc.trim().toLowerCase() === selectedWorkLocation.trim().toLowerCase())) || 
+    (selectedWorkLocation.trim().toLowerCase() === 'hetero changsari')
+  ));
+
+  if (isFixedShift) {
+    // Special Client Site Visit rule - credit exactly 1 Full Day Shift (8 hours)
+    totalHours = settings.standardHours || 8;
+    isHalfDay = false;
+    isAbsent = false;
+  } else {
+    // Evaluate new rules
+    if (!isCurrentlyActive) {
+      // Fully checked out or absent
+      if (totalHours < 3) {
+        isAbsent = true;
+      } else {
+        // Standard late morning arrival (Shift 1 check-in > 10:00 AM)
+        const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
+        
+        // Standard early check-out (Final exit < 17:00 / 5 PM)
+        const lastExit = s2Exit || s1Exit;
+        const earlyExit = lastExit ? (timeToMinutes(lastExit) < timeToMinutes("17:00")) : false;
+        
+        if (morningLate || earlyExit) {
           isHalfDay = true;
+        } else if (totalHours < (settings.standardHours || 8)) {
+          // Not standard late (>10:00) and not early (<17:00).
+          // Let's check if they completed a full-day span:
+          // Did they check in by 10:00 AM AND stay at least until 17:00 PM?
+          const hasFullDaySpan = (s1Entry && timeToMinutes(s1Entry) <= timeToMinutes("10:00")) &&
+                                 (lastExit && timeToMinutes(lastExit) >= timeToMinutes("17:00"));
+          if (hasFullDaySpan) {
+            isHalfDay = false; // It's a FULL DAY (Present) as they worked the whole required duration!
+          } else {
+            isHalfDay = true;
+          }
         }
       }
-    }
-  } else {
-    // Informational: mark as Half Day immediately if their Shift 1 check-in was late (after 10:00 AM)
-    const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
-    if (morningLate) {
-      isHalfDay = true;
+    } else {
+      // Informational: mark as Half Day immediately if their Shift 1 check-in was late (after 10:00 AM)
+      const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
+      if (morningLate) {
+        isHalfDay = true;
+      }
     }
   }
 
@@ -283,7 +296,10 @@ export const calculateAttendanceMetrics = (
     overtime = 0;
     statusFlags.push('Absent');
   } else {
-    if (isHalfDay) {
+    if (isFixedShift) {
+      statusFlags.push('Present');
+      overtime = 0; // Excluded by default
+    } else if (isHalfDay) {
       statusFlags.push('Half Day');
       // "agar employ 3 hour se jiyada duty kore tho hour wage ke hisab se over time add hona cahiye"
       // Half Day standard is 3 hours; any worked hours above 3 are overtime

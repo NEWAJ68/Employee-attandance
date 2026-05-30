@@ -46,6 +46,7 @@ export const INITIAL_SETTINGS: Settings = {
   currency: 'INR',
   strictGeofencing: true,
   autoSyncSheets: true,
+  fixedShiftLocations: ['Hetero Changsari'],
 };
 
 // Generates some sensible attendance logs spanning the last few days

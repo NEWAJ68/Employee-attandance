@@ -29,7 +29,7 @@ import {
   FileText
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Settings, AppNotification } from '../types';
-import { calculateEarnings, getLocalDateString, getProcessedLogsForEmployee } from '../utils/calculations';
+import { calculateEarnings, getLocalDateString, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -402,11 +402,12 @@ export default function MyAttendanceView({
 
       return `
         <tr>
-          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.dateString}</td>
+          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${formatDateDMY(curr.dateString)}</td>
           <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.dayLabel}</td>
           <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; color: ${statusColor}; text-align: center;">${curr.status}</td>
           <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockIn}</td>
           <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockOut}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-weight: bold; color: #475569;">${rec?.selectedWorkLocation || '--'}</td>
           <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${hoursStr}</td>
           <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center; color: #4f46e5;">${otStr}</td>
           <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #1e3a8a;">₹${dayEarnings.totalPay.toFixed(2)}</td>
@@ -666,6 +667,7 @@ export default function MyAttendanceView({
           <th>Status</th>
           <th>Entry</th>
           <th>Exit</th>
+          <th>Work Location</th>
           <th>Worked Hours</th>
           <th>Overtime Hours</th>
           <th>Wage (₹)</th>
@@ -1706,6 +1708,7 @@ export default function MyAttendanceView({
                     <th style={{ padding: '8px 12px' }}>Status</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Work Location</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
@@ -1743,11 +1746,12 @@ export default function MyAttendanceView({
 
                     return (
                       <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
-                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{formatDateDMY(curr.dateString)}</td>
                         <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
                         <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 'bold', color: '#475569' }}>{rec?.selectedWorkLocation || '--'}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
                           {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
                         </td>
@@ -1818,6 +1822,7 @@ export default function MyAttendanceView({
                     <th style={{ padding: '8px 12px' }}>Status</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Work Location</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
@@ -1855,11 +1860,12 @@ export default function MyAttendanceView({
 
                     return (
                       <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
-                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{curr.dateString}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{formatDateDMY(curr.dateString)}</td>
                         <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
                         <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                        <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 'bold', color: '#475569' }}>{rec?.selectedWorkLocation || '--'}</td>
                         <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
                           {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
                         </td>

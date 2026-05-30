@@ -91,6 +91,7 @@ export default function ReportsView({
   const [formDinnerOut, setFormDinnerOut] = useState('');
   const [formDinnerIn, setFormDinnerIn] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formSelectedWorkLocation, setFormSelectedWorkLocation] = useState('');
   const [formError, setFormError] = useState('');
 
   const handlePerformClearAll = async () => {
@@ -122,6 +123,7 @@ export default function ReportsView({
     setFormDinnerOut('');
     setFormDinnerIn('');
     setFormNotes('Manual entry by administrator');
+    setFormSelectedWorkLocation('');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -143,6 +145,7 @@ export default function ReportsView({
     setFormDinnerOut(rec.dinnerOut || '');
     setFormDinnerIn(rec.dinnerIn || '');
     setFormNotes(rec.notes || 'Timecard override by admin');
+    setFormSelectedWorkLocation(rec.selectedWorkLocation || '');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -174,10 +177,16 @@ export default function ReportsView({
       formHasShift2 ? formEntryTime2 : '',
       formHasShift2 ? formExitTime2 : '',
       formDinnerOut,
-      formDinnerIn
+      formDinnerIn,
+      formSelectedWorkLocation
     );
 
+    const existingRec = modalMode === 'edit'
+      ? attendance.find(r => r.date === formDate && r.employeeId === formEmployeeId)
+      : undefined;
+
     const recordPayload: AttendanceRecord = {
+      ...existingRec,
       date: formDate,
       employeeId: formEmployeeId,
       employeeName: emp.name,
@@ -193,6 +202,7 @@ export default function ReportsView({
       overtime: metrics.overtime,
       status: metrics.statusFlags.join(', ') || 'Present',
       notes: formNotes || `${modalMode === 'add' ? 'Manual entry' : 'Manually edited'} by administrator`,
+      selectedWorkLocation: formSelectedWorkLocation
     };
 
     if (modalMode === 'add') {
@@ -442,6 +452,7 @@ export default function ReportsView({
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Dinner Out</th>
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Dinner In</th>
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 55px;">Exit Time 2</th>
+        <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 90px;">Work Location</th>
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 65px;">Work Hours</th>
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 65px;">Overtime</th>
         <th style="padding: 6px 4px; text-align: center; white-space: nowrap; min-width: 60px;">Status</th>
@@ -478,6 +489,7 @@ export default function ReportsView({
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #b91c1c; white-space: nowrap;">${rec.dinnerOut || '--:--'}</td>
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #b91c1c; white-space: nowrap;">${rec.dinnerIn || '--:--'}</td>
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #4f46e5; white-space: nowrap;">${rec.exitTime2 || '--:--'}</td>
+              <td style="padding: 6px 4px; text-align: center; font-weight: bold; color: #475569; white-space: nowrap;">${rec.selectedWorkLocation || '--'}</td>
               <td style="padding: 6px 4px; text-align: center; font-weight: 600; white-space: nowrap;">${(rec.totalHours || 0).toFixed(2)}h</td>
               <td style="padding: 6px 4px; text-align: center; font-weight: 600; color: #4f46e5; white-space: nowrap;">${(rec.overtime || 0).toFixed(2)}h</td>
               <td style="padding: 6px 4px; text-align: center; white-space: nowrap;">
@@ -1709,6 +1721,38 @@ export default function ReportsView({
                   onChange={(e) => setFormNotes(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-200 text-xs rounded-xl focus:outline-none"
                 />
+              </div>
+
+              {/* Work Location */}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-450 mb-1 font-mono">
+                  Assigned Work Location / Client Site (लोकेशन)
+                </label>
+                <select
+                  value={formSelectedWorkLocation}
+                  onChange={(e) => setFormSelectedWorkLocation(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 text-xs bg-white rounded-xl focus:outline-none appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundPosition: 'right 12px center', backgroundSize: '16px', backgroundRepeat: 'no-repeat' }}
+                >
+                  <option value="">-- Main Office / General HQ --</option>
+                  <optgroup label="Standard Client / Site Locations">
+                    <option value="Hetero Changsari">Hetero Changsari (Fixed 8-Hour Shift)</option>
+                    <option value="Ajanta Pharma">Ajanta Pharma</option>
+                    <option value="Hetero Palashbari">Hetero Palashbari</option>
+                    <option value="Natco Pharma">Natco Pharma</option>
+                    <option value="Calitech Office">Calitech Office</option>
+                  </optgroup>
+                  {settings.fixedShiftLocations && settings.fixedShiftLocations.length > 0 && (
+                    <optgroup label="Other Configured Fixed-Shift Sites">
+                      {settings.fixedShiftLocations
+                        .filter(loc => !["hetero changsari", "ajanta pharma", "hetero palashbari", "natco pharma", "calitech office"].includes(loc.toLowerCase()))
+                        .map(loc => (
+                          <option key={loc} value={loc}>{loc} (Fixed)</option>
+                        ))
+                      }
+                    </optgroup>
+                  )}
+                </select>
               </div>
 
               {/* Actions Footer */}

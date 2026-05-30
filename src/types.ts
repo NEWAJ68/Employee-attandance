@@ -60,6 +60,7 @@ export interface Settings {
   currency: string; // Indian Rupee (₹) by default
   strictGeofencing?: boolean; // if true, blocks punches outside 100m of Calitech HQ
   autoSyncSheets?: boolean; // if true, automatically triggers background push on attendance create
+  fixedShiftLocations?: string[]; // list of location names that automatically qualify for fixed-shift 8-hour credit
 }
 
 export interface LeaveRequest {

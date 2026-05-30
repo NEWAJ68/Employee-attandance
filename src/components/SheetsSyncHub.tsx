@@ -864,6 +864,90 @@ function saveSettings(configs) {
             </div>
           </div>
 
+          {/* Admin Fixed-Shift Client Sites Configuration Section */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm">
+                <Database className="w-4 h-4 text-indigo-600" />
+                <span>Fixed-Shift Client Sites (विशेष नियम स्थान)</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase">
+                Special Sites config
+              </span>
+            </div>
+
+            <p className="text-[10px] text-slate-500 leading-normal">
+              Employees punching in at these locations are automatically marked as **Present** with exactly **1 Full Day Shift ({settings.standardHours || 8} Hours)** credit. Late arrivals, early exits, and journey/travel durations are automatically ignored and excluded from salary multipliers. (इन स्थानों के लिए 8 घंटे की पूरी उपस्थिति जोड़ी जाती है।)
+            </p>
+
+            {/* List of configured locations */}
+            <div className="space-y-2">
+              {((settings.fixedShiftLocations && settings.fixedShiftLocations.length > 0) ? settings.fixedShiftLocations : ['Hetero Changsari']).map((loc, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs font-semibold text-slate-700">
+                  <span>{loc}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!onUpdateSettings) return;
+                      const currentList = settings.fixedShiftLocations && settings.fixedShiftLocations.length > 0 
+                        ? settings.fixedShiftLocations 
+                        : ['Hetero Changsari'];
+                      const updatedList = currentList.filter(l => l !== loc);
+                      onUpdateSettings({
+                        ...settings,
+                        fixedShiftLocations: updatedList
+                      });
+                    }}
+                    className="text-rose-600 hover:text-rose-700 text-[10px] font-bold tracking-tight cursor-pointer"
+                    title="Remove client site from fixed-shift list"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add new site */}
+            <div className="pt-2">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!onUpdateSettings) return;
+                  const form = e.currentTarget;
+                  const input = form.elements.namedItem('newSiteName') as HTMLInputElement;
+                  const value = input.value.trim();
+                  if (value) {
+                    const currentList = settings.fixedShiftLocations && settings.fixedShiftLocations.length > 0
+                      ? settings.fixedShiftLocations
+                      : ['Hetero Changsari'];
+                    if (!currentList.some(l => l.toLowerCase() === value.toLowerCase())) {
+                      onUpdateSettings({
+                        ...settings,
+                        fixedShiftLocations: [...currentList, value]
+                      });
+                    }
+                    input.value = '';
+                  }
+                }}
+                className="flex gap-2"
+              >
+                <input
+                  type="text"
+                  name="newSiteName"
+                  placeholder="e.g. Ajanta Pharma"
+                  className="flex-1 px-3 py-2 border border-slate-200 text-xs rounded-xl focus:outline-none"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white rounded-xl transition-all shadow-3xs cursor-pointer"
+                >
+                  Add Site
+                </button>
+              </form>
+            </div>
+          </div>
+
           {/* Quick Guide card steps */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="text-xs font-bold text-slate-800 mb-3 pb-2 border-b border-slate-100">
