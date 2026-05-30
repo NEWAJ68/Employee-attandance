@@ -100,6 +100,7 @@ export default function AttendanceTerminal({
     }
   }, [selectedEmpId, selfieState?.isOpen]);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [photoClarity, setPhotoClarity] = useState<'clear' | 'blur'>('clear');
 
 
 
@@ -210,6 +211,7 @@ export default function AttendanceTerminal({
   const triggerSelfieAndPunch = (actionLabel: string, onPunchConfirmed: (selfieBase64: string) => void) => {
     setCapturedPhoto(null);
     setCameraError(null);
+    setPhotoClarity('clear');
     setSelfieState({
       isOpen: true,
       actionLabel,
@@ -1743,7 +1745,7 @@ export default function AttendanceTerminal({
                 <img 
                   src={capturedPhoto} 
                   alt="Captured Selfie" 
-                  className="w-full h-full object-cover" 
+                  className={`w-full h-full object-cover transition-all duration-300 ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
                 />
               ) : (
                 <>
@@ -1782,21 +1784,43 @@ export default function AttendanceTerminal({
               )}
             </div>
 
-            {/* Quality Check Checklist during Preview */}
+            {/* Dynamic filter toggle for checking blur/clear simulation */}
             {capturedPhoto && (
-              <div className="bg-amber-50 rounded-xl p-2.5 text-left border border-amber-200/60 space-y-2">
-                <div className="flex items-center space-x-1 border-b border-amber-200/40 pb-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-bounce" />
-                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">Clarity Alert</span>
+              <div id="simulated-clarity" className="flex items-center justify-between p-1.5 bg-slate-50 border border-slate-200/65 rounded-xl">
+                <span className="text-[9.5px] font-bold text-slate-500 font-mono pl-1">Photo Quality:</span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoClarity('clear')}
+                    className={`px-2.5 py-1 text-[9.5px] font-bold rounded-lg transition-all cursor-pointer ${
+                      photoClarity === 'clear' 
+                        ? 'bg-emerald-600 text-white shadow-3xs' 
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    Clear Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoClarity('blur')}
+                    className={`px-2.5 py-1 text-[9.5px] font-bold rounded-lg transition-all cursor-pointer ${
+                      photoClarity === 'blur' 
+                        ? 'bg-red-500 text-white shadow-3xs' 
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    Blurry (धुंधला)
+                  </button>
                 </div>
-                
-                <p className="text-[10px] text-amber-950 leading-relaxed font-sans font-medium">
-                  If your photo or background is <strong className="text-red-600">NOT CLEAR</strong>, tap the <strong className="text-indigo-700">Retake</strong> button below immediately to snap it again!
-                </p>
-                <div className="flex items-center space-x-1.5 text-slate-600 text-[10px] pt-0.5">
-                  <span className="text-amber-500 font-bold">⚠️</span>
-                  <span>Face light & background must be visible and clear.</span>
-                </div>
+              </div>
+            )}
+
+            {/* Quality Check Warning shown ONLY when photo is Blurry */}
+            {capturedPhoto && photoClarity === 'blur' && (
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-2.5 text-center animate-bounce">
+                <span className="text-[10.5px] font-extrabold flex items-center justify-center gap-1.5">
+                  ⚠️ Clear nahi hua! Please retake.
+                </span>
               </div>
             )}
 
