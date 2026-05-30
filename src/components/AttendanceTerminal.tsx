@@ -445,18 +445,9 @@ export default function AttendanceTerminal({
             setCountdown(null);
             holdDuration = 0;
           } else {
-            setFaceStateMsg('Hold still... Capturing');
-            holdDuration += deltaTime;
-
-            const remaining = Math.max(0, 0.5 - holdDuration / 1000);
-            setCountdown(remaining);
-
-            if (remaining <= 0) {
-              setCountdown(0);
-              active = false;
-              setFaceStateMsg('Photo captured successfully');
-              autoTriggerCapture(currentFaceStatus.box);
-            }
+            setFaceStateMsg('Face Aligned! Click green capture button below');
+            setCountdown(null);
+            holdDuration = 0;
           }
         }
       }
@@ -2316,11 +2307,15 @@ export default function AttendanceTerminal({
                     <button
                       type="button"
                       onClick={captureSnapshot}
-                      className="flex-1 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-750 rounded-xl shadow-lg shadow-indigo-600/15 cursor-pointer flex items-center justify-center space-x-1.5 font-sans transition-all active:scale-95"
+                      className={`flex-1 py-2 text-xs font-black text-white rounded-xl shadow-lg flex items-center justify-center space-x-1.5 font-sans transition-all active:scale-95 cursor-pointer ${
+                        faceStatus.detected && faceStatus.alignedPercent >= 90
+                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 ring-2 ring-emerald-400 animate-pulse'
+                          : 'bg-indigo-600 hover:bg-indigo-750 shadow-indigo-600/15'
+                      }`}
                       id="manual-capture-btn"
                     >
                       <Camera className="w-3.5 h-3.5" />
-                      <span>Capture Manual</span>
+                      <span>{faceStatus.detected && faceStatus.alignedPercent >= 90 ? 'Capture Selfie' : 'Capture Manual'}</span>
                     </button>
                   )}
                   
