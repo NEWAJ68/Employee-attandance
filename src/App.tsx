@@ -60,6 +60,7 @@ import ReportsView from './components/ReportsView';
 import SheetsSyncHub from './components/SheetsSyncHub';
 import LeaveManagementView from './components/LeaveManagementView';
 import MyAttendanceView from './components/MyAttendanceView';
+import CompanyRules from './components/CompanyRules';
 
 const LOCAL_STORAGE_KEY = 'apex_attendance_mgmt_v1';
 
@@ -1243,7 +1244,7 @@ export default function App() {
     // View Guards
     if (isAdminLoggedIn) {
       setCurrentView(view);
-    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'my-attendance')) {
+    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'my-attendance' || view === 'rules')) {
       setCurrentView(view);
     } else if (view === 'terminal' || view === 'admin-login' || view === 'my-attendance') {
       setCurrentView(view);
@@ -1328,6 +1329,7 @@ export default function App() {
                 {currentView === 'dashboard' && 'Workforce Dashboard'}
                 {currentView === 'employees' && 'Staff Directory'}
                 {currentView === 'reports' && 'Wages & Overtime Audit'}
+                {currentView === 'rules' && 'Rules & Regulations Directory'}
                 {currentView === 'sync' && 'Sheets Integration Center'}
                 {currentView === 'admin-login' && 'Admin Authorization'}
                 {currentView === 'leaves' && 'Leaves & Verification Portal'}
@@ -1618,6 +1620,12 @@ export default function App() {
               onAddAttendance={handleAddAttendance}
               onUpdateAttendance={handleUpdateAttendance}
               onClearAttendance={handleClearAllAttendance}
+            />
+          )}
+
+          {currentView === 'rules' && (
+            <CompanyRules
+              onRaiseNotification={handleRaiseNotification}
             />
           )}
 

@@ -1588,6 +1588,9 @@ export default function MyAttendanceView({
         </div>
       </div>
       )}
+
+
+
       {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
       <div style={{ height: 0, overflow: 'hidden', position: 'relative', width: '824px', pointerEvents: 'none' }}>
         

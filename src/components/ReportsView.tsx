@@ -19,7 +19,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
+import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY, detectShiftFromPunchTime } from '../utils/calculations';
 
 interface ReportsViewProps {
   employees: Employee[];
@@ -178,7 +178,8 @@ export default function ReportsView({
       formHasShift2 ? formExitTime2 : '',
       formDinnerOut,
       formDinnerIn,
-      formSelectedWorkLocation
+      formSelectedWorkLocation,
+      undefined
     );
 
     const existingRec = modalMode === 'edit'
@@ -1469,8 +1470,15 @@ export default function ReportsView({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-center font-mono font-medium text-slate-655">
-                        {Math.max(0, rec.totalHours - rec.overtime).toFixed(2)} hrs
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex flex-col items-center justify-center font-sans">
+                          <span className="font-extrabold text-slate-800 text-[11px] leading-tight select-all">
+                            {detectShiftFromPunchTime(rec.entryTime)}
+                          </span>
+                          <span className="text-[10px] text-slate-550 font-mono mt-0.5">
+                            {Math.max(0, rec.totalHours - rec.overtime).toFixed(2)} hrs
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-center font-mono text-indigo-650 font-bold">
                         {rec.overtime > 0 ? `+${rec.overtime.toFixed(2)}h` : '--'}

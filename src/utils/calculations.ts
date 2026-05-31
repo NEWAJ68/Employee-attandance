@@ -94,6 +94,131 @@ export const isValidTimeStr = (timeStr: string | undefined | null): boolean => {
 };
 
 /**
+ * Helper interface for Shift Timings Configuration
+ */
+interface ShiftConfig {
+  name: string;
+  start: string;
+  end: string;
+  graceIn: string;
+  minOut: string;
+}
+
+/**
+ * Returns configuration for a designated shift name.
+ */
+export const getShiftConfig = (shiftName?: string): ShiftConfig => {
+  const name = shiftName?.trim() || 'General Shift';
+  const nameLower = name.toLowerCase();
+  
+  if (nameLower.includes('a shift') || nameLower === 'a') {
+    return {
+      name: 'A Shift',
+      start: '07:00',
+      end: '15:00',
+      graceIn: '07:45',
+      minOut: '14:00',
+    };
+  } else if (nameLower.includes('b shift') || nameLower === 'b') {
+    return {
+      name: 'B Shift',
+      start: '14:00',
+      end: '23:00',
+      graceIn: '14:45',
+      minOut: '22:00',
+    };
+  } else if (nameLower.includes('c shift') || nameLower.includes('night shift') || nameLower === 'c') {
+    return {
+      name: 'C Shift',
+      start: '23:00',
+      end: '07:00',
+      graceIn: '23:45',
+      minOut: '06:00',
+    };
+  } else {
+    // Default is General Shift
+    return {
+      name: 'General Shift',
+      start: '09:00',
+      end: '18:00',
+      graceIn: '09:45',
+      minOut: '17:00',
+    };
+  }
+};
+
+/**
+ * Automatically detects the shifting configuration based on first Entry (IN) punch time
+ * - A Shift (07:00 - 15:00): Entry matches roughly if before 08:00 AM (e.g. 05:00 AM to 08:00 AM)
+ * - General Shift (09:00 - 18:00): Entry matches from 08:01 AM to 11:30 AM
+ * - B Shift (14:00 - 23:00): Entry matches from 11:31 AM to 06:00 PM
+ * - C Shift (23:00 - 07:00): Entry matches from 06:01 PM to 04:59 AM
+ */
+export const detectShiftFromPunchTime = (timeStr?: string): string => {
+  if (!timeStr || !isValidTimeStr(timeStr)) {
+    return 'General Shift';
+  }
+  const mins = timeToMinutes(timeStr);
+  
+  if (mins >= 300 && mins <= 480) { // 05:00 AM to 08:00 AM
+    return 'A Shift';
+  } else if (mins > 480 && mins <= 690) { // 08:01 AM to 11:30 AM
+    return 'General Shift';
+  } else if (mins > 690 && mins <= 1080) { // 11:31 AM to 06:00 PM (18:00)
+    return 'B Shift';
+  } else { // 06:01 PM to 04:59 AM (1081 to 299 mins)
+    return 'C Shift';
+  }
+};
+
+/**
+ * Computes difference in minutes from entry-start time, crossing midnight if applicable.
+ */
+export const minutesDiffFromStart = (timeStr: string, startStr: string): number => {
+  let tMins = timeToMinutes(timeStr);
+  let sMins = timeToMinutes(startStr);
+  
+  if (tMins - sMins < -720) {
+    tMins += 1440;
+  } else if (tMins - sMins > 720) {
+    sMins += 1440;
+  }
+  return tMins - sMins;
+};
+
+/**
+ * Computes difference in minutes from exit-end time, crossing midnight if applicable.
+ */
+export const minutesDiffFromEnd = (timeStr: string, endStr: string): number => {
+  let tMins = timeToMinutes(timeStr);
+  let eMins = timeToMinutes(endStr);
+  
+  if (tMins - eMins < -720) {
+    tMins += 1440;
+  } else if (tMins - eMins > 720) {
+    eMins += 1440;
+  }
+  return tMins - eMins;
+};
+
+/**
+ * Verifies if a location is eligible for Overtime (Hetero Palashbari, Hetero Changsari, Natco Pharma, Anajta Pharma)
+ */
+export const isLocationEligibleForOvertime = (locationName?: string): boolean => {
+  if (!locationName) return false;
+  const locLower = locationName.trim().toLowerCase();
+  const eligibleTerms = [
+    'hetero palashbari',
+    'hetero changsari',
+    'natco pharma',
+    'anajta pharma',
+    'ajanta pharma',
+    'hetero pharma'
+  ];
+  return eligibleTerms.some(term => locLower.includes(term));
+};
+
+/**
  * Primary calculator for attendance metrics
  */
 export const calculateAttendanceMetrics = (
@@ -106,7 +231,8 @@ export const calculateAttendanceMetrics = (
   exit2?: string,
   dinnerOut?: string,
   dinnerIn?: string,
-  selectedWorkLocation?: string
+  selectedWorkLocation?: string,
+  assignedShift?: string
 ): {
   totalHours: number;
   overtime: number;
@@ -133,19 +259,6 @@ export const calculateAttendanceMetrics = (
   const isShift1Active = !!(s1Entry && !s1Exit);
   const isShift2Active = !!(s2Entry && !s2Exit);
   const isCurrentlyActive = isShift1Active || isShift2Active;
-
-  // Check late arrival on morning (from 10:00 AM)
-  const checkInTime = s1Entry || s2Entry;
-  const hasMorningLateEntry = checkInTime ? timeToMinutes(checkInTime) > timeToMinutes("10:00") : false;
-
-  // Check early checkout (before 17:00 / 5 PM)
-  const finalCheckOutTime = s2Entry ? s2Exit : s1Exit;
-  const hasEarlyExitHalfDay = finalCheckOutTime ? timeToMinutes(finalCheckOutTime) < timeToMinutes("17:00") : false;
-
-  // Check standard late entry based on settings for informational flag
-  if (s1Entry && settings.workStartHour && isTimeAfter(s1Entry, settings.workStartHour)) {
-    statusFlags.push('Late Entry');
-  }
 
   let totalGrossMins = 0;
   let lunchMins = 0;
@@ -228,7 +341,7 @@ export const calculateAttendanceMetrics = (
         dinnerMins = (24 * 60 - doMins) + diMins;
       }
     } else {
-      dinnerMins = settings.lunchDurationMinutes || 60; // fallback to same default break mins
+      dinnerMins = settings.lunchDurationMinutes || 60;
     }
   }
 
@@ -241,74 +354,60 @@ export const calculateAttendanceMetrics = (
   let isHalfDay = false;
   let isAbsent = false;
 
-  const isFixedShift = !!(selectedWorkLocation && (
-    (settings?.fixedShiftLocations?.some(loc => loc.trim().toLowerCase() === selectedWorkLocation.trim().toLowerCase())) || 
-    (selectedWorkLocation.trim().toLowerCase() === 'hetero changsari')
-  ));
+  const actualIn = s1Entry || s2Entry;
+  const actualOut = s2Exit || s1Exit;
 
-  if (isFixedShift) {
-    // Special Client Site Visit rule - credit exactly 1 Full Day Shift (8 hours)
-    totalHours = settings.standardHours || 8;
-    isHalfDay = false;
-    isAbsent = false;
-  } else {
-    // Evaluate new rules
-    if (!isCurrentlyActive) {
-      // Fully checked out or absent
-      if (totalHours < 3) {
-        isAbsent = true;
-      } else {
-        // Standard late morning arrival (Shift 1 check-in > 10:00 AM)
-        const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
-        
-        // Standard early check-out (Final exit < 17:00 / 5 PM)
-        const lastExit = s2Exit || s1Exit;
-        const earlyExit = lastExit ? (timeToMinutes(lastExit) < timeToMinutes("17:00")) : false;
-        
-        if (morningLate || earlyExit) {
-          isHalfDay = true;
-        } else if (totalHours < (settings.standardHours || 8)) {
-          // Not standard late (>10:00) and not early (<17:00).
-          // Let's check if they completed a full-day span:
-          // Did they check in by 10:00 AM AND stay at least until 17:00 PM?
-          const hasFullDaySpan = (s1Entry && timeToMinutes(s1Entry) <= timeToMinutes("10:00")) &&
-                                 (lastExit && timeToMinutes(lastExit) >= timeToMinutes("17:00"));
-          if (hasFullDaySpan) {
-            isHalfDay = false; // It's a FULL DAY (Present) as they worked the whole required duration!
-          } else {
-            isHalfDay = true;
-          }
-        }
-      }
+  // Retrieve active shift timings config automatically from punch-in time or fallback to assignedShift
+  const detectedShift = actualIn ? detectShiftFromPunchTime(actualIn) : (assignedShift || 'General Shift');
+  const shiftConfig = getShiftConfig(detectedShift);
+
+  if (!isCurrentlyActive) {
+    // Both entries have been completed (fully checked out), check absent first
+    if (totalHours < 3) {
+      isAbsent = true;
     } else {
-      // Informational: mark as Half Day immediately if their Shift 1 check-in was late (after 10:00 AM)
-      const morningLate = s1Entry ? (timeToMinutes(s1Entry) > timeToMinutes("10:00")) : false;
-      if (morningLate) {
+      // Analyze grace & early checkouts
+      const inDiff = minutesDiffFromStart(actualIn, shiftConfig.start);
+      const outDiff = minutesDiffFromEnd(actualOut, shiftConfig.end);
+
+      const inMeetsGrace = (inDiff <= 45);
+      const outMeetsMinExit = (outDiff >= -60);
+
+      if (inMeetsGrace && outMeetsMinExit) {
+        isAbsent = false;
+        isHalfDay = false;
+      } else {
         isHalfDay = true;
       }
+    }
+  } else {
+    // Session is still active on-going
+    const inDiff = minutesDiffFromStart(actualIn, shiftConfig.start);
+    if (inDiff > 45) {
+      isHalfDay = true;
     }
   }
 
   let overtime = 0;
+  const eligibleForOT = isLocationEligibleForOvertime(selectedWorkLocation);
 
+  if (!isAbsent && eligibleForOT && actualOut) {
+    const extraMinutes = minutesDiffFromEnd(actualOut, shiftConfig.end);
+    if (extraMinutes > 0) {
+      // Completed hours only, minutes ignored: Floor(Total Extra Minutes ÷ 60)
+      overtime = Math.floor(extraMinutes / 60);
+    }
+  }
+
+  // Setup presence statuses
   if (isAbsent) {
     totalHours = 0;
     overtime = 0;
     statusFlags.push('Absent');
+  } else if (isHalfDay) {
+    statusFlags.push('Half Day');
   } else {
-    if (isFixedShift) {
-      statusFlags.push('Present');
-      overtime = 0; // Excluded by default
-    } else if (isHalfDay) {
-      statusFlags.push('Half Day');
-      // "agar employ 3 hour se jiyada duty kore tho hour wage ke hisab se over time add hona cahiye"
-      // Half Day standard is 3 hours; any worked hours above 3 are overtime
-      overtime = totalHours > 3 ? Math.round((totalHours - 3) * 100) / 100 : 0;
-    } else {
-      statusFlags.push('Present');
-      const standardHours = settings.standardHours || 8;
-      overtime = totalHours > standardHours ? Math.round((totalHours - standardHours) * 100) / 100 : 0;
-    }
+    statusFlags.push('Present');
   }
 
   // Active flag formatting and cleanup

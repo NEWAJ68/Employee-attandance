@@ -684,7 +684,7 @@ export default function EmployeeProfiles({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1 font-mono">
                     Department Unit
@@ -704,7 +704,7 @@ export default function EmployeeProfiles({
 
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1 font-mono">
-                    Hourly OT Rate (₹)
+                    Hourly Wage (₹)
                   </label>
                   <input
                     type="number"

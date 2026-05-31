@@ -55,6 +55,13 @@ export default function Sidebar({
         icon: FileSpreadsheet,
         description: 'View datewise logs & download',
         adminOnly: false,
+      },
+      {
+        id: 'rules',
+        name: 'Rules & Regulations',
+        icon: Building2,
+        description: 'Half Day, Overtime & Punch Policies',
+        adminOnly: false,
       }
     ] : []),
     {
@@ -83,6 +90,13 @@ export default function Sidebar({
       name: 'Financial Reports',
       icon: FileBarChart2,
       description: 'Payroll & Overtime',
+      adminOnly: true,
+    },
+    {
+      id: 'rules',
+      name: 'Rules & Regulations',
+      icon: Building2,
+      description: 'Half Day, Overtime & Punch Policies',
       adminOnly: true,
     },
     {

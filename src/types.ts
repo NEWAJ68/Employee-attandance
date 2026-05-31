@@ -11,6 +11,7 @@ export interface Employee {
   photoUrl?: string; // Base64 or image URL for profile photo
   address?: string; // residential address / pata
   designation?: string; // employee title or designation
+  assignedShift?: string; // "A Shift" | "General Shift" | "B Shift" | "C Shift"
 }
 
 export interface AttendanceRecord {

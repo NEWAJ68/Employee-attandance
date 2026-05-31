@@ -1242,6 +1242,8 @@ export default function AttendanceTerminal({
   const handleExitCheckOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord) return;
 
+    const emp = employees.find(e => e.id === selectedEmpId);
+
     // Prevent duplicate EXIT before ENTRY
     if (selectedEmpStatus === 'not-entered') {
       triggerNotification('error', 'Employee has not recorded their initial entry checked-in status today.');
@@ -1272,7 +1274,8 @@ export default function AttendanceTerminal({
       undefined,
       undefined,
       undefined,
-      currentRecord.selectedWorkLocation
+      currentRecord.selectedWorkLocation,
+      undefined
     );
 
     let updatedRecord: AttendanceRecord = {
@@ -1302,6 +1305,8 @@ export default function AttendanceTerminal({
   const handleExit2CheckOut = async (selfiePhoto?: string) => {
     if (!selectedEmpId || !currentRecord || !currentRecord.entryTime2) return;
 
+    const emp = employees.find(e => e.id === selectedEmpId);
+
     if (selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner') {
       triggerNotification('error', 'Employee is not actively working on Shift 2.');
       return;
@@ -1326,7 +1331,8 @@ export default function AttendanceTerminal({
       timeStr,
       currentRecord.dinnerOut,
       currentRecord.dinnerIn || (currentRecord.dinnerOut ? timeStr : ''), // auto balance dinner return
-      currentRecord.selectedWorkLocation
+      currentRecord.selectedWorkLocation,
+      undefined
     );
 
     let updatedRecord: AttendanceRecord = {
