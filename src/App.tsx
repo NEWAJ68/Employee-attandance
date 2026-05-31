@@ -1329,7 +1329,7 @@ export default function App() {
                 {currentView === 'dashboard' && 'Workforce Dashboard'}
                 {currentView === 'employees' && 'Staff Directory'}
                 {currentView === 'reports' && 'Wages & Overtime Audit'}
-                {currentView === 'rules' && 'Rules & Regulations Directory'}
+                {currentView === 'rules' && 'Rules & Guidelines Directory'}
                 {currentView === 'sync' && 'Sheets Integration Center'}
                 {currentView === 'admin-login' && 'Admin Authorization'}
                 {currentView === 'leaves' && 'Leaves & Verification Portal'}

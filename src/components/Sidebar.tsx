@@ -58,7 +58,7 @@ export default function Sidebar({
       },
       {
         id: 'rules',
-        name: 'Rules & Regulations',
+        name: 'Rules & Guidelines',
         icon: Building2,
         description: 'Half Day, Overtime & Punch Policies',
         adminOnly: false,
@@ -94,7 +94,7 @@ export default function Sidebar({
     },
     {
       id: 'rules',
-      name: 'Rules & Regulations',
+      name: 'Rules & Guidelines',
       icon: Building2,
       description: 'Half Day, Overtime & Punch Policies',
       adminOnly: true,

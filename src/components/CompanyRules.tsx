@@ -50,20 +50,38 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       ],
       hindiRules: [
         {
-          title: "Grace Period Niyam",
-          details: "Employee ke paas shift shuru hone ke 45 minutes tak check-in karne ki chhoot hai. Is samay ke andar login karne par Full Day mark kiya jayega."
+          title: "45-मिनट ग्रेस पीरियड नियम",
+          details: "कर्मचारियों को उनकी ऑटो-डिटेक्ट की गई शिफ्ट शुरू होने के समय से पंच-इन करने के लिए 45 मिनट तक का ग्रेस टाइम (छूट अवधि) मिलता है। इस समय सीमा के भीतर चेक-इन करने पर पूरे दिन (Full Day) की उपस्थिति मानी जाएगी।"
         },
         {
-          title: "Late Entry Penalty (Half Day)",
-          details: "Shift shuru hone ke 45 minutes ke baad check-in karne par dynamic 'Half Day' status lag jayega. (Jaise ki General Shift me 09:45 AM ke baad check-in karne par)."
+          title: "देरी से आने पर दंड (हाफ डे)",
+          details: "45 मिनट की ग्रेस अवधि के बाद चेक-इन करने पर अटेंडेंस को स्वचालित रूप से 'हाफ डे' (आधा दिन) के रूप में चिह्नित किया जाएगा। (जैसे: जनरल शिफ्ट के लिए सुबह 09:45 बजे के बाद लॉगिन करने पर)।"
         },
         {
-          title: "Early Check-out limit (Half Day)",
+          title: "जल्दी जाने पर हाफ डे प्रतिबंध",
+          details: "आधिकारिक शिफ्ट समाप्ति समय से 60 मिनट से पहले पंच-आउट करने पर उपस्थिति स्थिति स्वतः पूरे दिन से घटकर 'हाफ डे' हो जाएगी। (जैसे: जनरल शिफ्ट के लिए शाम 05:00 बजे से पहले निकल जाना)।"
+        },
+        {
+          title: "न्यूनतम कार्य अवधि नियम (अनुपस्थिति)",
+          details: "यदि कुल ड्यूटी का समय 3 घंटे से कम पाया जाता है, तो अटेंडेंस स्वतः 'अनुपस्थित' (Absent - 0 घंटे, 0 वेतन) दर्ज की जाएगी ताकि कार्य अनुशासन बना रहे।"
+        }
+      ],
+      romanHindiRules: [
+        {
+          title: "45-Minute Grace Period Niyam",
+          details: "Employees ke paas shift shuru hone ke 45 minutes ke andar punch-in karne ki chhoot hai. Is samay ke andar login karne par pure din (Full Day) ki attendance mani jayegi."
+        },
+        {
+          title: "Late Arrival Penalty (Half Day)",
+          details: "Shift shuru hone ke 45 minutes ke baad check-in karne par dynamic 'Half Day' status lag jayega. (Jaise: General Shift me 09:45 AM ke baad check-in karne par)."
+        },
+        {
+          title: "Early Check-out Restriction (Half Day)",
           details: "Shift khatam hone ke 60 minutes se pehle punch-out karne par automatic 'Half Day' status lag jayega. Kaam samay se pehle adhura chodne par ye penalty manya hai."
         },
         {
-          title: "Absenteeism Criteria",
-          details: "Agar kul duty ka samay 3 ghante se kam paaya jata hai, toh automatic present status badal kar 'Absent' lag jata hai aur wage ₹0 ho jayegi."
+          title: "Minimum Duration Check (Absenteeism)",
+          details: "Agar kul duty ka samay 3 ghante se kam paaya jata hai, toh automatic present status badal kar 'Absent' lag jata hai aur wage 0 ho jayegi."
         }
       ]
     },
@@ -91,11 +109,29 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       ],
       hindiRules: [
         {
+          title: "ओटी (OT) के योग्य स्थान",
+          details: "ओवरटाइम विशेष रूप से केवल चिह्नित स्थानों पर ही मान्य है: हेटेरो पलाशबाड़ी, हेटेरो चांगसारी, नैटको फार्मा, और अजंता फार्मा। अन्य कार्यस्थलों पर ओवरटाइम देय नहीं होगा।"
+        },
+        {
+          title: "पूर्ण घंटे का सिद्धांत (घंटे का नियम)",
+          details: "ओवरटाइम की गणना केवल पूरे हुए घंटों के आधार पर की जाती है। शिफ्ट समय के बाद अतिरिक्त कार्य कम से कम 60 मिनट पूरा होना चाहिए। 60 मिनट से कम के अतिरिक्त समय की गणना नहीं की जाएगी।"
+        },
+        {
+          title: "ओवरटाइम गणना सूत्र",
+          details: "फ़ॉर्मूला: ओवरटाइम (घंटे) = Floor(शिफ्ट के बाद कुल अतिरिक्त मिनट / 60)। उदाहरण के लिए: 59 अतिरिक्त मिनट = 0 घंटे ओटी; 60 अतिरिक्त मिनट = 1 घंटा ओटी।"
+        },
+        {
+          title: "ओवरटाइम मुआवजा दर",
+          details: "ओवरटाइम भुगतान कर्मचारी के निर्धारित प्रति घंटा वेतन दर (Hourly Wage Rate) के गुणांक के रूप में सीधे मासिक वेतन में जोड़ा जाएगा।"
+        }
+      ],
+      romanHindiRules: [
+        {
           title: "OT Eligible Locations",
           details: "Overtime sirf chune huye sites par valid hai: Hetero Palashbari, Hetero Changsari, Natco Pharma, aur Ajanta Pharma. Baki sites par overtime zero count hoga."
         },
         {
-          title: "Full Hour Principle (Ghanto Ka Niyam)",
+          title: "Completed Hours Principle (Ghanto Ka Niyam)",
           details: "Extra kaam hamesha pure ghanto me hi count kiya jata hai. Adhe ghante ya dakhila fraction minutes ko ignore kiya jata hai."
         },
         {
@@ -104,7 +140,7 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
         },
         {
           title: "OT Wage Rate",
-          details: "Overtime payment employee ke profile me likhe gaye standard 'Hourly Wage' (₹) ke hisab se automatic calculation kiya jata hai."
+          details: "Overtime payment employee ke profile me likhe gaye standard 'Hourly Wage' (Rs) ke hisab se automatic calculation kiya jata hai."
         }
       ]
     },
@@ -136,23 +172,45 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       ],
       hindiRules: [
         {
+          title: "स्वचालित शिफ्ट आवंटन नियम",
+          details: "मानवीय भूलों को रोकने के लिए, कर्मचारी प्रोफाइल से मैन्युअल रूप से शिफ्ट असाइन करने का विकल्प हटा दिया गया है। आपकी पहली पंच-इन प्रविष्टि के आधार पर कंप्यूटर स्वतः शिफ्ट निर्धारित करता है।"
+        },
+        {
+          title: "A शिफ्ट समय सीमा (सुबह 07:00 - दोपहर 03:00)",
+          details: "यदि आपकी पहली पंच-इन एंट्री सुबह 05:00 बजे से लेकर सुबह 08:00 बजे के बीच दर्ज होती है, तो सिस्टम कर्मचारी को स्वतः 'A शिफ्ट' में मैप कर देता है।"
+        },
+        {
+          title: "जनरल शिफ्ट समय सीमा (सुबह 09:00 - शाम 06:00)",
+          details: "यदि आपकी पहली पंच-इन एंट्री सुबह 08:01 बजे से दोपहर 11:30 बजे के बीच होती है, तो आप स्वचालित रूप से 'जनरल शिफ्ट' के अंतर्गत माने जाएंगे।"
+        },
+        {
+          title: "B शिफ्ट समय सीमा (दोपहर 02:00 - रात 11:00)",
+          details: "यदि आपकी पहली पंच-इन एंट्री दोपहर 11:31 बजे से लेकर शाम 06:00 बजे के बीच आती है, तो सिस्टम स्वतः कर्मचारी को 'B शिफ्ट' आवंटित करता है।"
+        },
+        {
+          title: "C शिफ्ट / नाइट शिफ्ट (रात 11:00 - सुबह 07:00)",
+          details: "शाम 06:01 बजे से लेकर अगली सुबह 04:59 बजे के देर-रात अंतराल में पंच-इन करने पर कर्मचारी को स्वतः 'C शिफ्ट' (नाइट शिफ्ट) आवंटित की जाती है।"
+        }
+      ],
+      romanHindiRules: [
+        {
           title: "Shift Assign Karne Se Mukti",
           details: "Profiles me se assigned shift choose karne ka option hata diya gaya hai. Ab aapke punch-in samay se computer khud shift nirdharit karta hai."
         },
         {
-          title: "A Shift (07:00 AM – 03:00 PM)",
+          title: "A Shift (07:00 AM - 03:00 PM)",
           details: "Subah 05:00 AM se lekar 08:00 AM ke dauran login karne par employee auto 'A Shift' me mana jayega."
         },
         {
-          title: "General Shift (09:00 AM – 06:00 PM)",
-          details: "Subah 08:01 AM se lekar dopahar 11:30 AM ke dauran login karne par aap auto 'General Shift' me asigned honge."
+          title: "General Shift (09:00 AM - 06:00 PM)",
+          details: "Subah 08:01 AM se lekar dopahar 11:30 AM ke dauran login karne par aap auto 'General Shift' me assigned honge."
         },
         {
-          title: "B Shift (02:00 PM – 11:00 PM)",
+          title: "B Shift (02:00 PM - 11:00 PM)",
           details: "Dopahar 11:31 AM se shaam 06:00 PM ke beech login karne par direct 'B Shift' me mapping hogi."
         },
         {
-          title: "C Shift / Night Shift (11:00 PM – 07:00 AM)",
+          title: "C Shift / Night Shift (11:00 PM - 07:00 AM)",
           details: "Shaam 06:01 PM se agle din subah 04:59 AM ke beech kisi bhi entry par auto 'C Shift' lagadi jayegi."
         }
       ]
@@ -287,14 +345,14 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(10);
-      doc.text("2. ROMAN HINDI POLICIES (ROMAN हिन्दी नियन निर्देश)", 15, cursorY);
+      doc.text("2. ROMAN HINDI POLICIES (ROMAN HINDI LAYOUT)", 15, cursorY);
       cursorY += 2;
       doc.setDrawColor(226, 232, 240);
       doc.line(15, cursorY, 195, cursorY);
       cursorY += 5;
 
       // Render Hindi rules listing
-      currentPolicy.hindiRules.forEach((rule, idx) => {
+      currentPolicy.romanHindiRules.forEach((rule, idx) => {
         if (cursorY > 265) {
           doc.addPage();
           cursorY = 25;
@@ -402,7 +460,7 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
             <span>AI-Driven Kiosk Compliance</span>
           </div>
           <h1 className="text-2xl md:text-3.5xl font-sans font-black tracking-tight text-white mb-2">
-            Company Rules & Rulesets
+            Company Rules & Guidelines
           </h1>
           <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
             Configure, inspect, and evaluate dynamic shift assignments, hours calculations, 45-minute late-coming penalties, and overtime parameters.
@@ -416,7 +474,7 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
         {/* Left Side Buttons */}
         <div className="lg:col-span-3 flex flex-col space-y-2">
           <p className="text-[10px] uppercase font-bold tracking-widest text-[#475569] font-mono px-3 mb-1">
-            Browse Rulesets
+            Browse Guidelines
           </p>
           
           <button
@@ -510,21 +568,12 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
               {/* Action buttons */}
               <div className="flex items-center space-x-2 print:hidden">
                 <button
-                  id="print-policy-btn"
-                  onClick={handlePrint}
-                  className="px-3.5 py-2 hover:bg-slate-100 text-slate-700 bg-white border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Print Guidelines</span>
-                </button>
-                
-                <button
                   id="download-policy-btn"
                   onClick={handleDownload}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-600/5 hover:shadow-md text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                  className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 hover:shadow-indigo-600/10 hover:shadow-md text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer border border-indigo-550 shadow-sm"
                 >
-                  <Download className="w-3.5 h-3.5 text-indigo-100" />
-                  <span>Download (.TXT)</span>
+                  <Download className="w-4 h-4 text-indigo-100" />
+                  <span>Download PDF</span>
                 </button>
               </div>
             </div>
@@ -575,22 +624,22 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
                 <div className="space-y-4">
                   <div className="flex items-center space-x-2 border-b border-indigo-100/50 pb-2 mb-3">
                     <span className="w-1.5 h-3 bg-indigo-500 rounded-full"></span>
-                    <h3 className="text-xs font-black uppercase text-indigo-900 tracking-wider font-mono">
-                      हिन्दी अनुवाद / Roman Hindi Guidelines
+                    <h3 className="text-xs font-bold uppercase text-indigo-900 tracking-wider font-hindi">
+                      आधिकारिक हिन्दी मार्गदर्शिका (Hindi Translation)
                     </h3>
                   </div>
 
                   {currentPolicy.hindiRules.map((rule, idx) => (
                     <div key={idx} className="p-4 bg-indigo-50/20 border border-indigo-50 rounded-2xl hover:bg-indigo-50/30 transition-colors">
                       <div className="flex items-start space-x-2.5">
-                        <div className="w-5 h-5 bg-indigo-200/50 text-indigo-800 text-[10px] font-black rounded-full flex items-center justify-center shrink-0 mt-0.5 font-mono">
+                        <div className="w-5.5 h-5.5 bg-indigo-200/50 text-indigo-850 text-xs font-bold rounded-full flex items-center justify-center shrink-0 mt-0.5 font-sans">
                           {idx + 1}
                         </div>
-                        <div className="space-y-0.5">
-                          <h4 className="text-xs font-bold text-slate-950">
+                        <div className="space-y-1">
+                          <h4 className="text-[13.5px] font-bold text-slate-950 font-hindi leading-snug">
                             {rule.title}
                           </h4>
-                          <p className="text-[11px] text-slate-700 leading-relaxed font-sans">
+                          <p className="text-[12px] text-slate-700 leading-relaxed font-hindi">
                             {rule.details}
                           </p>
                         </div>
