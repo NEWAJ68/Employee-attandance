@@ -405,30 +405,6 @@ export default function App() {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(backupObj));
   };
 
-  // One-time automatic deletion of test punches as requested by user
-  useEffect(() => {
-    const isPurgedBefore = localStorage.getItem('calitech_test_purged_v3');
-    if (!isPurgedBefore && attendance.length > 0) {
-      localStorage.setItem('calitech_test_purged_v3', 'yes');
-      
-      console.log('User requested automatic deletion of all test punch records. Purging Firestore attendance logs...');
-      const deletePromises = attendance.map(rec => {
-        const docId = `${rec.date}_${rec.employeeId}`;
-        return deleteDoc(doc(db, 'attendance', docId)).catch(err => {
-          console.error('Error deleting test punch record:', docId, err);
-        });
-      });
-      
-      Promise.all(deletePromises).then(() => {
-        handleRaiseNotification(
-          'Test Records Cleared',
-          'All historical test punches have been successfully cleared out as requested!',
-          'success'
-        );
-      });
-    }
-  }, [attendance]);
-
   // Sync to localCache as reactive backup automatically on React states variations
   useEffect(() => {
     handleSaveToLocalStorage();
