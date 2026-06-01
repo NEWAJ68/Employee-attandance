@@ -833,7 +833,24 @@ export default function AttendanceTerminal({
     }
   }, [loggedInEmployee]);
 
+  const handleClosePunchAnimation = () => {
+    setPunchAnimation(null);
+    if (!loggedInEmployee) {
+      setSelectedEmpId('');
+    }
+  };
 
+  // Auto Reset for Kiosk Mode:
+  // If a user punches but walks away without dismissing the popup, automatically dismiss it
+  // and clear the selection after 10 seconds.
+  useEffect(() => {
+    if (punchAnimation && !loggedInEmployee) {
+      const timer = setTimeout(() => {
+        handleClosePunchAnimation();
+      }, 10000); // 10 seconds auto-dismissal
+      return () => clearTimeout(timer);
+    }
+  }, [punchAnimation, loggedInEmployee]);
 
   // Notifications permission state
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(() => {
@@ -2268,7 +2285,7 @@ export default function AttendanceTerminal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-md"
-            onClick={() => setPunchAnimation(null)}
+            onClick={handleClosePunchAnimation}
           >
             <motion.div
               initial={{ scale: 0.82, opacity: 0, y: 20 }}
@@ -2362,7 +2379,7 @@ export default function AttendanceTerminal({
 
               <button
                 type="button"
-                onClick={() => setPunchAnimation(null)}
+                onClick={handleClosePunchAnimation}
                 className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
               >
                 Dismiss

@@ -1094,7 +1094,9 @@ function saveSettings(configs) {
                             <tr key={i} className="hover:bg-slate-55/20 text-3xs">
                               <td className="py-2 px-4 border-r font-semibold text-slate-900">{formatDateDMY(rec.date)}</td>
                               <td className="py-2 px-3 border-r font-black text-indigo-600">{rec.employeeId}</td>
-                              <td className="py-2 px-3 border-r text-slate-800 font-sans font-semibold">{rec.employeeName}</td>
+                              <td className="py-2 px-3 border-r text-slate-800 font-sans font-semibold">
+                                {employees.find((e) => e.id === rec.employeeId)?.name || rec.employeeName}
+                              </td>
                               <td className="py-2 px-3 border-r capitalize font-semibold text-slate-700">{rec.status}</td>
                               <td className="py-2 px-3 border-r">{rec.entryTime || '--'}</td>
                               <td className="py-2 px-3 border-r">{rec.lunchOut || '--'}</td>

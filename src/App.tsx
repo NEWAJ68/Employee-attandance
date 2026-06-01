@@ -411,6 +411,62 @@ export default function App() {
     handleSaveToLocalStorage();
   }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
 
+  // Dynamic Self-Healing for Employee ID Changes
+  // If the admin changes an employee's ID, any active/cached session on the employee's device
+  // might still be using the old ID. This sync effect detects that mismatch, automatically resolves
+  // the email against the live employees roster, heals the active session, and migrates any
+  // orphaned attendance records (punched today or historically) to the new ID.
+  useEffect(() => {
+    if (loggedInEmployee && employees.length > 0) {
+      // Find the corresponding profile match in the live database roster by unique email
+      const freshProfile = employees.find(
+        (emp) => emp.email && loggedInEmployee.email && emp.email.toLowerCase() === loggedInEmployee.email.toLowerCase()
+      );
+
+      if (freshProfile && freshProfile.id !== loggedInEmployee.id) {
+        const oldId = loggedInEmployee.id;
+        const newId = freshProfile.id;
+        console.log(`Self-Healing Activated: Migrating session for ${freshProfile.name} from stale ID "${oldId}" to active ID "${newId}"`);
+
+        // 1. Safe update of the logged-in session state
+        setLoggedInEmployee(freshProfile);
+
+        // 2. Identify and safely migrate any attendance records created with the stale ID
+        const affectedAttendance = attendance.filter((rec) => rec.employeeId === oldId);
+        if (affectedAttendance.length > 0) {
+          console.log(`Self-Healing: Migrating ${affectedAttendance.length} attendance records to correct ID "${newId}"`);
+
+          // Optimistically update local attendance state
+          setAttendance((prev) =>
+            prev.map((rec) =>
+              rec.employeeId === oldId
+                ? { ...rec, employeeId: newId, employeeName: freshProfile.name }
+                : rec
+            )
+          );
+
+          // Delete stale documents and recreate with correct active ID in Firestore
+          affectedAttendance.forEach((rec) => {
+            const oldDocId = `${rec.date}_${oldId}`;
+            const newDocId = `${rec.date}_${newId}`;
+            const updatedRecord = {
+              ...rec,
+              employeeId: newId,
+              employeeName: freshProfile.name,
+            };
+
+            deleteDoc(doc(db, 'attendance', oldDocId)).catch((err) =>
+              console.warn(`Self-heal delete of doc "${oldDocId}" failed:`, err)
+            );
+            setDoc(doc(db, 'attendance', newDocId), updatedRecord).catch((err) =>
+              console.warn(`Self-heal write of doc "${newDocId}" failed:`, err)
+            );
+          });
+        }
+      }
+    }
+  }, [employees, loggedInEmployee, attendance]);
+
   // Automatic Real-time Google Sheets Mirroring on dynamic snapshot updates
   useEffect(() => {
     if (!googleAccessToken || !googleSpreadsheetId || !settings.autoSyncSheets) {
@@ -864,18 +920,35 @@ export default function App() {
     }
   };
 
-  const handleUpdateAttendance = async (updatedRecord: AttendanceRecord) => {
+  const handleUpdateAttendance = async (updatedRecord: AttendanceRecord, originalEmployeeId?: string, originalDate?: string) => {
+    const oldEmpId = originalEmployeeId || updatedRecord.employeeId;
+    const oldDate = originalDate || updatedRecord.date;
+    const isKeyChanged = oldEmpId !== updatedRecord.employeeId || oldDate !== updatedRecord.date;
+
     const docId = `${updatedRecord.date}_${updatedRecord.employeeId}`;
+    const oldDocId = `${oldDate}_${oldEmpId}`;
+
     try {
       // Optimistic state update: update local state instantly before waiting for DB
-      setAttendance((prev) => prev.map(rec => rec.date === updatedRecord.date && rec.employeeId === updatedRecord.employeeId ? updatedRecord : rec));
+      setAttendance((prev) => {
+        let list = prev;
+        if (isKeyChanged) {
+          // Filter out the old record to prevent duplicates
+          list = list.filter(rec => !(rec.date === oldDate && rec.employeeId === oldEmpId));
+        }
+        return [...list.filter(rec => !(rec.date === updatedRecord.date && rec.employeeId === updatedRecord.employeeId)), updatedRecord];
+      });
 
       // Determine connection state
       const isOfflineMode = firebaseStatus === 'offline' || !navigator.onLine;
 
       if (isOfflineMode) {
         setPunchQueue(prev => {
-          const filtered = prev.filter(r => !(r.date === updatedRecord.date && r.employeeId === updatedRecord.employeeId));
+          let list = prev;
+          if (isKeyChanged) {
+            list = list.filter(r => !(r.date === oldDate && r.employeeId === oldEmpId));
+          }
+          const filtered = list.filter(r => !(r.date === updatedRecord.date && r.employeeId === updatedRecord.employeeId));
           return [...filtered, updatedRecord];
         });
 
@@ -886,6 +959,11 @@ export default function App() {
           updatedRecord.employeeId
         );
       } else {
+        if (isKeyChanged) {
+          // Delete old record from Firestore to avoid leaving orphans
+          deleteDoc(doc(db, 'attendance', oldDocId)).catch(err => console.warn('Failed to delete old record during key change:', err));
+        }
+
         // Fire Firestore write asynchronously in the background
         setDoc(doc(db, 'attendance', docId), updatedRecord).catch(err => {
           console.warn('Firestore direct write failed, adding updated punch to offline queue:', err);

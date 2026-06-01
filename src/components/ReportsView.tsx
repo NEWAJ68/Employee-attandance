@@ -26,7 +26,7 @@ interface ReportsViewProps {
   attendance: AttendanceRecord[];
   settings: Settings;
   onAddAttendance: (record: AttendanceRecord) => void;
-  onUpdateAttendance: (record: AttendanceRecord) => void;
+  onUpdateAttendance: (record: AttendanceRecord, originalEmployeeId?: string, originalDate?: string) => void;
   onClearAttendance?: () => Promise<void>;
 }
 
@@ -114,9 +114,9 @@ export default function ReportsView({
     setFormEmployeeId(employees[0]?.id || '');
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormEntryTime('09:00');
-    setFormLunchOut('13:00');
-    setFormLunchIn('14:00');
-    setFormExitTime('18:00');
+    setFormLunchOut('');
+    setFormLunchIn('');
+    setFormExitTime('');
     setFormHasShift2(false);
     setFormEntryTime2('18:30');
     setFormExitTime2('22:00');
@@ -209,7 +209,8 @@ export default function ReportsView({
     if (modalMode === 'add') {
       onAddAttendance(recordPayload);
     } else {
-      onUpdateAttendance(recordPayload);
+      const [originalDate, originalEmpId] = selectedRecordId ? selectedRecordId.split('_') : ['', ''];
+      onUpdateAttendance(recordPayload, originalEmpId, originalDate);
     }
 
     setIsModalOpen(false);
@@ -320,7 +321,7 @@ export default function ReportsView({
       const row = [
         rec.date,
         rec.employeeId,
-        `"${rec.employeeName.replace(/"/g, '""')}"`,
+        `"${(emp?.name || rec.employeeName || "").replace(/"/g, '""')}"`,
         rate,
         addr,
         rec.entryTime || '--:--',
@@ -481,7 +482,7 @@ export default function ReportsView({
             <tr style="border-bottom: 1px solid #f1f5f9;">
               <td style="padding: 6px 4px; font-weight: 550; font-family: monospace; color: #334155; white-space: nowrap; text-align: left;">${formatDateDMY(rec.date)}</td>
               <td style="padding: 6px 4px; font-family: monospace; color: #64748b; white-space: nowrap; text-align: left;">${rec.employeeId}</td>
-              <td style="padding: 6px 4px; font-weight: bold; color: #0f172a; white-space: nowrap; text-align: left;">${rec.employeeName}</td>
+              <td style="padding: 6px 4px; font-weight: bold; color: #0f172a; white-space: nowrap; text-align: left;">${emp?.name || rec.employeeName || "Unknown Staff"}</td>
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; white-space: nowrap;">${rec.entryTime || '--:--'}</td>
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #64748b; white-space: nowrap;">${rec.lunchOut || '--:--'}</td>
               <td style="padding: 6px 4px; text-align: center; font-family: monospace; color: #64748b; white-space: nowrap;">${rec.lunchIn || '--:--'}</td>
@@ -1416,7 +1417,7 @@ export default function ReportsView({
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex flex-col">
-                          <span className="text-slate-900 font-bold">{rec.employeeName}</span>
+                          <span className="text-slate-900 font-bold">{emp?.name || rec.employeeName}</span>
                           <span className="text-3xs font-mono text-slate-400 uppercase tracking-widest">{rec.employeeId}</span>
                         </div>
                       </td>
@@ -1558,7 +1559,6 @@ export default function ReportsView({
                     Staff Member
                   </label>
                   <select
-                    disabled={modalMode === 'edit'}
                     value={formEmployeeId}
                     onChange={(e) => setFormEmployeeId(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 font-medium disabled:opacity-60 disabled:bg-slate-150"
@@ -1579,7 +1579,6 @@ export default function ReportsView({
                   </label>
                   <input
                     type="date"
-                    disabled={modalMode === 'edit'}
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
                     className="w-full px-3.5 py-2 border border-slate-200 bg-slate-50 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500/30 font-mono disabled:opacity-60 disabled:bg-slate-150"
@@ -1595,9 +1594,20 @@ export default function ReportsView({
 
                 <div className="grid grid-cols-2 gap-3 pb-1">
                   <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
-                      S1 In (Check-In)
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[9px] uppercase tracking-widest text-slate-500 font-mono">
+                        S1 In (Check-In)
+                      </label>
+                      {formEntryTime && (
+                        <button
+                          type="button"
+                          onClick={() => setFormEntryTime('')}
+                          className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="time"
                       value={formEntryTime}
@@ -1606,9 +1616,20 @@ export default function ReportsView({
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
-                      S1 Out (Check-Out)
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[9px] uppercase tracking-widest text-slate-500 font-mono">
+                        S1 Out (Check-Out)
+                      </label>
+                      {formExitTime && (
+                        <button
+                          type="button"
+                          onClick={() => setFormExitTime('')}
+                          className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="time"
                       value={formExitTime}
@@ -1620,9 +1641,20 @@ export default function ReportsView({
 
                 <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100/60">
                   <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
-                      S1 Lunch Out
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[9px] uppercase tracking-widest text-slate-500 font-mono">
+                        S1 Lunch Out
+                      </label>
+                      {formLunchOut && (
+                        <button
+                          type="button"
+                          onClick={() => setFormLunchOut('')}
+                          className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="time"
                       value={formLunchOut}
@@ -1631,9 +1663,20 @@ export default function ReportsView({
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-500 mb-1 font-mono">
-                      S1 Lunch In
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[9px] uppercase tracking-widest text-slate-500 font-mono">
+                        S1 Lunch In
+                      </label>
+                      {formLunchIn && (
+                        <button
+                          type="button"
+                          onClick={() => setFormLunchIn('')}
+                          className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="time"
                       value={formLunchIn}
@@ -1667,9 +1710,20 @@ export default function ReportsView({
 
                   <div className="grid grid-cols-2 gap-3 pb-1">
                     <div>
-                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
-                        S2 In (Check-In)
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-indigo-600 font-mono">
+                          S2 In (Check-In)
+                        </label>
+                        {formEntryTime2 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormEntryTime2('')}
+                            className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                          >
+                            ✕ Clear
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="time"
                         value={formEntryTime2}
@@ -1678,9 +1732,20 @@ export default function ReportsView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
-                        S2 Out (Check-Out)
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-indigo-600 font-mono">
+                          S2 Out (Check-Out)
+                        </label>
+                        {formExitTime2 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormExitTime2('')}
+                            className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                          >
+                            ✕ Clear
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="time"
                         value={formExitTime2}
@@ -1692,9 +1757,20 @@ export default function ReportsView({
 
                   <div className="grid grid-cols-2 gap-3 pt-1 border-t border-indigo-100/40">
                     <div>
-                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
-                        Dinner Out (Break)
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-indigo-600 font-mono">
+                          Dinner Out (Break)
+                        </label>
+                        {formDinnerOut && (
+                          <button
+                            type="button"
+                            onClick={() => setFormDinnerOut('')}
+                            className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                          >
+                            ✕ Clear
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="time"
                         value={formDinnerOut}
@@ -1703,9 +1779,20 @@ export default function ReportsView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] uppercase tracking-widest text-indigo-600 mb-1 font-mono">
-                        Dinner In (Return)
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-indigo-600 font-mono">
+                          Dinner In (Return)
+                        </label>
+                        {formDinnerIn && (
+                          <button
+                            type="button"
+                            onClick={() => setFormDinnerIn('')}
+                            className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                          >
+                            ✕ Clear
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="time"
                         value={formDinnerIn}
@@ -2263,7 +2350,7 @@ export default function ReportsView({
                             </td>
                             <td className="py-2 px-3 whitespace-nowrap">
                               <div className="flex flex-col text-left">
-                                <span className="font-bold text-slate-800 whitespace-nowrap">{rec.employeeName}</span>
+                                <span className="font-bold text-slate-800 whitespace-nowrap">{emp?.name || rec.employeeName}</span>
                                 <span className="text-[9px] text-slate-400 font-mono whitespace-nowrap">{rec.employeeId}</span>
                               </div>
                             </td>
