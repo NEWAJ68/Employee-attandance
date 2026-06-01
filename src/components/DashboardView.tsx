@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { 
   Users, 
   Clock, 
@@ -20,10 +22,11 @@ import {
   AlertTriangle,
   MapPin,
   Megaphone,
-  Send
+  Send,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, AppNotification, LeaveRequest } from '../types';
-import { getShiftConfig, minutesDiffFromStart } from '../utils/calculations';
+import { getShiftConfig, minutesDiffFromStart, calculateEarnings, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
 
 interface DashboardViewProps {
   employees: Employee[];
@@ -57,6 +60,13 @@ export default function DashboardView({
   const [refreshKey, setRefreshKey] = useState(0); // For mock real-time dashboard refresh click!
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [activeSelfieUrl, setActiveSelfieUrl] = useState<{ url: string; label: string; name: string } | null>(null);
+  const [isAdminGeneratingPdf, setIsAdminGeneratingPdf] = useState(false);
+
+  // States for Admin Monthly PDF Statement Downloader
+  const [selectedStatementEmpId, setSelectedStatementEmpId] = useState('');
+  const [selectedStatementMonth, setSelectedStatementMonth] = useState(() => {
+    return new Date().toISOString().slice(0, 7); // Default to current month "YYYY-MM"
+  });
 
   // States for Administrative Memo / Notification dispatcher
   const [targetEmployeeId, setTargetEmployeeId] = useState('');
@@ -92,6 +102,673 @@ export default function DashboardView({
         : 'Broadcast announcement successfully published, all active employee noticeboards updated!'
     );
     setTimeout(() => setNotifSuccessText(''), 5500);
+  };
+
+  const getFriendlyMonthName = (monthStr: string) => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const handleDownloadAdminStatement = async () => {
+    if (!selectedStatementEmpId) {
+      alert("Please select an employee first to download their statement.");
+      return;
+    }
+    const selectedEmp = employees.find(emp => emp.id === selectedStatementEmpId);
+    if (!selectedEmp) {
+      alert("Selected employee not found.");
+      return;
+    }
+
+    setIsAdminGeneratingPdf(true);
+    try {
+      // Small delay to let rendering refresh if needed
+      await new Promise((resolve) => setTimeout(resolve, 310));
+      const page1 = document.getElementById("admin-attendance-statement-direct-pdf-page-1");
+      const page2 = document.getElementById("admin-attendance-statement-direct-pdf-page-2");
+      if (!page1 || !page2) {
+        throw new Error("Target PDF pages not detected inside DOM");
+      }
+
+      const canvas1 = await html2canvas(page1, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const canvas2 = await html2canvas(page2, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgWidth = 210;
+      const imgHeight = 297; // exact A4 height in mm
+
+      const imgData1 = canvas1.toDataURL("image/png");
+      pdf.addImage(imgData1, "PNG", 0, 0, imgWidth, imgHeight, undefined, 'FAST');
+
+      pdf.addPage();
+      const imgData2 = canvas2.toDataURL("image/png");
+      pdf.addImage(imgData2, "PNG", 0, 0, imgWidth, imgHeight, undefined, 'FAST');
+
+      pdf.save(`Attendance_Statement_${selectedEmp.id}_${selectedStatementMonth}.pdf`);
+    } catch (err) {
+      console.error("Direct PDF rendering aborted:", err);
+      alert("Something went wrong compiling PDF. Please try again.");
+    } finally {
+      setIsAdminGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadAdminStatement_deprecated_do_not_use = () => {
+    if (!selectedStatementEmpId) {
+      alert("Please select an employee first to download their statement.");
+      return;
+    }
+    const selectedEmp = employees.find(emp => emp.id === selectedStatementEmpId);
+    if (!selectedEmp) {
+      alert("Selected employee not found.");
+      return;
+    }
+
+    const companyName = settings?.companyName || 'Apex Tech Solutions';
+    const friendlyMonth = getFriendlyMonthName(selectedStatementMonth);
+    const printedOn = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }) + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Filter attendance logs for selected employee and month
+    const empLogs = attendance.filter(rec => rec.employeeId === selectedStatementEmpId && rec.date.startsWith(selectedStatementMonth));
+    const safeSettings = settings;
+
+    // Use calculations utility helper
+    const processedLogs = getProcessedLogsForEmployee(empLogs, selectedEmp, selectedStatementMonth, safeSettings);
+
+    const presentDaysCount = processedLogs.filter(l => ['Present', 'Late Entry', 'Night Shift'].includes(l.status)).length;
+    const halfDaysCount = processedLogs.filter(l => l.status === 'Half Day').length;
+    const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
+    const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
+
+    const sumWorkHours = processedLogs.reduce((acc, current) => {
+      const rec = current.rawRecord;
+      if (!rec) return acc;
+      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+      if (isIncomplete || current.hours < 3) return acc;
+      return acc + current.hours;
+    }, 0);
+
+    const totalOvertimeHours = processedLogs.reduce((acc, curr) => {
+      const rec = curr.rawRecord;
+      if (!rec) return acc;
+      const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+      if (isIncomplete || curr.hours < 3) return acc;
+      return acc + curr.overtime;
+    }, 0);
+
+    let regularPay = 0;
+    let overtimePay = 0;
+    let totalPay = 0;
+
+    if (selectedEmp.monthlySalary && selectedEmp.monthlySalary > 0) {
+      processedLogs.forEach(curr => {
+        const rec = curr.rawRecord;
+        if (!rec) return;
+        const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+        const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+        const dayEarnings = calculateEarnings(
+          curr.hours,
+          curr.overtime,
+          selectedEmp.hourlyRate,
+          settings?.overtimeRateMultiplier || 1.5,
+          isIncomplete,
+          selectedEmp.monthlySalary,
+          isHalfDay
+        );
+        regularPay += dayEarnings.regularPay + (curr.extraSundayPay || 0);
+        overtimePay += dayEarnings.overtimePay;
+        totalPay += dayEarnings.totalPay + (curr.extraSundayPay || 0);
+      });
+      regularPay = Math.round(regularPay * 100) / 100;
+      overtimePay = Math.round(overtimePay * 100) / 100;
+      totalPay = Math.round(totalPay * 100) / 100;
+    } else {
+      const earnings = calculateEarnings(
+        sumWorkHours,
+        totalOvertimeHours,
+        selectedEmp.hourlyRate,
+        settings?.overtimeRateMultiplier || 1.5
+      );
+      const extraSundayWages = processedLogs.reduce((sum, curr) => sum + (curr.extraSundayPay || 0), 0);
+      regularPay = earnings.regularPay + extraSundayWages;
+      overtimePay = earnings.overtimePay;
+      totalPay = earnings.totalPay + extraSundayWages;
+    }
+
+    const page1Logs = processedLogs.filter(curr => {
+      const day = parseInt(curr.dateString.split('-')[2], 10);
+      return day <= 16;
+    });
+    const page2Logs = processedLogs.filter(curr => {
+      const day = parseInt(curr.dateString.split('-')[2], 10);
+      return day >= 17;
+    });
+
+    const getRowHtml = (curr: any) => {
+      const rec = curr.rawRecord;
+      const hoursStr = curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--';
+      const otStr = curr.overtime > 0 ? `${curr.overtime.toFixed(2)}h` : '--';
+      const statusColor = curr.status === 'Present' ? '#10b981' : 
+                          curr.status === 'Half Day' ? '#b45309' :
+                          curr.status === 'Late Entry' ? '#f59e0b' :
+                          curr.status === 'On Leave' ? '#4f46e5' :
+                          curr.status === 'Weekly Off' ? '#64748b' : '#ef4444';
+
+      let dayEarnings = { regularPay: 0, overtimePay: 0, totalPay: 0 };
+      if (rec) {
+        const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+        const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+        const baseEarnings = calculateEarnings(
+          curr.hours,
+          curr.overtime,
+          selectedEmp.hourlyRate,
+          settings?.overtimeRateMultiplier || 1.5,
+          isIncomplete,
+          selectedEmp.monthlySalary,
+          isHalfDay
+        );
+        dayEarnings = {
+          regularPay: baseEarnings.regularPay + (curr.extraSundayPay || 0),
+          overtimePay: baseEarnings.overtimePay,
+          totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+        };
+      } else if (curr.extraSundayPay) {
+        dayEarnings = {
+          regularPay: curr.extraSundayPay,
+          overtimePay: 0,
+          totalPay: curr.extraSundayPay
+        };
+      }
+
+      return `
+        <tr>
+          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${formatDateDMY(curr.dateString)}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.dayLabel}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; color: ${statusColor}; text-align: center;">${curr.status}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockIn}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${curr.clockOut}</td>
+          <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-weight: bold; color: #475569;">${rec?.selectedWorkLocation || '--'}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${hoursStr}</td>
+          <td style="font-family: monospace; border: 1px solid #e2e8f0; padding: 8px; text-align: center; color: #4f46e5;">${otStr}</td>
+          <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #1e3a8a;">₹${dayEarnings.totalPay.toFixed(2)}</td>
+        </tr>
+      `;
+    };
+
+    const page1Rows = page1Logs.map(getRowHtml).join('');
+    const page2Rows = page2Logs.map(getRowHtml).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Attendance Statement - ${selectedEmp.name} - ${friendlyMonth}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+    }
+    .container {
+      max-width: 900px;
+      margin: 30px auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      border: 1px solid #e2e8f0;
+    }
+    .print-banner {
+      background: #e0e7ff;
+      border: 1px solid #6366f1;
+      color: #3730a3;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px double #cbd5e1;
+      padding-bottom: 20px;
+      margin-bottom: 25px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.025em;
+    }
+    .header p {
+      margin: 4px 0 0 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-cols: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 25px;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .meta-item {
+      font-size: 12px;
+    }
+    .meta-label {
+      font-weight: bold;
+      color: #64748b;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .meta-val {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 13px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-cols: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 25px;
+    }
+    .stat-card {
+      border: 1px solid #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      background: #fafafa;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      font-weight: bold;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .stat-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0d1e3d;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 30px;
+    }
+    th {
+      background: #0f172a;
+      color: white;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      border: 1px solid #1e293b;
+      padding: 10px 8px;
+    }
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .signatures-section {
+      display: grid;
+      grid-template-cols: repeat(2, 1fr);
+      gap: 40px;
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .sign-box {
+      border-top: 1px dashed #cbd5e1;
+      text-align: center;
+      padding-top: 8px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #475569;
+    }
+    .print-only-header {
+      display: none;
+    }
+    .print-page2-spacer {
+      display: none;
+    }
+    @media print {
+      @page {
+        margin-top: 15mm !important;
+        margin-bottom: 15mm !important;
+        margin-left: 15mm !important;
+        margin-right: 15mm !important;
+      }
+      body {
+        background: white;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+      }
+      .print-banner {
+        display: none !important;
+      }
+      .print-only-header {
+        display: block !important;
+      }
+      /* Compact styling for print to squeeze everything into exactly 2 pages */
+      .header {
+        display: none !important;
+      }
+      h3 {
+        margin-top: 15px !important;
+        margin-bottom: 6px !important;
+        font-size: 11px !important;
+      }
+      .stat-card {
+        padding: 6px 4px !important;
+        border-radius: 6px !important;
+      }
+      .stat-lbl {
+        font-size: 8px !important;
+        margin-bottom: 2px !important;
+      }
+      .stat-val {
+        font-size: 13px !important;
+      }
+      th {
+        padding: 5px 3px !important;
+        font-size: 8px !important;
+      }
+      td {
+        padding: 4px 3px !important;
+        font-size: 8.5px !important;
+      }
+      tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .meta-table {
+        margin-bottom: 12px !important;
+        padding: 10px !important;
+        border-spacing: 6px !important;
+      }
+      .stats-table {
+        margin-bottom: 12px !important;
+        border-spacing: 6px 0 !important;
+      }
+      .payout-table {
+        margin-bottom: 12px !important;
+        border-spacing: 6px 0 !important;
+      }
+      .signatures-table {
+        margin-top: 25px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Beautiful Corporate Header (Printed Page 1) -->
+    <div class="print-only-header">
+      <table style="width: 100%; border: none; margin-bottom: 8px; border-collapse: collapse; background: transparent;">
+        <tr style="background: transparent;">
+          <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 12px; font-weight: 850; color: #0f172a; text-align: left; vertical-align: middle; line-height: 1.2;">
+            <div style="font-size: 14px; font-weight: 950; letter-spacing: -0.01e; color: #0f172a;">${companyName}</div>
+            <span style="font-size: 9.5px; font-weight: bold; color: #475569; display: block; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase;">Employee Attendance & Wage Statement</span>
+          </td>
+          <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 9.5px; font-weight: bold; color: #334155; text-align: right; vertical-align: middle; line-height: 1.35;">
+            <div>Statement Period: <span style="color: #0f172a;">${friendlyMonth}</span></div>
+            <div style="font-size: 8px; font-weight: normal; color: #64748b; margin-top: 2px;">Generated On: ${printedOn}</div>
+          </td>
+        </tr>
+      </table>
+      <div style="border-bottom: 2px solid #0f172a; margin-bottom: 18px; width: 100%;"></div>
+    </div>
+
+    <div class="print-banner">
+      📄 Press Ctrl+P (or Cmd+P on Mac) to print this page or save as a digital PDF!
+    </div>
+
+    <div class="header">
+      <div>
+        <h1>${companyName}</h1>
+        <p>Employee Attendance & Wage Statement</p>
+      </div>
+      <div style="text-align: right; font-size: 12px; color: #475569;">
+        <div>Statement Period: <strong>${friendlyMonth}</strong></div>
+        <div style="font-size: 10px; margin-top: 4px;">Generated On: ${printedOn}</div>
+      </div>
+    </div>
+
+    <table class="meta-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px; margin-bottom: 25px; background: #f1f5f9; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; vertical-align: top; width: 35%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Employee Name</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.name}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top; width: 25%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Employee ID</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.id}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top; width: 40%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Department Unit</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.department}</div>
+        </td>
+      </tr>
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Designation / Role</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.designation || 'Staff'}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Joined Date</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.joinedDate}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Monthly Fixed Salary</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${selectedEmp.monthlySalary ? `₹${selectedEmp.monthlySalary.toFixed(2)}/mo` : 'N/A'} <span style="font-weight: normal; color: #64748b; font-size: 11px;">(OT: ₹${selectedEmp.hourlyRate.toFixed(2)}/hr)</span></div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="stats-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 25px; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Days Present</div>
+            <div class="stat-val" style="color: #10b981;">${presentDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Half Days</div>
+            <div class="stat-val" style="color: #b45309;">${halfDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Days Absent</div>
+            <div class="stat-val" style="color: #ef4444;">${absentDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Active Leave</div>
+            <div class="stat-val" style="color: #4f46e5;">${leavesCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Total Work Hours</div>
+            <div class="stat-val" style="color: #0d1e3d;">${sumWorkHours.toFixed(1)} hrs</div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="payout-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 25px; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Standard Hours Pay</div>
+            <div class="stat-val">₹${regularPay.toFixed(2)}</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Overtime Compensation</div>
+            <div class="stat-val" style="color: #4f46e5;">₹${overtimePay.toFixed(2)}</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card" style="background: #e0f2fe; border-color: #bae6fd;">
+            <div class="stat-lbl">Calculated Payout</div>
+            <div class="stat-val" style="color: #0369a1; font-size: 16px; font-weight: 900;">₹${totalPay.toFixed(2)}</div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <h3 style="font-size: 13px; text-transform: uppercase; color: #334155; margin-bottom: 12px; margin-top: 30px; letter-spacing: 0.05em;">Shift Logs & Punch Records</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Status</th>
+          <th>Entry</th>
+          <th>Exit</th>
+          <th>Work Location</th>
+          <th>Worked Hours</th>
+          <th>Overtime Hours</th>
+          <th>Wage (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${page1Rows}
+      </tbody>
+    </table>
+
+    ${page2Logs.length > 0 ? `
+      <!-- Elegant Page Break -->
+      <div style="page-break-before: always; break-before: page; height: 1px;"></div>
+      
+      <!-- Beautiful Corporate Header (Printed Page 2) -->
+      <div class="print-only-header">
+        <table style="width: 100%; border: none; margin-bottom: 8px; border-collapse: collapse; background: transparent;">
+          <tr style="background: transparent;">
+            <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 12px; font-weight: 850; color: #0f172a; text-align: left; vertical-align: middle; line-height: 1.2;">
+              <div style="font-size: 14px; font-weight: 950; letter-spacing: -0.01e; color: #0f172a;">${companyName}</div>
+              <span style="font-size: 9.5px; font-weight: bold; color: #475569; display: block; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase;">Employee Attendance & Wage Statement (Continued)</span>
+            </td>
+            <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 9.5px; font-weight: bold; color: #334155; text-align: right; vertical-align: middle; line-height: 1.35;">
+              <div>Statement Period: <span style="color: #0f172a;">${friendlyMonth}</span></div>
+              <div style="font-size: 8px; font-weight: normal; color: #64748b; margin-top: 2px;">Generated On: ${printedOn}</div>
+            </td>
+          </tr>
+        </table>
+        <div style="border-bottom: 2px solid #0f172a; margin-bottom: 18px; width: 100%;"></div>
+      </div>
+      
+      <h3 style="font-size: 12px; text-transform: uppercase; color: #334155; margin-bottom: 8px; margin-top: 10px; letter-spacing: 0.05em;">Shift Logs & Punch Records (Continued)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Status</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Work Location</th>
+            <th>Worked Hours</th>
+            <th>Overtime Hours</th>
+            <th>Wage (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${page2Rows}
+        </tbody>
+      </table>
+    ` : ''}
+
+    <table class="signatures-table" style="width: 100%; border: none; border-collapse: collapse; margin-top: 50px; background: transparent;">
+      <tr style="background: transparent;">
+        <td style="width: 45%; border: none; padding: 0; background: transparent;">
+          <div style="border-top: 1px dashed #cbd5e1; text-align: center; padding-top: 8px; font-size: 12px; font-weight: bold; color: #475569;">
+            Employee Signature
+          </div>
+        </td>
+        <td style="width: 10%; border: none; padding: 0; background: transparent;"></td>
+        <td style="width: 45%; border: none; padding: 0; background: transparent;">
+          <div style="border-top: 1px dashed #cbd5e1; text-align: center; padding-top: 8px; font-size: 12px; font-weight: bold; color: #475569;">
+            Authorized Representative Sign / Stamp
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const docName = `Attendance_Statement_${selectedEmp.id}_${selectedStatementMonth}.html`;
+    link.setAttribute('download', docName);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Triggering visual refresh
@@ -228,7 +905,48 @@ export default function DashboardView({
             Real-time telemetry and schedule metrics of Apex Tech Solutions.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Admin Monthly Statement Downloader */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-indigo-50/70 p-3 sm:py-1.5 sm:px-3 border border-indigo-100 rounded-xl shadow-2xs w-full lg:w-auto">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-800 font-mono hidden md:inline-block">Statement Builder:</span>
+            <select
+              value={selectedStatementEmpId}
+              onChange={(e) => setSelectedStatementEmpId(e.target.value)}
+              className="w-full sm:w-auto px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 cursor-pointer sm:min-w-[130px] text-center"
+            >
+              <option value="">Select Employee...</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+            <input
+              type="month"
+              value={selectedStatementMonth}
+              onChange={(e) => setSelectedStatementMonth(e.target.value)}
+              className="w-full sm:w-auto px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none cursor-pointer text-slate-700 font-semibold sm:min-w-[110px] text-center"
+            />
+            <button
+              onClick={handleDownloadAdminStatement}
+              disabled={isAdminGeneratingPdf}
+              className={`w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2 sm:py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm cursor-pointer transition-all hover:scale-[1.02] active:scale-95 ${
+                isAdminGeneratingPdf ? 'opacity-75 cursor-not-allowed' : ''
+              }`}
+              title="Download Statement"
+            >
+              {isAdminGeneratingPdf ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin shrink-0"></span>
+                  <span>Generating PDF...</span>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                  <span>Download Statement</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Real-time sync visual indicator */}
           <button
             onClick={triggerRefresh}
@@ -985,6 +1703,438 @@ export default function DashboardView({
           </div>
         </div>
       )}
+
+      {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
+      {selectedStatementEmpId && selectedStatementMonth && (() => {
+        const selectedEmp = employees.find(emp => emp.id === selectedStatementEmpId);
+        if (!selectedEmp) return null;
+        
+        const empLogs = attendance.filter(rec => rec.employeeId === selectedStatementEmpId && rec.date.startsWith(selectedStatementMonth));
+        const processedLogs = getProcessedLogsForEmployee(empLogs, selectedEmp, selectedStatementMonth, settings);
+        
+        const presentDaysCount = processedLogs.filter(l => ['Present', 'Late Entry', 'Night Shift'].includes(l.status)).length;
+        const halfDaysCount = processedLogs.filter(l => l.status === 'Half Day').length;
+        const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
+        const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
+        
+        const sumWorkHours = processedLogs.reduce((acc, current) => {
+          const rec = current.rawRecord;
+          if (!rec) return acc;
+          const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+          if (isIncomplete || current.hours < 3) return acc;
+          return acc + current.hours;
+        }, 0);
+
+        const totalOvertimeHours = processedLogs.reduce((acc, curr) => {
+          const rec = curr.rawRecord;
+          if (!rec) return acc;
+          const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+          if (isIncomplete || curr.hours < 3) return acc;
+          return acc + curr.overtime;
+        }, 0);
+
+        let regularPay = 0;
+        let overtimePay = 0;
+        let totalPay = 0;
+
+        if (selectedEmp.monthlySalary && selectedEmp.monthlySalary > 0) {
+          processedLogs.forEach(curr => {
+            const rec = curr.rawRecord;
+            if (!rec) return;
+            const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+            const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+            const dayEarnings = calculateEarnings(
+              curr.hours,
+              curr.overtime,
+              selectedEmp.hourlyRate,
+              settings?.overtimeRateMultiplier || 1.5,
+              isIncomplete,
+              selectedEmp.monthlySalary,
+              isHalfDay
+            );
+            regularPay += dayEarnings.regularPay + (curr.extraSundayPay || 0);
+            overtimePay += dayEarnings.overtimePay;
+            totalPay += dayEarnings.totalPay + (curr.extraSundayPay || 0);
+          });
+          regularPay = Math.round(regularPay * 100) / 100;
+          overtimePay = Math.round(overtimePay * 100) / 100;
+          totalPay = Math.round(totalPay * 100) / 100;
+        } else {
+          const earnings = calculateEarnings(
+            sumWorkHours,
+            totalOvertimeHours,
+            selectedEmp.hourlyRate,
+            settings?.overtimeRateMultiplier || 1.5
+          );
+          const extraSundayWages = processedLogs.reduce((sum, curr) => sum + (curr.extraSundayPay || 0), 0);
+          regularPay = earnings.regularPay + extraSundayWages;
+          overtimePay = earnings.overtimePay;
+          totalPay = earnings.totalPay + extraSundayWages;
+        }
+
+        const page1LogsEx = processedLogs.slice(0, 15);
+        const page2LogsEx = processedLogs.slice(15);
+
+        return (
+          <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '824px', pointerEvents: 'none' }}>
+            {/* PAGE 1 */}
+            <div id="admin-attendance-statement-direct-pdf-page-1" style={{ 
+              background: '#ffffff', 
+              padding: '40px', 
+              width: '800px', 
+              height: '1130px', 
+              boxSizing: 'border-box', 
+              fontFamily: 'sans-serif',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                {/* Header section */}
+                <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                          {settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}
+                        </h1>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Employee Attendance & Wage Statement
+                        </p>
+                      </td>
+                      <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
+                        <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
+                        <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedStatementMonth)}</div>
+                        <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                          Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* ID Details Card */}
+                <table style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', borderCollapse: 'separate', borderSpacing: '12px', textAlign: 'left', marginBottom: '20px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '33.33%' }}>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee Name</div>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>{selectedEmp.name}</div>
+                      </td>
+                      <td style={{ width: '33.33%' }}>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Employee ID</div>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#1e293b', marginTop: '2px' }}>{selectedEmp.id}</div>
+                      </td>
+                      <td style={{ width: '33.33%' }}>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Department & Designation</div>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
+                          {selectedEmp.department} {selectedEmp.designation ? `• ${selectedEmp.designation}` : ''}
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Joined Date</div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#475569', marginTop: '2px' }}>{selectedEmp.joinedDate || '--'}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Monthly Salary</div>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b', marginTop: '2px' }}>
+                          {selectedEmp.monthlySalary ? `₹${selectedEmp.monthlySalary.toFixed(2)}/mo` : 'N/A'}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '8px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b' }}>Overtime Wage</div>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', color: '#4f46e5', marginTop: '2px' }}>
+                          ₹{selectedEmp.hourlyRate.toFixed(2)}/hr
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Unified Statement Grid View */}
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '10px', marginTop: '5px', marginBottom: '20px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Total Workdays</span>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                          <span style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b' }}>{processedLogs.length}</span>
+                          <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500' }}>days</span>
+                        </div>
+                      </td>
+
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#059669', display: 'block' }}>Days Present</span>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                          <span style={{ fontSize: '18px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
+                          <span style={{ fontSize: '8px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({processedLogs.length > 0 ? Math.round((presentDaysCount / processedLogs.length) * 100) : 0}%)</span>
+                        </div>
+                      </td>
+
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#b45309', display: 'block' }}>Half Days</span>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                          <span style={{ fontSize: '18px', fontWeight: '900', color: '#d97706' }}>{halfDaysCount}</span>
+                          <span style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 'bold', fontFamily: 'monospace' }}>({processedLogs.length > 0 ? Math.round((halfDaysCount / processedLogs.length) * 100) : 0}%)</span>
+                        </div>
+                      </td>
+
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444', display: 'block' }}>Days Absent</span>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                          <span style={{ fontSize: '18px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
+                          <span style={{ fontSize: '8px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} l</span>
+                        </div>
+                      </td>
+
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Log Book Hours</span>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                          <span style={{ fontSize: '18px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
+                          <span style={{ fontSize: '8px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>acc.</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Standard Hours Pay</span>
+                        <div style={{ marginTop: '6px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
+                        </div>
+                      </td>
+
+                      <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Overtime Compensation</span>
+                        <div style={{ marginTop: '6px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
+                        </div>
+                      </td>
+
+                      <td colSpan={3} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
+                        <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#0284c7', display: 'block' }}>Calculated Payout (Net Pay)</span>
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                          <span style={{ fontSize: '20px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
+                          <span style={{ fontSize: '9px', color: '#0284c7', fontWeight: '600' }}>(Estimate for {getFriendlyMonthName(selectedStatementMonth)})</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Attendance list days 1-15 */}
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 8px 0', letterSpacing: '0.025em' }}>Attendance Log (Days 1 - 15)</h3>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
+                        <th style={{ padding: '8px 12px' }}>Day</th>
+                        <th style={{ padding: '8px 12px' }}>Status</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Work Location</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {page1LogsEx.map((curr) => {
+                        const rec = curr.rawRecord;
+                        const statusColor = curr.status === 'Present' ? '#059669' : 
+                                            curr.status === 'Half Day' ? '#b45309' :
+                                            curr.status === 'Late Entry' ? '#d97706' :
+                                            curr.status === 'On Leave' ? '#4f46e5' :
+                                            curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
+
+                        let dayEarnings = { totalPay: 0 };
+                        if (rec) {
+                          const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                          const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                          const baseEarnings = calculateEarnings(
+                            curr.hours,
+                            curr.overtime,
+                            selectedEmp.hourlyRate,
+                            settings?.overtimeRateMultiplier || 1.5,
+                            isIncomplete,
+                            selectedEmp.monthlySalary,
+                            isHalfDay
+                          );
+                          dayEarnings = {
+                            totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+                          };
+                        } else if (curr.extraSundayPay) {
+                          dayEarnings = {
+                            totalPay: curr.extraSundayPay
+                          };
+                        }
+
+                        return (
+                          <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{formatDateDMY(curr.dateString)}</td>
+                            <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
+                            <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 'bold', color: '#475569' }}>{rec?.selectedWorkLocation || '--'}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                              {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
+                            </td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
+                              {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
+                            </td>
+                            <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                              ₹{dayEarnings.totalPay.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
+                <span>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'} - Monthly Statement</span>
+                <span>Page 1 of 2</span>
+              </div>
+            </div>
+
+            {/* PAGE 2 */}
+            <div id="admin-attendance-statement-direct-pdf-page-2" style={{ 
+              background: '#ffffff', 
+              padding: '40px', 
+              width: '800px', 
+              height: '1130px', 
+              boxSizing: 'border-box', 
+              fontFamily: 'sans-serif',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                {/* Header section repeated */}
+                <table style={{ width: '100%', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em' }}>
+                          {settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}
+                        </h1>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Employee Attendance & Wage Statement
+                        </p>
+                      </td>
+                      <td style={{ textAlign: 'right', verticalAlign: 'top', width: '220px' }}>
+                        <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Statement Period</div>
+                        <div style={{ fontSize: '14px', fontWeight: '900', color: '#4f46e5', marginTop: '2px' }}>{getFriendlyMonthName(selectedStatementMonth)}</div>
+                        <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                          Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Attendance list days 16 - end */}
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 8px 0', letterSpacing: '0.025em' }}>Attendance Log (Days 16 - End)</h3>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', fontWeight: '800' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Date</th>
+                        <th style={{ padding: '8px 12px' }}>Day</th>
+                        <th style={{ padding: '8px 12px' }}>Status</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Entry</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Exit</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Work Location</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Hours</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Overtime</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right' }}>Wage (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {page2LogsEx.map((curr) => {
+                        const rec = curr.rawRecord;
+                        const statusColor = curr.status === 'Present' ? '#059669' : 
+                                            curr.status === 'Half Day' ? '#b45309' :
+                                            curr.status === 'Late Entry' ? '#d97706' :
+                                            curr.status === 'On Leave' ? '#4f46e5' :
+                                            curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
+
+                        let dayEarnings = { totalPay: 0 };
+                        if (rec) {
+                          const isIncomplete = !!((rec.entryTime && !rec.exitTime) || (rec.entryTime2 && !rec.exitTime2));
+                          const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
+                          const baseEarnings = calculateEarnings(
+                            curr.hours,
+                            curr.overtime,
+                            selectedEmp.hourlyRate,
+                            settings?.overtimeRateMultiplier || 1.5,
+                            isIncomplete,
+                            selectedEmp.monthlySalary,
+                            isHalfDay
+                          );
+                          dayEarnings = {
+                            totalPay: baseEarnings.totalPay + (curr.extraSundayPay || 0)
+                          };
+                        } else if (curr.extraSundayPay) {
+                          dayEarnings = {
+                            totalPay: curr.extraSundayPay
+                          };
+                        }
+
+                        return (
+                          <tr key={curr.dateString} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold' }}>{formatDateDMY(curr.dateString)}</td>
+                            <td style={{ padding: '6px 12px', color: '#64748b' }}>{curr.dayLabel}</td>
+                            <td style={{ padding: '6px 12px', fontWeight: 'bold', color: statusColor }}>{curr.status}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockIn}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>{curr.clockOut}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 'bold', color: '#475569' }}>{rec?.selectedWorkLocation || '--'}</td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                              {curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--'}
+                            </td>
+                            <td style={{ padding: '6px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#4f46e5' }}>
+                              {curr.overtime > 0 ? `${curr.overtime.toFixed(1)}h` : '--'}
+                            </td>
+                            <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                              ₹{dayEarnings.totalPay.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Signatures section for PDF compliance */}
+                <table style={{ width: '100%', marginTop: '30px', borderCollapse: 'separate', borderSpacing: '32px 0' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                        <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Employee Signature</p>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>Verification of logged punch shifts</p>
+                      </td>
+                      <td style={{ width: '50%', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', textAlign: 'center' }}>
+                        <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Authorized Representative</p>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#94a3b8' }}>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'}</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', fontSize: '9px', color: '#94a3b8' }}>
+                <span>{settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.'} - Monthly Statement</span>
+                <span>Page 2 of 2</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

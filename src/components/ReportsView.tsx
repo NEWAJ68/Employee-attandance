@@ -273,7 +273,12 @@ export default function ReportsView({
       }
       
       if (filterType === 'custom') {
-        return rec.date >= startDate && rec.date <= endDate;
+        const matchesDate = rec.date >= startDate && rec.date <= endDate;
+        if (!matchesDate) return false;
+        if (selectedEmployeeId) {
+          return rec.employeeId === selectedEmployeeId;
+        }
+        return true;
       }
       
       return true;
@@ -513,7 +518,7 @@ export default function ReportsView({
   const grandSummaryNetPay = employeePayrollSummaries.reduce((sum, item) => sum + item.netPay, 0);
   const grandSummaryHours = employeePayrollSummaries.reduce((sum, item) => sum + item.totalHours, 0);
 
-  const activeEmployeeModel = filterType === 'employee' && selectedEmployeeId
+  const activeEmployeeModel = (filterType === 'employee' || filterType === 'custom') && selectedEmployeeId
     ? employees.find(e => e.id === selectedEmployeeId)
     : null;
 
@@ -1282,7 +1287,7 @@ export default function ReportsView({
           )}
 
           {filterType === 'custom' && (
-            <div className="grid grid-cols-2 gap-3 md:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:col-span-2">
               <div>
                 <label className="block text-2xs uppercase tracking-wider font-bold text-slate-500 mb-1.5 font-mono">
                   From (Start Date)
@@ -1304,6 +1309,23 @@ export default function ReportsView({
                   onChange={(e) => setEndDate(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs text-slate-700 font-mono"
                 />
+              </div>
+              <div>
+                <label className="block text-2xs uppercase tracking-wider font-bold text-slate-500 mb-1.5 font-mono">
+                  Filter Staff (कर्मचारी चयन)
+                </label>
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl font-medium focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">All Employees (सभी कर्मचारी)</option>
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({e.id})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           )}

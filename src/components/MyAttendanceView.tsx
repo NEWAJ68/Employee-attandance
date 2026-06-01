@@ -362,14 +362,18 @@ export default function MyAttendanceView({
       pdf.save(`Attendance_Statement_${loggedInEmployee.id}_${selectedMonth}.pdf`);
     } catch (err) {
       console.error("Direct PDF rendering aborted:", err);
-      alert("Something went wrong compiling PDF. Downloading offline HTML sheet instead.");
-      handleDownloadPDF();
+      alert("Something went wrong compiling PDF. Please try again.");
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
   const handleDownloadPDF = () => {
+    // Deprecated HTML statement download in favor of high fidelity PDF generation
+    alert("This method is deprecated. Please use Download PDF Statement.");
+  };
+
+  const handleDownloadPDF_deprecated_do_not_use = () => {
     const companyName = settings?.companyName || 'Calitech Engineering Solutions Pvt. Ltd.';
     const friendlyMonth = getFriendlyMonthName(selectedMonth);
     const printedOn = new Date().toLocaleDateString('en-US', {
@@ -378,7 +382,16 @@ export default function MyAttendanceView({
       day: 'numeric'
     }) + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const tableRows = processedLogs.map(curr => {
+    const page1Logs = processedLogs.filter(curr => {
+      const day = parseInt(curr.dateString.split('-')[2], 10);
+      return day <= 16;
+    });
+    const page2Logs = processedLogs.filter(curr => {
+      const day = parseInt(curr.dateString.split('-')[2], 10);
+      return day >= 17;
+    });
+
+    const getRowHtml = (curr: any) => {
       const rec = curr.rawRecord;
       const hoursStr = curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--';
       const otStr = curr.overtime > 0 ? `${curr.overtime.toFixed(2)}h` : '--';
@@ -427,7 +440,10 @@ export default function MyAttendanceView({
           <td style="font-family: monospace; font-weight: bold; border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #1e3a8a;">₹${dayEarnings.totalPay.toFixed(2)}</td>
         </tr>
       `;
-    }).join('');
+    };
+
+    const page1Rows = page1Logs.map(getRowHtml).join('');
+    const page2Rows = page2Logs.map(getRowHtml).join('');
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -572,26 +588,111 @@ export default function MyAttendanceView({
       font-weight: bold;
       color: #475569;
     }
+    .print-only-header {
+      display: none;
+    }
+    .print-page2-spacer {
+      display: none;
+    }
     @media print {
+      @page {
+        margin-top: 15mm !important;
+        margin-bottom: 15mm !important;
+        margin-left: 15mm !important;
+        margin-right: 15mm !important;
+      }
       body {
         background: white;
+        margin: 0;
+        padding: 0;
       }
       .container {
         border-radius: 0;
         box-shadow: none;
         border: none;
-        padding: 0;
-        margin: 0;
-        max-width: 100%;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
       }
       .print-banner {
         display: none !important;
+      }
+      .print-only-header {
+        display: block !important;
+      }
+      /* Compact styling for print to squeeze everything into exactly 2 pages */
+      .header {
+        display: none !important;
+      }
+      h3 {
+        margin-top: 15px !important;
+        margin-bottom: 6px !important;
+        font-size: 11px !important;
+      }
+      .stat-card {
+        padding: 6px 4px !important;
+        border-radius: 6px !important;
+      }
+      .stat-lbl {
+        font-size: 8px !important;
+        margin-bottom: 2px !important;
+      }
+      .stat-val {
+        font-size: 13px !important;
+      }
+      th {
+        padding: 5px 3px !important;
+        font-size: 8px !important;
+      }
+      td {
+        padding: 4px 3px !important;
+        font-size: 8.5px !important;
+      }
+      tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .meta-table {
+        margin-bottom: 12px !important;
+        padding: 10px !important;
+        border-spacing: 6px !important;
+      }
+      .stats-table {
+        margin-bottom: 12px !important;
+        border-spacing: 6px 0 !important;
+      }
+      .payout-table {
+        margin-bottom: 12px !important;
+        border-spacing: 6px 0 !important;
+      }
+      .signatures-table {
+        margin-top: 25px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
     }
   </style>
 </head>
 <body>
+
   <div class="container">
+    <!-- Beautiful Corporate Header (Printed Page 1) -->
+    <div class="print-only-header">
+      <table style="width: 100%; border: none; margin-bottom: 8px; border-collapse: collapse; background: transparent;">
+        <tr style="background: transparent;">
+          <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 12px; font-weight: 850; color: #0f172a; text-align: left; vertical-align: middle; line-height: 1.2;">
+            <div style="font-size: 14px; font-weight: 950; letter-spacing: -0.01e; color: #0f172a;">${companyName}</div>
+            <span style="font-size: 9.5px; font-weight: bold; color: #475569; display: block; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase;">Employee Attendance & Wage Statement</span>
+          </td>
+          <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 9.5px; font-weight: bold; color: #334155; text-align: right; vertical-align: middle; line-height: 1.35;">
+            <div>Statement Period: <span style="color: #0f172a;">${friendlyMonth}</span></div>
+            <div style="font-size: 8px; font-weight: normal; color: #64748b; margin-top: 2px;">Generated On: ${printedOn}</div>
+          </td>
+        </tr>
+      </table>
+      <div style="border-bottom: 2px solid #0f172a; margin-bottom: 18px; width: 100%;"></div>
+    </div>
+
     <div class="print-banner">
       📄 Press Ctrl+P (or Cmd+P on Mac) to print this page or save as a digital PDF!
     </div>
@@ -607,74 +708,94 @@ export default function MyAttendanceView({
       </div>
     </div>
 
-    <div class="meta-grid">
-      <div class="meta-item">
-        <div class="meta-label">Employee Name</div>
-        <div class="meta-val">${loggedInEmployee.name}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Employee ID</div>
-        <div class="meta-val">${loggedInEmployee.id}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Department Unit</div>
-        <div class="meta-val">${loggedInEmployee.department}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Designation / Role</div>
-        <div class="meta-val">${loggedInEmployee.designation || 'Staff'}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Joined Date</div>
-        <div class="meta-val">${loggedInEmployee.joinedDate}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Monthly Fixed Salary</div>
-        <div class="meta-val">${loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Hourly Overtime Rate</div>
-        <div class="meta-val">₹${loggedInEmployee.hourlyRate.toFixed(2)}/hr</div>
-      </div>
-    </div>
+    <table class="meta-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px; margin-bottom: 25px; background: #f1f5f9; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; vertical-align: top; width: 35%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Employee Name</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.name}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top; width: 25%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Employee ID</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.id}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top; width: 40%;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Department Unit</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.department}</div>
+        </td>
+      </tr>
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Designation / Role</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.designation || 'Staff'}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Joined Date</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.joinedDate}</div>
+        </td>
+        <td style="border: none; padding: 0; vertical-align: top;">
+          <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Monthly Fixed Salary</div>
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${loggedInEmployee.monthlySalary ? `₹${loggedInEmployee.monthlySalary.toFixed(2)}/mo` : 'N/A'} <span style="font-weight: normal; color: #64748b; font-size: 11px;">(OT: ₹${loggedInEmployee.hourlyRate.toFixed(2)}/hr)</span></div>
+        </td>
+      </tr>
+    </table>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-lbl">Days Present</div>
-        <div class="stat-val" style="color: #10b981;">${presentDaysCount} days</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-lbl">Half Days</div>
-        <div class="stat-val" style="color: #b45309;">${halfDaysCount} days</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-lbl">Days Absent</div>
-        <div class="stat-val" style="color: #ef4444;">${absentDaysCount} days</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-lbl">Active Leave</div>
-        <div class="stat-val" style="color: #4f46e5;">${leavesCount} days</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-lbl">Total Work Hours</div>
-        <div class="stat-val" style="color: #0f172a;">${sumWorkHours.toFixed(1)} hrs</div>
-      </div>
-    </div>
+    <table class="stats-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 25px; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Days Present</div>
+            <div class="stat-val" style="color: #10b981;">${presentDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Half Days</div>
+            <div class="stat-val" style="color: #b45309;">${halfDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Days Absent</div>
+            <div class="stat-val" style="color: #ef4444;">${absentDaysCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Active Leave</div>
+            <div class="stat-val" style="color: #4f46e5;">${leavesCount} days</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 20%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Total Work Hours</div>
+            <div class="stat-val" style="color: #0d1e3d;">${sumWorkHours.toFixed(1)} hrs</div>
+          </div>
+        </td>
+      </tr>
+    </table>
 
-    <div class="stats-grid" style="grid-template-cols: repeat(3, 1fr);">
-      <div class="stat-card">
-        <div class="stat-lbl">Standard Hours Pay</div>
-        <div class="stat-val">₹${regularPay.toFixed(2)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-lbl">Overtime Compensation</div>
-        <div class="stat-val" style="color: #4f46e5;">₹${overtimePay.toFixed(2)}</div>
-      </div>
-      <div class="stat-card" style="background: #e0f2fe; border-color: #bae6fd;">
-        <div class="stat-lbl">Calculated Payout</div>
-        <div class="stat-val" style="color: #0369a1; font-size: 18px; font-weight: 900;">₹${totalPay.toFixed(2)}</div>
-      </div>
-    </div>
+    <table class="payout-table" style="width: 100%; border: none; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 25px; table-layout: fixed;">
+      <tr style="background: transparent;">
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Standard Hours Pay</div>
+            <div class="stat-val">₹${regularPay.toFixed(2)}</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card">
+            <div class="stat-lbl">Overtime Compensation</div>
+            <div class="stat-val" style="color: #4f46e5;">₹${overtimePay.toFixed(2)}</div>
+          </div>
+        </td>
+        <td style="border: none; padding: 0; background: transparent; width: 33.33%;">
+          <div class="stat-card" style="background: #e0f2fe; border-color: #bae6fd;">
+            <div class="stat-lbl">Calculated Payout</div>
+            <div class="stat-val" style="color: #0369a1; font-size: 16px; font-weight: 900;">₹${totalPay.toFixed(2)}</div>
+          </div>
+        </td>
+      </tr>
+    </table>
 
     <h3 style="font-size: 13px; text-transform: uppercase; color: #334155; margin-bottom: 12px; margin-top: 30px; letter-spacing: 0.05em;">Shift Logs & Punch Records</h3>
     <table>
@@ -692,18 +813,67 @@ export default function MyAttendanceView({
         </tr>
       </thead>
       <tbody>
-        ${tableRows}
+        ${page1Rows}
       </tbody>
     </table>
 
-    <div class="signatures-section">
-      <div class="sign-box">
-        Employee Signature
+    ${page2Logs.length > 0 ? `
+      <!-- Elegant Page Break -->
+      <div style="page-break-before: always; break-before: page; height: 1px;"></div>
+      
+      <!-- Beautiful Corporate Header (Printed Page 2) -->
+      <div class="print-only-header">
+        <table style="width: 100%; border: none; margin-bottom: 8px; border-collapse: collapse; background: transparent;">
+          <tr style="background: transparent;">
+            <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 12px; font-weight: 850; color: #0f172a; text-align: left; vertical-align: middle; line-height: 1.2;">
+              <div style="font-size: 14px; font-weight: 950; letter-spacing: -0.01e; color: #0f172a;">${companyName}</div>
+              <span style="font-size: 9.5px; font-weight: bold; color: #475569; display: block; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase;">Employee Attendance & Wage Statement (Continued)</span>
+            </td>
+            <td style="border: none; padding: 0 0 6px 0; font-family: sans-serif; font-size: 9.5px; font-weight: bold; color: #334155; text-align: right; vertical-align: middle; line-height: 1.35;">
+              <div>Statement Period: <span style="color: #0f172a;">${friendlyMonth}</span></div>
+              <div style="font-size: 8px; font-weight: normal; color: #64748b; margin-top: 2px;">Generated On: ${printedOn}</div>
+            </td>
+          </tr>
+        </table>
+        <div style="border-bottom: 2px solid #0f172a; margin-bottom: 18px; width: 100%;"></div>
       </div>
-      <div class="sign-box">
-        Authorized Representative Sign / Stamp
-      </div>
-    </div>
+      
+      <h3 style="font-size: 12px; text-transform: uppercase; color: #334155; margin-bottom: 8px; margin-top: 10px; letter-spacing: 0.05em;">Shift Logs & Punch Records (Continued)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Status</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Work Location</th>
+            <th>Worked Hours</th>
+            <th>Overtime Hours</th>
+            <th>Wage (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${page2Rows}
+        </tbody>
+      </table>
+    ` : ''}
+
+    <table class="signatures-table" style="width: 100%; border: none; border-collapse: collapse; margin-top: 50px; background: transparent;">
+      <tr style="background: transparent;">
+        <td style="width: 45%; border: none; padding: 0; background: transparent;">
+          <div style="border-top: 1px dashed #cbd5e1; text-align: center; padding-top: 8px; font-size: 12px; font-weight: bold; color: #475569;">
+            Employee Signature
+          </div>
+        </td>
+        <td style="width: 10%; border: none; padding: 0; background: transparent;"></td>
+        <td style="width: 45%; border: none; padding: 0; background: transparent;">
+          <div style="border-top: 1px dashed #cbd5e1; text-align: center; padding-top: 8px; font-size: 12px; font-weight: bold; color: #475569;">
+            Authorized Representative Sign / Stamp
+          </div>
+        </td>
+      </tr>
+    </table>
   </div>
 
   <script>
@@ -1611,7 +1781,7 @@ export default function MyAttendanceView({
 
 
       {/* 📄 INVISIBLE PDF COMPILATION CONTAINER FOR PIXEL-PERFECT EXPORTS */}
-      <div style={{ height: 0, overflow: 'hidden', position: 'relative', width: '824px', pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '824px', pointerEvents: 'none' }}>
         
         {/* PAGE 1 */}
         <div id="attendance-statement-direct-pdf-page-1" style={{ 
