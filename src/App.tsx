@@ -27,7 +27,7 @@ import {
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification, Expense } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
-import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString } from './utils/calculations';
+import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString, timeToMinutes, isValidTimeStr } from './utils/calculations';
 import WorkLocationModal from './components/WorkLocationModal';
 
 // Firebase imports
@@ -940,8 +940,103 @@ export default function App() {
     }
   };
 
+  const detectShiftOverlap = (
+    record: AttendanceRecord,
+    currentAttendance: AttendanceRecord[],
+    originalEmployeeId?: string,
+    originalDate?: string
+  ): { hasOverlap: boolean; reason: string } | null => {
+    const oldEmpId = originalEmployeeId || record.employeeId;
+    const oldDate = originalDate || record.date;
+
+    // Filter out the specific record being edited from the existing list
+    const empRecords = currentAttendance.filter(r => 
+      r.employeeId === record.employeeId && 
+      !(r.date === oldDate && r.employeeId === oldEmpId) &&
+      r.date !== record.date
+    );
+
+    // Combine with the new/updated state
+    const relevantRecords = [...empRecords, record];
+
+    const shifts: Array<{
+      date: string;
+      start: number;
+      end: number;
+      isPending: boolean;
+      label: string;
+    }> = [];
+
+    const getAbsMinutes = (dateStr: string, timeStr: string): number => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const baseMin = Math.floor(new Date(y, m - 1, d).getTime() / 60000);
+      return baseMin + timeToMinutes(timeStr);
+    };
+
+    relevantRecords.forEach(r => {
+      // Shift 1
+      if (isValidTimeStr(r.entryTime)) {
+        const start1 = getAbsMinutes(r.date, r.entryTime);
+        const hasExit = isValidTimeStr(r.exitTime);
+        const end1 = hasExit ? getAbsMinutes(r.date, r.exitTime) : start1 + 480;
+        shifts.push({
+          date: r.date,
+          start: start1,
+          end: end1,
+          isPending: !hasExit,
+          label: `Shift 1 on ${r.date} (${r.entryTime}${hasExit ? ' - ' + r.exitTime : ' [Ongoing]'})`
+        });
+      }
+
+      // Shift 2
+      if (isValidTimeStr(r.entryTime2)) {
+        const start2 = getAbsMinutes(r.date, r.entryTime2);
+        const hasExit2 = isValidTimeStr(r.exitTime2);
+        const end2 = hasExit2 ? getAbsMinutes(r.date, r.exitTime2) : start2 + 480;
+        shifts.push({
+          date: r.date,
+          start: start2,
+          end: end2,
+          isPending: !hasExit2,
+          label: `Shift 2 on ${r.date} (${r.entryTime2}${hasExit2 ? ' - ' + r.exitTime2 : ' [Ongoing]'})`
+        });
+      }
+    });
+
+    shifts.sort((a, b) => a.start - b.start);
+
+    for (let i = 0; i < shifts.length - 1; i++) {
+      const s1 = shifts[i];
+      const s2 = shifts[i + 1];
+      const s1End = s1.isPending ? s1.start + 1440 : s1.end;
+
+      if (s2.start < s1End) {
+        return {
+          hasOverlap: true,
+          reason: `Attempted punch at ${s2.label.split(' on ')[0]} overlaps with preceding active "${s1.label}" which has not ended or is still ongoing.`
+        };
+      }
+    }
+
+    return null;
+  };
+
   const handleAddAttendance = async (newRecord: AttendanceRecord) => {
     const docId = `${newRecord.date}_${newRecord.employeeId}`;
+
+    // Prevent shift overlaps that would corrupt payroll calculations
+    const overlapCheck = detectShiftOverlap(newRecord, attendance);
+    if (overlapCheck) {
+      alert(`Shift Overlap Blocked!\n\n${overlapCheck.reason}`);
+      handleRaiseNotification(
+        'Shift Overlap Blocked',
+        overlapCheck.reason,
+        'alert',
+        newRecord.employeeId
+      );
+      return;
+    }
+
     try {
       // Optimistic state update: update local state instantly before waiting for DB
       setAttendance((prev) => [...prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId)), newRecord]);
@@ -1017,6 +1112,19 @@ export default function App() {
 
     const docId = `${updatedRecord.date}_${updatedRecord.employeeId}`;
     const oldDocId = `${oldDate}_${oldEmpId}`;
+
+    // Prevent shift overlaps that would corrupt payroll calculations on updates
+    const overlapCheck = detectShiftOverlap(updatedRecord, attendance, oldEmpId, oldDate);
+    if (overlapCheck) {
+      alert(`Shift Overlap Blocked!\n\n${overlapCheck.reason}`);
+      handleRaiseNotification(
+        'Shift Overlap Blocked',
+        overlapCheck.reason,
+        'alert',
+        updatedRecord.employeeId
+      );
+      return;
+    }
 
     try {
       // Optimistic state update: update local state instantly before waiting for DB
