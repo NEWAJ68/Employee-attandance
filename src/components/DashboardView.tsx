@@ -23,6 +23,7 @@ import {
   Send
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, AppNotification, LeaveRequest } from '../types';
+import { getShiftConfig, minutesDiffFromStart } from '../utils/calculations';
 
 interface DashboardViewProps {
   employees: Employee[];
@@ -125,6 +126,29 @@ export default function DashboardView({
 
     if (todayRec) {
       status = todayRec.status;
+      
+      const inTime = todayRec.entryTime || todayRec.entryTime2;
+      if (inTime && inTime !== '--:--') {
+        const assignedShift = emp.assignedShift || 'General Shift';
+        const shiftConfig = getShiftConfig(assignedShift);
+        const inDiff = minutesDiffFromStart(inTime, shiftConfig.start);
+        
+        const isLateCheckIn = inDiff > 45 || (settings.workStartHour && inTime > settings.workStartHour);
+        if (isLateCheckIn && !status.includes('Late Entry') && !status.toLowerCase().includes('leave')) {
+          if (status === 'Present') {
+            status = 'Late Entry';
+          } else if (status === 'Active') {
+            status = 'Late Entry, Active';
+          } else if (status === 'On Lunch') {
+            status = 'Late Entry, On Lunch';
+          } else if (status === 'On Dinner') {
+            status = 'Late Entry, On Dinner';
+          } else {
+            status = `Late Entry, ${status}`;
+          }
+        }
+      }
+
       if (status === 'On Lunch') {
         labelColor = 'bg-[#fef3c7] text-[#92400e] border-[#fde68a]';
       } else if (status === 'Present') {

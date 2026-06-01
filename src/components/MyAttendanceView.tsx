@@ -68,7 +68,7 @@ export default function MyAttendanceView({
   const defaultMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
   
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthStr);
-  const [filterType, setFilterType] = useState<'All' | 'Present' | 'Absent' | 'Weekly Off'>('All');
+  const [filterType, setFilterType] = useState<'All' | 'Present' | 'Half Day' | 'Absent' | 'Weekly Off'>('All');
   const [uploadError, setUploadError] = useState('');
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -135,6 +135,7 @@ export default function MyAttendanceView({
     if (log.status === 'Future') return false; 
     if (filterType === 'All') return true;
     if (filterType === 'Present') return log.status === 'Present' || log.status === 'Late Entry' || log.status === 'Night Shift';
+    if (filterType === 'Half Day') return log.status === 'Half Day';
     if (filterType === 'Absent') return log.status === 'Absent' || log.status === 'Pending';
     if (filterType === 'Weekly Off') return log.status === 'Weekly Off';
     return true;
@@ -212,6 +213,7 @@ export default function MyAttendanceView({
   // Compute metrics for selected month
   const totalDaysInSelection = processedLogs.filter(l => l.status !== 'Future').length;
   const presentDaysCount = processedLogs.filter(l => ['Present', 'Late Entry', 'Night Shift'].includes(l.status)).length;
+  const halfDaysCount = processedLogs.filter(l => l.status === 'Half Day').length;
   const absentDaysCount = processedLogs.filter(l => l.status === 'Absent').length;
   const leavesCount = processedLogs.filter(l => l.status === 'On Leave').length;
   const sumWorkHours = processedLogs.reduce((acc, current) => {
@@ -381,6 +383,7 @@ export default function MyAttendanceView({
       const hoursStr = curr.hours > 0 ? `${curr.hours.toFixed(2)}h` : '--';
       const otStr = curr.overtime > 0 ? `${curr.overtime.toFixed(2)}h` : '--';
       const statusColor = curr.status === 'Present' ? '#10b981' : 
+                          curr.status === 'Half Day' ? '#b45309' :
                           curr.status === 'Late Entry' ? '#f59e0b' :
                           curr.status === 'On Leave' ? '#4f46e5' :
                           curr.status === 'Weekly Off' ? '#64748b' : '#ef4444';
@@ -511,7 +514,7 @@ export default function MyAttendanceView({
     }
     .stats-grid {
       display: grid;
-      grid-template-cols: repeat(4, 1fr);
+      grid-template-cols: repeat(5, 1fr);
       gap: 12px;
       margin-bottom: 25px;
     }
@@ -639,6 +642,10 @@ export default function MyAttendanceView({
       <div class="stat-card">
         <div class="stat-lbl">Days Present</div>
         <div class="stat-val" style="color: #10b981;">${presentDaysCount} days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Half Days</div>
+        <div class="stat-val" style="color: #b45309;">${halfDaysCount} days</div>
       </div>
       <div class="stat-card">
         <div class="stat-lbl">Days Absent</div>
@@ -931,7 +938,7 @@ export default function MyAttendanceView({
       </div>
 
       {/* Metrics Summary Panels */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
         <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-1 sm:space-y-2">
           <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-slate-400 block">Total Workdays</span>
           <div className="flex items-baseline space-x-1">
@@ -945,6 +952,14 @@ export default function MyAttendanceView({
           <div className="flex items-baseline space-x-1">
             <span className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">{presentDaysCount}</span>
             <span className="text-[9px] sm:text-[10px] text-emerald-500 font-semibold font-mono">({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-amber-50 shadow-2xs space-y-1 sm:space-y-2">
+          <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-amber-600 block">Half Days</span>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl sm:text-2xl font-black text-amber-600 tracking-tight">{halfDaysCount}</span>
+            <span className="text-[9px] sm:text-[10px] text-amber-500 font-semibold font-mono">({totalDaysInSelection > 0 ? Math.round((halfDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
           </div>
         </div>
 
@@ -1355,7 +1370,7 @@ export default function MyAttendanceView({
               <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Filter View:</span>
               <div className="flex space-x-1.5 bg-slate-200/50 p-1 rounded-lg">
-                {(['All', 'Present', 'Absent', 'Weekly Off'] as const).map(option => (
+                {(['All', 'Present', 'Half Day', 'Absent', 'Weekly Off'] as const).map(option => (
                   <button
                     key={option}
                     onClick={() => setFilterType(option)}
@@ -1410,6 +1425,10 @@ export default function MyAttendanceView({
                       statusBadgeStyle = 'bg-emerald-55 text-emerald-755 border-emerald-150/60 font-black';
                       statusLabel = 'Present';
                       StatusIcon = CheckCircle;
+                    } else if (log.status === 'Half Day') {
+                      statusBadgeStyle = 'bg-orange-50 text-orange-700 border-orange-100/60 font-black';
+                      statusLabel = 'Half Day';
+                      StatusIcon = AlertCircle;
                     } else if (log.status === 'Late Entry') {
                       statusBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-100/60 font-bold';
                       statusLabel = 'Late Entry';
@@ -1675,63 +1694,72 @@ export default function MyAttendanceView({
               <tbody>
                 <tr>
                   {/* Total Workdays Component */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Total Workdays</span>
                     <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b' }}>{totalDaysInSelection}</span>
-                      <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '500' }}>days logged</span>
+                      <span style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b' }}>{totalDaysInSelection}</span>
+                      <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500' }}>days</span>
                     </div>
                   </td>
 
                   {/* Days Present Column */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#059669', display: 'block' }}>Days Present</span>
                     <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
-                      <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+                      <span style={{ fontSize: '18px', fontWeight: '900', color: '#059669' }}>{presentDaysCount}</span>
+                      <span style={{ fontSize: '8px', color: '#10b981', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((presentDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
+                    </div>
+                  </td>
+
+                  {/* Half Days Column */}
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#b45309', display: 'block' }}>Half Days</span>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '18px', fontWeight: '900', color: '#d97706' }}>{halfDaysCount}</span>
+                      <span style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 'bold', fontFamily: 'monospace' }}>({totalDaysInSelection > 0 ? Math.round((halfDaysCount / totalDaysInSelection) * 100) : 0}%)</span>
                     </div>
                   </td>
 
                   {/* Days Absent Column */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444', display: 'block' }}>Days Absent</span>
                     <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
-                      <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} leave</span>
+                      <span style={{ fontSize: '18px', fontWeight: '900', color: '#dc2626' }}>{absentDaysCount}</span>
+                      <span style={{ fontSize: '8px', color: '#f43f5e', fontWeight: 'bold' }}>{leavesCount} l</span>
                     </div>
                   </td>
 
                   {/* Log Book Hours Column */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Log Book Hours</span>
                     <div style={{ marginTop: '6px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
-                      <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>accumulated</span>
+                      <span style={{ fontSize: '18px', fontWeight: '900', color: '#4f46e5' }}>{sumWorkHours.toFixed(1)}h</span>
+                      <span style={{ fontSize: '8px', color: '#94a3b8', fontWeight: '500', fontFamily: 'monospace' }}>acc.</span>
                     </div>
                   </td>
                 </tr>
                 <tr>
                   {/* Standard Hours Pay Column */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#64748b', display: 'block' }}>Standard Hours Pay</span>
                     <div style={{ marginTop: '6px' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
+                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155', fontFamily: 'monospace' }}>₹{regularPay.toFixed(2)}</span>
                     </div>
                   </td>
 
                   {/* Overtime Compensation Column */}
-                  <td style={{ width: '25%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <td style={{ width: '20%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#6366f1', display: 'block' }}>Overtime Compensation</span>
                     <div style={{ marginTop: '6px' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
+                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#4f46e5', fontFamily: 'monospace' }}>₹{overtimePay.toFixed(2)}</span>
                     </div>
                   </td>
 
-                  {/* Calculated Payout Highlight Box (Spans 2 columns) */}
-                  <td colSpan={2} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
+                  {/* Calculated Payout Highlight Box (Spans 3 columns) */}
+                  <td colSpan={3} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '12px', textAlign: 'left', verticalAlign: 'top', boxShadow: '0 1px 3px rgba(14,165,233,0.05)' }}>
                     <span style={{ fontSize: '9px', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 'bold', color: '#0284c7', display: 'block' }}>Calculated Payout (Net Pay)</span>
                     <div style={{ marginTop: '4px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                      <span style={{ fontSize: '22px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: '#0369a1', fontFamily: 'monospace' }}>₹{totalPay.toFixed(2)}</span>
                       <span style={{ fontSize: '9px', color: '#0284c7', fontWeight: '600' }}>(Estimate for {getFriendlyMonthName(selectedMonth)})</span>
                     </div>
                   </td>
@@ -1760,6 +1788,7 @@ export default function MyAttendanceView({
                   {processedLogs.slice(0, 15).map((curr) => {
                     const rec = curr.rawRecord;
                     const statusColor = curr.status === 'Present' ? '#059669' : 
+                                        curr.status === 'Half Day' ? '#b45309' :
                                         curr.status === 'Late Entry' ? '#d97706' :
                                         curr.status === 'On Leave' ? '#4f46e5' :
                                         curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';
@@ -1874,6 +1903,7 @@ export default function MyAttendanceView({
                   {processedLogs.slice(15).map((curr) => {
                     const rec = curr.rawRecord;
                     const statusColor = curr.status === 'Present' ? '#059669' : 
+                                        curr.status === 'Half Day' ? '#b45309' :
                                         curr.status === 'Late Entry' ? '#d97706' :
                                         curr.status === 'On Leave' ? '#4f46e5' :
                                         curr.status === 'Weekly Off' ? '#64748b' : '#dc2626';

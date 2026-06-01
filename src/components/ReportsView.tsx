@@ -19,7 +19,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings } from '../types';
-import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY, detectShiftFromPunchTime } from '../utils/calculations';
+import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY, detectShiftFromPunchTime, getShiftConfig, minutesDiffFromStart } from '../utils/calculations';
 
 interface ReportsViewProps {
   employees: Employee[];
@@ -223,7 +223,7 @@ export default function ReportsView({
   const getFilteredRecords = (): AttendanceRecord[] => {
     const today = new Date();
     
-    return attendance.filter((rec) => {
+    const filtered = attendance.filter((rec) => {
       const recDate = new Date(rec.date);
       
       if (filterType === 'daily') {
@@ -258,6 +258,39 @@ export default function ReportsView({
       }
       
       return true;
+    });
+
+    return filtered.map(rec => {
+      let status = rec.status || 'Present';
+      if (status.includes('On Leave') || status.toLowerCase().includes('leave')) {
+        return rec;
+      }
+      const inTime = rec.entryTime || rec.entryTime2;
+      if (inTime && inTime !== '--:--') {
+        const emp = employees.find((e) => e.id === rec.employeeId);
+        const assignedShift = emp?.assignedShift || 'General Shift';
+        const shiftConfig = getShiftConfig(assignedShift);
+        const inDiff = minutesDiffFromStart(inTime, shiftConfig.start);
+        
+        const isLateCheckIn = inDiff > 45 || (settings.workStartHour && inTime > settings.workStartHour);
+        if (isLateCheckIn && !status.includes('Late Entry') && !status.toLowerCase().includes('leave')) {
+          if (status === 'Present') {
+            status = 'Late Entry';
+          } else if (status === 'Active') {
+            status = 'Late Entry, Active';
+          } else if (status === 'On Lunch') {
+            status = 'Late Entry, On Lunch';
+          } else if (status === 'On Dinner') {
+            status = 'Late Entry, On Dinner';
+          } else {
+            status = `Late Entry, ${status}`;
+          }
+        }
+      }
+      return {
+        ...rec,
+        status
+      };
     });
   };
 

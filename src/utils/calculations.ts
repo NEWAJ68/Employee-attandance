@@ -361,13 +361,19 @@ export const calculateAttendanceMetrics = (
   const detectedShift = actualIn ? detectShiftFromPunchTime(actualIn) : (assignedShift || 'General Shift');
   const shiftConfig = getShiftConfig(detectedShift);
 
+  const inDiff = actualIn ? minutesDiffFromStart(actualIn, shiftConfig.start) : 0;
+  const isLateCheckIn = actualIn && (inDiff > 45 || (settings.workStartHour && actualIn > settings.workStartHour));
+
+  if (isLateCheckIn) {
+    statusFlags.push('Late Entry');
+  }
+
   if (!isCurrentlyActive) {
     // Both entries have been completed (fully checked out), check absent first
     if (totalHours < 3) {
       isAbsent = true;
     } else {
       // Analyze grace & early checkouts
-      const inDiff = minutesDiffFromStart(actualIn, shiftConfig.start);
       const outDiff = minutesDiffFromEnd(actualOut, shiftConfig.end);
 
       const inMeetsGrace = (inDiff <= 45);
@@ -382,7 +388,6 @@ export const calculateAttendanceMetrics = (
     }
   } else {
     // Session is still active on-going
-    const inDiff = minutesDiffFromStart(actualIn, shiftConfig.start);
     if (inDiff > 45) {
       isHalfDay = true;
     }
@@ -426,8 +431,8 @@ export const calculateAttendanceMetrics = (
     }
   }
 
-  // Ensure status flags doesn't duplicate 'Present' when there is '2nd Shift' or 'Half Day'
-  if (cleanedFlags.includes('2nd Shift') || cleanedFlags.includes('Half Day')) {
+  // Ensure status flags doesn't duplicate 'Present' when there is '2nd Shift' or 'Half Day' or 'Late Entry'
+  if (cleanedFlags.includes('2nd Shift') || cleanedFlags.includes('Half Day') || cleanedFlags.includes('Late Entry')) {
     cleanedFlags = cleanedFlags.filter(f => f !== 'Present');
   }
 
@@ -583,7 +588,7 @@ export interface ProcessedDayLog {
   dateString: string;
   dayLabel: string;
   formattedDate: string;
-  status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future';
+  status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' | 'Half Day';
   isWeekend: boolean;
   clockIn: string;
   lunchOut: string;
@@ -599,7 +604,7 @@ export interface ProcessedDayLog {
 
 export function getProcessedLogsForEmployee(
   myLogs: { date: string; [key: string]: any }[],
-  employee: { id: string; hourlyRate: number; monthlySalary?: number },
+  employee: { id: string; hourlyRate: number; monthlySalary?: number; assignedShift?: string },
   yearMonth: string,
   settings: Settings
 ): ProcessedDayLog[] {
@@ -633,7 +638,7 @@ export function getProcessedLogsForEmployee(
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
     const isWeekend = dayOfWeek === 0; // Weekly Off on Sunday (Sat is standard work day)
 
-    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' = 'Absent';
+    let status: 'Present' | 'Absent' | 'Weekly Off' | 'Late Entry' | 'Night Shift' | 'On Leave' | 'Pending' | 'Future' | 'Half Day' = 'Absent';
     let detail = matchedRecord;
 
     if (isFuture) {
@@ -641,12 +646,21 @@ export function getProcessedLogsForEmployee(
     } else if (matchedRecord) {
       if (matchedRecord.status && matchedRecord.status.toLowerCase().includes('leave')) {
         status = 'On Leave';
-      } else if (matchedRecord.status === 'Late Entry') {
-        status = 'Late Entry';
-      } else if (matchedRecord.status === 'Night Shift') {
-        status = 'Night Shift';
       } else {
-        status = 'Present';
+        const inTime = matchedRecord.entryTime || matchedRecord.entryTime2;
+        const shiftConfig = getShiftConfig(employee.assignedShift || 'General Shift');
+        const inDiff = inTime ? minutesDiffFromStart(inTime, shiftConfig.start) : 0;
+        const isDynamicLate = inTime && inTime !== '--:--' && (inDiff > 45 || (settings.workStartHour && inTime > settings.workStartHour));
+        
+        if (matchedRecord.status && matchedRecord.status.toLowerCase().includes('half day')) {
+          status = 'Half Day';
+        } else if (matchedRecord.status && (matchedRecord.status === 'Late Entry' || matchedRecord.status.toLowerCase().includes('late') || isDynamicLate)) {
+          status = 'Late Entry';
+        } else if (matchedRecord.status === 'Night Shift') {
+          status = 'Night Shift';
+        } else {
+          status = 'Present';
+        }
       }
     } else if (isWeekend) {
       status = 'Weekly Off';
