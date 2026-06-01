@@ -2024,7 +2024,7 @@ export default function AttendanceTerminal({
             </div>
 
             {/* Action Buttons */}
-            <div className="space-y-2.5">
+            <div className="space-y-5">
               <button
                 type="button"
                 id="popup-btn-punch-in"
@@ -2046,7 +2046,7 @@ export default function AttendanceTerminal({
                   setIsAutoPunchModalOpen(false);
                   setHasDismissedAutoPunch(true);
                 }}
-                className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:scale-95 text-slate-500 hover:text-slate-800 font-bold rounded-xl text-2xs uppercase tracking-wider transition-all border border-slate-200 cursor-pointer"
+                className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 active:scale-95 text-slate-600 hover:text-slate-800 font-bold rounded-xl text-2xs uppercase tracking-wider transition-all border border-slate-200 cursor-pointer shadow-1xs"
               >
                 Dismiss & View Cabin
               </button>
