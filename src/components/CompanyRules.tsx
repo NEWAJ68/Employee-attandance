@@ -23,6 +23,14 @@ interface CompanyRulesProps {
 
 export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps) {
   const [activeTab, setActiveTab] = useState<'halfday' | 'overtime' | 'punch'>('halfday');
+  const [localToast, setLocalToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setLocalToast({ message, type });
+    setTimeout(() => {
+      setLocalToast(prev => prev && prev.message === message ? null : prev);
+    }, 3000);
+  };
 
   // Rules policies content for download
   const policyDocuments = {
@@ -400,9 +408,7 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       // Save PDF
       doc.save(`${activeTab}_policy_rule_${new Date().toISOString().split('T')[0]}.pdf`);
 
-      if (onRaiseNotification) {
-        onRaiseNotification("Policy Downloaded", `Successfully downloaded ${currentPolicy.title} PDF report!`, 'success');
-      }
+      showToast(`Successfully downloaded ${currentPolicy.title} PDF report!`, 'success');
     } catch (error) {
       console.error("PDF generation failed, falling back to TXT", error);
       // Fallback text download
@@ -438,6 +444,8 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
+      showToast(`PDF error. Downloaded text report instead!`, 'error');
     }
   };
 
@@ -705,6 +713,22 @@ export default function CompanyRules({ onRaiseNotification }: CompanyRulesProps)
 
         </div>
       </div>
+
+      {/* Local Toast Notification banner */}
+      {localToast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold animate-fadeIn ${
+          localToast.type === 'success' 
+            ? 'bg-slate-900 border-slate-800 text-white' 
+            : 'bg-rose-950 border-rose-900 text-white'
+        }`}>
+          {localToast.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span>{localToast.message}</span>
+        </div>
+      )}
 
     </div>
   );
