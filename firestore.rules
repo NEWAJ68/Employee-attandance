@@ -78,6 +78,20 @@ service cloud.firestore {
           && data.isAdmin is bool;
     }
 
+    function isValidExpense(data) {
+      return data.id is string && data.id.size() <= 64
+          && data.employeeId is string && data.employeeId.size() <= 64
+          && data.employeeName is string && data.employeeName.size() <= 128
+          && data.date is string && data.date.size() <= 32
+          && data.expenseType is string && (data.expenseType == 'Petrol' || data.expenseType == 'Thermal Roll' || data.expenseType == 'Ink' || data.expenseType == 'A4 Paper' || data.expenseType == 'E-Rickshaw Rent' || data.expenseType == 'Other Expenses')
+          && data.amount is number && data.amount >= 0
+          && data.remark is string && data.remark.size() <= 1000
+          && (!('receiptUrl' in data) || (data.receiptUrl is string && data.receiptUrl.size() <= 1000000))
+          && data.status is string && (data.status == 'Pending' || data.status == 'Approved' || data.status == 'Rejected')
+          && (!('adminRemark' in data) || (data.adminRemark is string && data.adminRemark.size() <= 1000))
+          && data.submittedAt is string && data.submittedAt.size() <= 64;
+    }
+
     // Rules Mapping
     match /test/{docId} {
       allow read: if isSignedIn();
@@ -114,6 +128,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
       allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming());
       allow delete: if isSignedIn() && isValidId(notificationId);
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming());
+      allow update: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming());
+      allow delete: if isSignedIn() && isValidId(expenseId);
     }
   }
 }

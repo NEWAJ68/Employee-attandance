@@ -99,3 +99,18 @@ export interface AppState {
   theme: 'light' | 'dark';
 }
 
+export interface Expense {
+  id: string; // e.g. "EXP-172551"
+  employeeId: string;
+  employeeName: string;
+  date: string; // YYYY-MM-DD
+  expenseType: 'Petrol' | 'Thermal Roll' | 'Ink' | 'A4 Paper' | 'E-Rickshaw Rent' | 'Other Expenses';
+  amount: number;
+  remark: string;
+  receiptUrl?: string; // Optional Base64 or uploaded URL
+  status: 'Pending' | 'Approved' | 'Rejected';
+  adminRemark?: string;
+  submittedAt: string; // ISO string
+}
+
+

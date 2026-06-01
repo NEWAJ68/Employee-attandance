@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Calendar,
-  Lock
+  Lock,
+  Receipt
 } from 'lucide-react';
 import { Employee } from '../types';
 import CESLogo from './CESLogo';
@@ -57,6 +58,13 @@ export default function Sidebar({
         adminOnly: false,
       },
       {
+        id: 'my-expenses',
+        name: 'My Expenses',
+        icon: Receipt,
+        description: 'Submit claims & view status',
+        adminOnly: false,
+      },
+      {
         id: 'rules',
         name: 'Rules & Guidelines',
         icon: Building2,
@@ -90,6 +98,13 @@ export default function Sidebar({
       name: 'Financial Reports',
       icon: FileBarChart2,
       description: 'Payroll & Overtime',
+      adminOnly: true,
+    },
+    {
+      id: 'expenses-admin',
+      name: 'Expense Management',
+      icon: Receipt,
+      description: 'Approve, reject & edit amount',
       adminOnly: true,
     },
     {

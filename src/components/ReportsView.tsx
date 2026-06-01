@@ -18,13 +18,28 @@ import {
   Trash2,
   MapPin
 } from 'lucide-react';
-import { Employee, AttendanceRecord, Settings } from '../types';
+import { Employee, AttendanceRecord, Settings, Expense } from '../types';
 import { calculateEarnings, calculateAttendanceMetrics, getProcessedLogsForEmployee, formatDateDMY, detectShiftFromPunchTime, getShiftConfig, minutesDiffFromStart } from '../utils/calculations';
+
+const getFormattedMonthName = (monthStr: string): string => {
+  if (!monthStr) return '';
+  const [year, month] = monthStr.split('-');
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const idx = parseInt(month, 10) - 1;
+  if (idx >= 0 && idx < 12) {
+    return `${months[idx]}, ${year}`;
+  }
+  return monthStr;
+};
 
 interface ReportsViewProps {
   employees: Employee[];
   attendance: AttendanceRecord[];
   settings: Settings;
+  expenses?: Expense[];
   onAddAttendance: (record: AttendanceRecord) => void;
   onUpdateAttendance: (record: AttendanceRecord, originalEmployeeId?: string, originalDate?: string) => void;
   onClearAttendance?: () => Promise<void>;
@@ -34,6 +49,7 @@ export default function ReportsView({
   employees,
   attendance,
   settings,
+  expenses = [],
   onAddAttendance,
   onUpdateAttendance,
   onClearAttendance,
@@ -65,6 +81,9 @@ export default function ReportsView({
   const [isClearing, setIsClearing] = useState(false);
   const [isPayrollSummaryOpen, setIsPayrollSummaryOpen] = useState(false);
   const [isWagesLogPreviewOpen, setIsWagesLogPreviewOpen] = useState(false);
+  const [payrollSelectedMonth, setPayrollSelectedMonth] = useState(() => {
+    return new Date().toISOString().slice(0, 7); // Default to current month "YYYY-MM"
+  });
   
   // Custom interactive viewport/print zoom adjustment state
   const [tableZoom, setTableZoom] = useState<number>(100);
@@ -395,9 +414,17 @@ export default function ReportsView({
 
   // Group and compute employee-wise summaries for payroll summary PDF doc
   const employeePayrollSummaries = employees.map(emp => {
-    const monthStr = singleDate.slice(0, 7);
+    const monthStr = payrollSelectedMonth;
     const empRecords = attendance.filter(rec => rec.employeeId === emp.id && rec.date.startsWith(monthStr));
     
+    // Sum approved expenses for this employee and month
+    const empExpensesList = expenses.filter(exp => 
+      exp.employeeId === emp.id && 
+      exp.status === 'Approved' && 
+      exp.date.startsWith(monthStr)
+    );
+    const approvedExpensesTotal = empExpensesList.reduce((sum, exp) => sum + exp.amount, 0);
+
     if (empRecords.length === 0) {
       return {
         employeeId: emp.id,
@@ -408,8 +435,10 @@ export default function ReportsView({
         overtimeHours: 0,
         regularPay: 0,
         overtimePay: 0,
-        netPay: 0,
-        recordCount: 0
+        approvedExpenses: approvedExpensesTotal,
+        netPay: approvedExpensesTotal,
+        recordCount: 0,
+        workingDays: 0
       };
     }
 
@@ -419,6 +448,7 @@ export default function ReportsView({
     let overtimeHours = 0;
     let regularPay = 0;
     let overtimePay = 0;
+    let workingDaysCount = 0;
 
     employeeProcessedDays.forEach(curr => {
       if (curr.status === 'Future') return;
@@ -433,6 +463,10 @@ export default function ReportsView({
 
       totalHours += effectiveHours;
       overtimeHours += effectiveOvertime;
+      
+      if (curr.hours > 0 || rec.entryTime || rec.entryTime2) {
+        workingDaysCount++;
+      }
       
       const isHalfDay = rec.status ? rec.status.includes('Half Day') : false;
       const dayEarnings = calculateEarnings(
@@ -456,7 +490,7 @@ export default function ReportsView({
       }
     });
 
-    const netPay = regularPay + overtimePay;
+    const netPay = regularPay + overtimePay + approvedExpensesTotal;
 
     return {
       employeeId: emp.id,
@@ -467,8 +501,10 @@ export default function ReportsView({
       overtimeHours,
       regularPay,
       overtimePay,
+      approvedExpenses: approvedExpensesTotal,
       netPay,
-      recordCount: empRecords.length
+      recordCount: empRecords.length,
+      workingDays: workingDaysCount
     };
   }).filter(summary => summary.recordCount > 0);
 
@@ -780,15 +816,16 @@ export default function ReportsView({
   // Standalone printable payroll summary generation for offline printing/PDF bypass
   const downloadPayrollSummaryHTML = () => {
     const tableRows = employeePayrollSummaries.length === 0 
-      ? `<tr><td colspan="7" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No active employee payroll summary items found.</td></tr>`
+      ? `<tr><td colspan="8" style="padding: 32px; text-align: center; color: #94a3b8; font-family: monospace;">No active employee payroll summary items found.</td></tr>`
       : employeePayrollSummaries.map((summary) => `
         <tr style="border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 12px 16px; font-family: monospace; font-weight: 600; color: #64748b;">${summary.employeeId}</td>
           <td style="padding: 12px 16px; font-weight: bold; color: #0f172a;">${summary.name}</td>
           <td style="padding: 12px 12px; color: #334155;">${summary.department}</td>
           <td style="padding: 12px 12px; text-align: center; color: #64748b;">₹${summary.hourlyRate}/hr</td>
+          <td style="padding: 12px 12px; text-align: center; font-weight: 600; color: #0f172a;">${summary.workingDays} Days</td>
           <td style="padding: 12px 12px; text-align: center; font-weight: 600;">${summary.totalHours.toFixed(2)}h</td>
           <td style="padding: 12px 12px; text-align: center; font-weight: 600; color: #4f46e5;">${summary.overtimeHours > 0 ? summary.overtimeHours.toFixed(2) + 'h' : '0.00'}</td>
+          <td style="padding: 12px 12px; text-align: center; font-weight: 600; color: #10b981;">₹${summary.approvedExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="padding: 12px 16px; text-align: right; font-weight: 800; color: #e11d48; font-family: monospace;">₹${summary.netPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
       `).join('');
@@ -972,8 +1009,8 @@ export default function ReportsView({
         <h1>${settings.companyName}</h1>
         <p>Official Payroll & Earnings Audit Sheet</p>
         <div class="meta">
-          Period Filter: <strong>${filterType} summary</strong> &bull;
-          Filter Mode: <strong>${filterType.toUpperCase()}</strong>
+          Payroll Period: <strong style="color: #4f46e5;">${getFormattedMonthName(payrollSelectedMonth)}</strong> &bull;
+          Status: <strong>AUDITED SUMMARY</strong>
         </div>
       </div>
       <div class="right-meta">
@@ -1001,12 +1038,13 @@ export default function ReportsView({
     <table>
       <thead>
         <tr>
-          <th>Staff ID</th>
           <th>Employee Name</th>
           <th>Department</th>
           <th style="text-align: center;">Hourly Rate</th>
+          <th style="text-align: center;">Working Days</th>
           <th style="text-align: center;">Total Hours</th>
           <th style="text-align: center;">Overtime</th>
+          <th style="text-align: center;">Expenses Add</th>
           <th style="text-align: right;">Net Payable</th>
         </tr>
       </thead>
@@ -1016,6 +1054,7 @@ export default function ReportsView({
           <td colspan="4" style="text-align: right; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #475569;">Summary Cumulative Totals:</td>
           <td style="text-align: center; font-weight: bold;">${grandSummaryHours.toFixed(2)}h</td>
           <td style="text-align: center; font-weight: bold; color: #4f46e5;">${employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h</td>
+          <td style="text-align: center; font-weight: bold; color: #10b981;">₹${employeePayrollSummaries.reduce((sum, item) => sum + item.approvedExpenses, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="text-align: right; font-weight: 900; color: #312e81;">₹${grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
         </tr>
       </tbody>
@@ -1049,7 +1088,10 @@ export default function ReportsView({
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Payroll_Summary_Report_${filterType}_${new Date().toISOString().split('T')[0]}.html`;
+    
+    const monthName = getFormattedMonthName(payrollSelectedMonth);
+    const monthFilename = monthName.replace(/\s+/g, '_').replace(/,/g, '');
+    link.download = `Payroll_Summary_Report_${monthFilename}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2065,6 +2107,26 @@ export default function ReportsView({
               </div>
             </div>
 
+            {/* Select Month Form - Screen only */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4.5 bg-violet-50/50 border border-violet-100 rounded-2xl gap-3 print:hidden">
+              <div className="space-y-1 font-sans">
+                <span className="font-extrabold text-violet-900 uppercase tracking-wider font-mono text-[10px] block">
+                  Select Payroll Summary Month (महीने का चयन करें)
+                </span>
+                <p className="text-slate-500 text-2xs">
+                  Choosing a different month will update the numbers, hours, working days, and net wage calculations dynamically.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="month"
+                  value={payrollSelectedMonth}
+                  onChange={(e) => setPayrollSelectedMonth(e.target.value)}
+                  className="bg-white border border-violet-200 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-xs font-semibold px-4.5 py-2.5 rounded-xl text-slate-850 shadow-sm"
+                />
+              </div>
+            </div>
+
             {/* Printable Sheet Container */}
             <div id="payroll-summary-sheet" className="space-y-6 pt-2 print:space-y-8">
               {/* Special print header styles to override everything on printers */}
@@ -2105,11 +2167,7 @@ export default function ReportsView({
                   <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">{settings.companyName}</h1>
                   <p className="text-3xs font-mono font-bold uppercase tracking-widest text-slate-400 mt-0.5">Official Payroll & Earnings Audit Sheet</p>
                   <div className="flex items-center space-x-3 mt-2 text-2xs text-slate-500 font-medium font-sans">
-                    <span>Period Filter: <strong className="text-slate-800 capitalize font-semibold">{filterType} summary</strong></span>
-                    <span>•</span>
-                    {filterType === 'daily' && <span>Date: <strong className="text-slate-800 font-semibold">{singleDate}</strong></span>}
-                    {filterType === 'monthly' && <span>Month: <strong className="text-slate-800 font-semibold">{singleDate.slice(0, 7)}</strong></span>}
-                    {filterType === 'custom' && <span>Range: <strong className="text-slate-800 font-semibold">{startDate} to {endDate}</strong></span>}
+                    <span>Summary Month (महीना): <strong className="text-indigo-600 font-extrabold font-mono text-[11px] bg-indigo-50/50 px-2 py-0.5 rounded-md border border-indigo-100/40">{getFormattedMonthName(payrollSelectedMonth)}</strong></span>
                   </div>
                 </div>
                 <div className="text-right text-3xs text-slate-400 font-mono space-y-0.5">
@@ -2140,28 +2198,26 @@ export default function ReportsView({
                 <table className="w-full text-left border-collapse text-2xs font-sans">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-100/60 text-slate-600 font-bold tracking-wider uppercase font-mono text-[9px]">
-                      <th className="py-2.5 px-4 font-bold">Staff ID</th>
                       <th className="py-2.5 px-4 font-bold">Employee Name</th>
                       <th className="py-2.5 px-3 font-bold">Department</th>
                       <th className="py-2.5 px-3 text-center font-bold">Hourly Rate</th>
+                      <th className="py-2.5 px-3 text-center font-bold">Working Days</th>
                       <th className="py-2.5 px-3 text-center font-bold">Total Hours</th>
                       <th className="py-2.5 px-3 text-center font-bold">Overtime (Hrs)</th>
+                      <th className="py-2.5 px-3 text-center font-bold">Expenses Add</th>
                       <th className="py-2.5 px-4 text-right font-bold">Net Payable Amnt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-150 text-slate-800">
                     {employeePayrollSummaries.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-slate-400 font-mono">
+                        <td colSpan={8} className="py-8 text-center text-slate-400 font-mono">
                           No active employee payroll summary items found for specified parameters.
                         </td>
                       </tr>
                     ) : (
                       employeePayrollSummaries.map((summary) => (
                         <tr key={summary.employeeId} className="hover:bg-slate-50/10">
-                          <td className="py-3 px-4 font-mono font-semibold text-slate-500">
-                            {summary.employeeId}
-                          </td>
                           <td className="py-3 px-4 font-bold text-slate-900">
                             {summary.name}
                           </td>
@@ -2171,11 +2227,17 @@ export default function ReportsView({
                           <td className="py-3 px-3 text-center font-mono text-slate-500 font-sans">
                             ₹{summary.hourlyRate}/hr
                           </td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-800">
+                            {summary.workingDays} Days
+                          </td>
                           <td className="py-3 px-3 text-center font-mono font-semibold">
                             {summary.totalHours.toFixed(2)}h
                           </td>
                           <td className="py-3 px-3 text-center font-mono text-indigo-600 font-semibold">
                             {summary.overtimeHours > 0 ? `${summary.overtimeHours.toFixed(2)}h` : '0.00'}
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono text-emerald-600 font-bold">
+                            ₹{summary.approvedExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-black text-rose-650">
                             ₹{summary.netPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2194,6 +2256,9 @@ export default function ReportsView({
                       </td>
                       <td className="py-3 px-3 text-center font-mono text-indigo-700 font-extrabold">
                         {employeePayrollSummaries.reduce((sum, item) => sum + item.overtimeHours, 0).toFixed(2)}h
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono text-emerald-700 font-extrabold">
+                        ₹{employeePayrollSummaries.reduce((sum, item) => sum + item.approvedExpenses, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-black text-indigo-900 bg-slate-100/50">
                         ₹{grandSummaryNetPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

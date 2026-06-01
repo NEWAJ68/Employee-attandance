@@ -86,6 +86,25 @@
         "employeeId": { "type": "string", "description": "Link reference if employee specific" }
       },
       "required": ["id", "title", "message", "type", "timestamp", "read", "isAdmin"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Employee submitted reimbursement expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique expense identifier" },
+        "employeeId": { "type": "string", "description": "Roster ID of employee" },
+        "employeeName": { "type": "string", "description": "Roster name of employee" },
+        "date": { "type": "string", "format": "date", "description": "Reimbursement log date YYYY-MM-DD" },
+        "expenseType": { "type": "string", "enum": ["Petrol", "Thermal Roll", "Ink", "A4 Paper", "E-Rickshaw Rent", "Other Expenses"], "description": "Categorized item type" },
+        "amount": { "type": "number", "description": "Requested claim amount" },
+        "remark": { "type": "string", "description": "Detailed claim reason" },
+        "receiptUrl": { "type": "string", "description": "Base64 or image URL of supporting document" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"], "description": "Claims tracking status" },
+        "adminRemark": { "type": "string", "description": "Remarks added by approver" },
+        "submittedAt": { "type": "string", "description": "ISO formatted submission timestamp" }
+      },
+      "required": ["id", "employeeId", "employeeName", "date", "expenseType", "amount", "remark", "status", "submittedAt"]
     }
   },
   "firestore": {
@@ -108,6 +127,10 @@
     "notifications/{notificationId}": {
       "schema": "AppNotification",
       "description": "System alert and logging collection"
+    },
+    "expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "System reimbursement claim management log collection"
     }
   }
 }

@@ -25,7 +25,7 @@ import {
   Trash
 } from 'lucide-react';
 
-import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification } from './types';
+import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification, Expense } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
 import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString } from './utils/calculations';
 import WorkLocationModal from './components/WorkLocationModal';
@@ -60,6 +60,8 @@ import ReportsView from './components/ReportsView';
 import SheetsSyncHub from './components/SheetsSyncHub';
 import LeaveManagementView from './components/LeaveManagementView';
 import MyAttendanceView from './components/MyAttendanceView';
+import MyExpensesView from './components/MyExpensesView';
+import ExpenseManagementView from './components/ExpenseManagementView';
 import CompanyRules from './components/CompanyRules';
 
 const LOCAL_STORAGE_KEY = 'apex_attendance_mgmt_v1';
@@ -136,6 +138,7 @@ export default function App() {
   // Leave & Push notifications state
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
 
   // Geofencing Warn Alerts
@@ -216,6 +219,7 @@ export default function App() {
         if (parsed.loggedInEmployee) setLoggedInEmployee(parsed.loggedInEmployee);
         if (parsed.leaveRequests) setLeaveRequests(parsed.leaveRequests);
         if (parsed.notifications) setNotifications(parsed.notifications);
+        if (parsed.expenses) setExpenses(parsed.expenses);
       } catch (e) {
         console.error('Failed reading serialized local storage files:', e);
       }
@@ -230,6 +234,7 @@ export default function App() {
     let unsubSettings: (() => void) | null = null;
     let unsubLeaves: (() => void) | null = null;
     let unsubNotifs: (() => void) | null = null;
+    let unsubExpenses: (() => void) | null = null;
     let destroyed = false;
 
     const setupSubscriptions = () => {
@@ -349,6 +354,21 @@ export default function App() {
         setFirebaseStatus('error');
         setFirebaseError(err.message || String(err));
       });
+
+      // Snapshot - Expenses
+      unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+        setFirebaseStatus('connected');
+        setFirebaseError(null);
+        const list: Expense[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as Expense);
+        });
+        // Sort by submittedAt descending
+        list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+        setExpenses(list);
+      }, (err) => {
+        console.error('Expenses subscription denied:', err);
+      });
     };
 
     signInAnonymously(auth)
@@ -379,6 +399,7 @@ export default function App() {
       if (unsubSettings) unsubSettings();
       if (unsubLeaves) unsubLeaves();
       if (unsubNotifs) unsubNotifs();
+      if (unsubExpenses) unsubExpenses();
     };
   }, []);
 
@@ -391,7 +412,8 @@ export default function App() {
     nextAdminState: boolean = isAdminLoggedIn,
     nextLeaves: LeaveRequest[] = leaveRequests,
     nextNotifs: AppNotification[] = notifications,
-    nextEmp: Employee | null = loggedInEmployee
+    nextEmp: Employee | null = loggedInEmployee,
+    nextExpenses: Expense[] = expenses
   ) => {
     const backupObj = {
       employees: nextEmployees,
@@ -401,7 +423,8 @@ export default function App() {
       isAdminLoggedIn: nextAdminState,
       leaveRequests: nextLeaves,
       notifications: nextNotifs,
-      loggedInEmployee: nextEmp
+      loggedInEmployee: nextEmp,
+      expenses: nextExpenses
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(backupObj));
   };
@@ -409,7 +432,7 @@ export default function App() {
   // Sync to localCache as reactive backup automatically on React states variations
   useEffect(() => {
     handleSaveToLocalStorage();
-  }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee]);
+  }, [employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, leaveRequests, notifications, loggedInEmployee, expenses]);
 
   // Dynamic Self-Healing for Employee ID Changes
   // If the admin changes an employee's ID, any active/cached session on the employee's device
@@ -1389,7 +1412,7 @@ export default function App() {
     // View Guards
     if (isAdminLoggedIn) {
       setCurrentView(view);
-    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'my-attendance' || view === 'rules')) {
+    } else if (loggedInEmployee && (view === 'terminal' || view === 'leaves' || view === 'my-attendance' || view === 'rules' || view === 'my-expenses')) {
       setCurrentView(view);
     } else if (view === 'terminal' || view === 'admin-login' || view === 'my-attendance') {
       setCurrentView(view);
@@ -1478,6 +1501,8 @@ export default function App() {
                 {currentView === 'sync' && 'Sheets Integration Center'}
                 {currentView === 'admin-login' && 'Admin Authorization'}
                 {currentView === 'leaves' && 'Leaves & Verification Portal'}
+                {currentView === 'my-expenses' && 'My Expense Claim Ledger'}
+                {currentView === 'expenses-admin' && 'Global Expense Management Board'}
               </span>
             </h2>
           </div>
@@ -1762,6 +1787,7 @@ export default function App() {
               employees={employees}
               attendance={attendance}
               settings={settings}
+              expenses={expenses}
               onAddAttendance={handleAddAttendance}
               onUpdateAttendance={handleUpdateAttendance}
               onClearAttendance={handleClearAllAttendance}
@@ -1848,6 +1874,21 @@ export default function App() {
                   }
                 }
               }}
+            />
+          )}
+
+          {currentView === 'my-expenses' && loggedInEmployee && (
+            <MyExpensesView
+              loggedInEmployee={loggedInEmployee}
+              expenses={expenses}
+            />
+          )}
+
+          {currentView === 'expenses-admin' && (
+            <ExpenseManagementView
+              employees={employees}
+              expenses={expenses}
+              onAddNotification={handleRaiseNotification}
             />
           )}
         </main>
