@@ -745,6 +745,73 @@ export default function App() {
     handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, false, leaveRequests, notifications, null);
   };
 
+  const triggerAutoLogout = () => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        parsed.loggedInEmployee = null;
+        parsed.isAdminLoggedIn = false;
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch (e) {
+      console.error('Failed to clear session in localStorage during auto-logout:', e);
+    }
+    setIsAdminLoggedIn(false);
+    setLoggedInEmployee(null);
+    setCurrentView('admin-login');
+    window.location.reload();
+  };
+
+  // Automated 5-minute inactivity check and background/minimized app switching detection
+  useEffect(() => {
+    if (!loggedInEmployee) return;
+
+    let lastActive = Date.now();
+    const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes
+
+    const handleUserActivity = () => {
+      lastActive = Date.now();
+    };
+
+    const activityEvents = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click'
+    ];
+
+    activityEvents.forEach((event) => {
+      window.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    const checkInterval = setInterval(() => {
+      const timeSinceLastActive = Date.now() - lastActive;
+      if (timeSinceLastActive >= INACTIVITY_LIMIT) {
+        clearInterval(checkInterval);
+        triggerAutoLogout();
+      }
+    }, 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        triggerAutoLogout();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      activityEvents.forEach((event) => {
+        window.removeEventListener(event, handleUserActivity);
+      });
+      clearInterval(checkInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loggedInEmployee]);
+
   const handleAddEmployee = async (newEmp: Employee) => {
     try {
       // 1. Optimistic state update: update local state instantly

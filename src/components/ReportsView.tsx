@@ -41,6 +41,9 @@ export default function ReportsView({
   // Filters states
   const [filterType, setFilterType] = useState<'daily' | 'weekly' | 'monthly' | 'employee' | 'custom'>('monthly');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedEmployeeMonth, setSelectedEmployeeMonth] = useState(() => {
+    return new Date().toISOString().slice(0, 7); // Default to current month "YYYY-MM"
+  });
   
   // Date selection states
   const [singleDate, setSingleDate] = useState(new Date().toISOString().split('T')[0]);
@@ -242,7 +245,12 @@ export default function ReportsView({
       
       if (filterType === 'employee') {
         if (!selectedEmployeeId) return true; // show all if none chosen
-        return rec.employeeId === selectedEmployeeId;
+        const matchEmp = rec.employeeId === selectedEmployeeId;
+        if (!matchEmp) return false;
+        if (selectedEmployeeMonth) {
+          return rec.date.startsWith(selectedEmployeeMonth);
+        }
+        return true;
       }
       
       if (filterType === 'custom') {
@@ -340,7 +348,13 @@ export default function ReportsView({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Attendance_Report_${filterType}_${new Date().toISOString().split('T')[0]}.csv`);
+
+    let filenameSuffix = `${filterType}_${new Date().toISOString().split('T')[0]}`;
+    if (filterType === 'employee') {
+      const empName = activeEmployeeModel ? activeEmployeeModel.name.replace(/\s+/g, '_') : selectedEmployeeId;
+      filenameSuffix = `Employee_${empName}_${selectedEmployeeMonth || 'All'}`;
+    }
+    link.setAttribute('download', `Attendance_Report_${filenameSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -717,7 +731,13 @@ export default function ReportsView({
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Filtered_Attendance_Report_${filterType}_${new Date().toISOString().split('T')[0]}.html`;
+
+    let filenameSuffix = `${filterType}_${new Date().toISOString().split('T')[0]}`;
+    if (filterType === 'employee') {
+      const empName = activeEmployeeModel ? activeEmployeeModel.name.replace(/\s+/g, '_') : selectedEmployeeId;
+      filenameSuffix = `Employee_${empName}_${selectedEmployeeMonth || 'All'}`;
+    }
+    link.download = `Filtered_Attendance_Report_${filenameSuffix}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1141,23 +1161,49 @@ export default function ReportsView({
           )}
 
           {filterType === 'employee' && (
-            <div>
-              <label className="block text-2xs uppercase tracking-wider font-bold text-slate-500 mb-1.5 font-mono">
-                Select Staff Profile
-              </label>
-              <select
-                value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl"
-              >
-                <option value="">-- Choose employee --</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name} ({e.id})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="block text-2xs uppercase tracking-wider font-bold text-slate-500 mb-1.5 font-mono">
+                  Select Staff Profile (कर्मचारी चुनें)
+                </label>
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 text-xs rounded-xl font-medium"
+                >
+                  <option value="">-- Choose employee --</option>
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({e.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-2xs uppercase tracking-wider font-bold text-slate-500 font-mono">
+                    Choose Month (महीना चुनें)
+                  </label>
+                  {selectedEmployeeMonth && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmployeeMonth('')}
+                      className="text-[9px] text-red-500 hover:text-red-700 font-mono focus:outline-none cursor-pointer"
+                    >
+                      Clear (Empty)
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="month"
+                  value={selectedEmployeeMonth}
+                  onChange={(e) => setSelectedEmployeeMonth(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 font-mono"
+                  placeholder="All Months"
+                />
+              </div>
+            </>
           )}
 
           {filterType === 'custom' && (
