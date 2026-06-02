@@ -11,7 +11,8 @@ import {
   X,
   Calendar,
   Lock,
-  Receipt
+  Receipt,
+  Settings as SettingsIcon
 } from 'lucide-react';
 import { Employee } from '../types';
 import CESLogo from './CESLogo';
@@ -125,9 +126,9 @@ export default function Sidebar({
     ] : []),
     {
       id: 'sync',
-      name: 'Google Sheets Integration',
-      icon: FileSpreadsheet,
-      description: 'Google Suite configuration',
+      name: 'Settings & Integration',
+      icon: SettingsIcon,
+      description: 'Credentials & Google Sheets sync',
       adminOnly: true,
     },
   ];

@@ -1564,6 +1564,7 @@ export default function App() {
             employees={employees}
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
+            settings={settings}
           />
         </div>
       </div>
@@ -1851,6 +1852,7 @@ export default function App() {
               employees={employees}
               onAddEmployee={handleAddEmployee}
               onUpdateEmployee={handleUpdateEmployee}
+              settings={settings}
             />
           )}
 

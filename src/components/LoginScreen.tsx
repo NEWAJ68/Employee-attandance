@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { KeyRound, ShieldAlert, UserCheck, LogIn, Lock, HelpCircle, Users, UserPlus, Mail, Briefcase, IndianRupee, CheckCircle, Eye, EyeOff } from 'lucide-react';
-import { Employee } from '../types';
+import { Employee, Settings } from '../types';
 import CESLogo from './CESLogo';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
 
 interface LoginScreenProps {
   onLogin: (role: 'admin' | 'employee', employeeId?: string) => void;
@@ -9,14 +11,16 @@ interface LoginScreenProps {
   employees: Employee[];
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee?: (employee: Employee, originalId?: string) => void;
+  settings?: Settings;
 }
 
-export default function LoginScreen({ onLogin, companyName, employees, onAddEmployee, onUpdateEmployee }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, companyName, employees, onAddEmployee, onUpdateEmployee, settings }: LoginScreenProps) {
   const [activeTab, setActiveTab] = useState<'admin' | 'employee'>('employee'); // default to employee since they check in/out most!
   
   // Admin form states
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   
   // Employee form states
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -60,6 +64,74 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Admin forgot password recovery states
+  const [isAdminForgotModalOpen, setIsAdminForgotModalOpen] = useState(false);
+  const [adminRecoveryInput, setAdminRecoveryInput] = useState('');
+  const [adminRecoveryError, setAdminRecoveryError] = useState('');
+  const [adminRecoverySuccess, setAdminRecoverySuccess] = useState('');
+  const [recoveredUser, setRecoveredUser] = useState('');
+  const [recoveredPass, setRecoveredPass] = useState('');
+
+  const handleAdminForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminRecoveryError('');
+    setAdminRecoverySuccess('');
+    setRecoveredUser('');
+    setRecoveredPass('');
+
+    const trimmedInput = adminRecoveryInput.trim();
+    if (!trimmedInput) {
+      setAdminRecoveryError('Recovery PIN cannot be empty.');
+      return;
+    }
+
+    const expectedRecoveryPin = settings?.adminRecoveryKey || '123456';
+    if (trimmedInput === expectedRecoveryPin) {
+      const u = settings?.adminUsername || 'admin';
+      const p = settings?.adminPassword || 'admin123';
+      setRecoveredUser(u);
+      setRecoveredPass(p);
+      setAdminRecoverySuccess(`Security PIN verification complete. Your administrator credentials have been securely retrieved below:`);
+    } else {
+      setAdminRecoveryError('Incorrect private backup recovery PIN. Please verify your PIN and try again.');
+    }
+  };
+
+  const handleAdminGoogleVerify = async () => {
+    setIsLoading(true);
+    setAdminRecoveryError('');
+    setAdminRecoverySuccess('');
+    setRecoveredUser('');
+    setRecoveredPass('');
+
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const userEmail = result.user?.email ? result.user.email.toLowerCase() : '';
+      const allowedAdminEmail = (settings?.adminEmail || 'shamimnewaj68@gmail.com').toLowerCase();
+      const allowedAdminSecondary = (settings?.adminEmailSecondary || '').toLowerCase();
+
+      const isAuthorized = userEmail === allowedAdminEmail || 
+                            userEmail === 'shamimnewaj68@gmail.com' ||
+                            (allowedAdminSecondary && userEmail === allowedAdminSecondary);
+
+      if (isAuthorized) {
+        const u = settings?.adminUsername || 'admin';
+        const p = settings?.adminPassword || 'admin123';
+        setRecoveredUser(u);
+        setRecoveredPass(p);
+        setAdminRecoverySuccess(`Google Account verification complete. Welcome back! Your administrator credentials have been securely recovered below:`);
+      } else {
+        const emailList = allowedAdminSecondary ? `${allowedAdminEmail} or ${allowedAdminSecondary}` : allowedAdminEmail;
+        setAdminRecoveryError(`Unauthorized Gmail (${result.user?.email || 'Unknown'}). Only registered verification Gmail addresses (${emailList}) are authorized.`);
+      }
+    } catch (err: any) {
+      console.error('Google Admin verification error: ', err);
+      setAdminRecoveryError(err.message || 'Google account verification failed. Please make sure you are online and accept browser login popups.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const activeEmployees = employees.filter(emp => emp.status === 'Active');
 
@@ -206,7 +278,9 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
 
     setTimeout(() => {
       if (activeTab === 'admin') {
-        if (username.toLowerCase() === 'admin' && password === 'admin123') {
+        const expectedUser = (settings?.adminUsername || 'admin').toLowerCase();
+        const expectedPass = settings?.adminPassword || 'admin123';
+        if (username.toLowerCase() === expectedUser && password === expectedPass) {
           onLogin('admin');
         } else {
           setError('Incorrect administrator username or password.');
@@ -245,8 +319,8 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
     setError('');
     if (role === 'admin') {
       setActiveTab('admin');
-      setUsername('admin');
-      setPassword('admin123');
+      setUsername(settings?.adminUsername || 'admin');
+      setPassword(settings?.adminPassword || 'admin123');
     } else if (role === 'employee' && empId) {
       setActiveTab('employee');
       setSelectedEmpId(empId);
@@ -613,7 +687,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs transition-all"
+                    className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-505 text-xs transition-all font-semibold"
                     placeholder="e.g. admin"
                   />
                 </div>
@@ -622,17 +696,51 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   <label htmlFor="admin-password" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
                     Secret Key Password
                   </label>
-                  <input
-                    id="admin-password"
-                    name="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs transition-all"
-                    placeholder="••••••••"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      id="admin-password"
+                      name="password"
+                      type={showAdminPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="appearance-none block w-full pl-4 pr-10 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-505 text-xs font-mono transition-all font-semibold"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPassword(!showAdminPassword)}
+                      className="absolute right-3.5 text-slate-400 hover:text-slate-650 transition-colors p-1"
+                    >
+                      {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="flex justify-end mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAdminForgotModalOpen(true);
+                        setAdminRecoveryInput('');
+                        setAdminRecoveryError('');
+                        setAdminRecoverySuccess('');
+                        setRecoveredUser('');
+                        setRecoveredPass('');
+                      }}
+                      className="text-[11px] font-extrabold text-indigo-600 hover:text-indigo-700 transition-colors cursor-pointer underline decoration-dotted underline-offset-2"
+                    >
+                      Forgot Admin Password?
+                    </button>
+                  </div>
                 </div>
+
+                {(!settings?.adminPassword || settings.adminPassword === 'admin123') && (
+                  <div className="bg-amber-50 border border-amber-100/60 rounded-xl p-3.5 text-[10.5px] text-amber-800 leading-normal flex items-start space-x-2 animate-pulse mt-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Insecure Default Credentials:</strong> This workspace is currently using the default administrator password <strong>"admin123"</strong>. Change this under settings panel to secure your workforce reports.
+                    </span>
+                  </div>
+                )}
               </>
             )}
 
@@ -794,6 +902,161 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   </button>
                 </div>
               </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Forgot Password Recovery Modal */}
+      {isAdminForgotModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-fadeIn font-sans">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden p-6 relative max-h-[90vh] overflow-y-auto text-left space-y-4">
+            <button
+              onClick={() => setIsAdminForgotModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-660 transition-colors font-bold text-md cursor-pointer"
+            >
+              ✕
+            </button>
+            
+            <div className="flex items-center space-x-2.5 mb-2 border-b border-slate-50 pb-3">
+              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600">
+                <Lock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Admin Keychain Desk</h3>
+                <p className="text-[9px] text-amber-600 font-mono tracking-wide uppercase font-bold">Owner Verification</p>
+              </div>
+            </div>
+
+            {adminRecoverySuccess ? (
+              <div className="space-y-4 py-2">
+                <div className="bg-emerald-50 border border-emerald-100 text-emerald-850 p-4 rounded-xl text-xs space-y-3 leading-normal">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-955">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Identity Verified Successfully!</span>
+                  </p>
+                  
+                  <div className="bg-white/85 border border-emerald-100/40 p-3 rounded-xl space-y-2 text-slate-800 font-mono text-[11px]">
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">USERNAME:</span>
+                      <strong className="text-indigo-650">{recoveredUser}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">PASSWORD:</span>
+                      <strong className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{recoveredPass}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername(recoveredUser);
+                    setPassword(recoveredPass);
+                    setIsAdminForgotModalOpen(false);
+                  }}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-1.5"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Autofill & Close Recovery Desk</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Please verify your identity using one of the two secure verification methods below to retrieve administrative credentials:
+                </p>
+
+                {/* Method 1: Google Verifier */}
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100 space-y-2.5">
+                  <span className="block text-[10px] font-bold text-indigo-600 uppercase font-mono tracking-wider">
+                    Method 1: Google Identity Check
+                  </span>
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    Securely verify ownership of your registered admin recovery email (<strong>{settings?.adminEmail || 'shamimnewaj68@gmail.com'}</strong>{settings?.adminEmailSecondary ? <> or <strong>{settings.adminEmailSecondary}</strong></> : null}).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAdminGoogleVerify}
+                    className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-750 rounded-xl transition-all flex items-center justify-center space-x-2 shadow-2xs"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.08H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.92l2.85-2.22.81-.6z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.08l3.66 2.84c.87-2.6 3.3-4.54 6.16-4.54z"
+                      />
+                    </svg>
+                    <span>Verify with Google Account</span>
+                  </button>
+                </div>
+
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-slate-150"></div>
+                  <span className="flex-shrink mx-3 text-[9px] text-slate-400 font-bold font-mono">OR</span>
+                  <div className="flex-grow border-t border-slate-150"></div>
+                </div>
+
+                {/* Method 2: PIN recovery Form */}
+                <form onSubmit={handleAdminForgotSubmit} className="space-y-3">
+                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100 space-y-2.5">
+                    <span className="block text-[10px] font-bold text-indigo-650 uppercase font-mono tracking-wider text-indigo-600">
+                      Method 2: Private Backup Recovery PIN
+                    </span>
+                    
+                    <div className="space-y-1">
+                      <label htmlFor="admin-pin-pass" className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                        Enter Secret Admin PIN Code
+                      </label>
+                      <input
+                        id="admin-pin-pass"
+                        type="password"
+                        required
+                        placeholder="••••••"
+                        value={adminRecoveryInput}
+                        onChange={(e) => setAdminRecoveryInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono text-center outline-none focus:ring-1 focus:ring-indigo-500 font-bold tracking-widest placeholder:tracking-normal"
+                      />
+                      <span className="text-[9px] text-slate-400 leading-normal block pt-1 font-medium">
+                        Enter your private 6-digit administrator backup recovery PIN to reveal login credentials.
+                      </span>
+                    </div>
+                  </div>
+
+                  {adminRecoveryError && (
+                    <p className="text-[10.5px] text-rose-600 font-medium leading-normal bg-rose-50 border border-rose-100 p-2.5 rounded-xl">
+                      ⚠️ {adminRecoveryError}
+                    </p>
+                  )}
+
+                  <div className="pt-2 flex items-center space-x-3 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminForgotModalOpen(false)}
+                      className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 rounded-xl transition-all cursor-pointer text-center"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all cursor-pointer text-center"
+                    >
+                      Verify PIN & Reveal
+                    </button>
+                  </div>
+                </form>
+              </div>
             )}
           </div>
         </div>

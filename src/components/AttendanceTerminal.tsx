@@ -988,6 +988,51 @@ export default function AttendanceTerminal({
     }
   }, [punchAnimation, loggedInEmployee]);
 
+  // Voice feedback for successful punch
+  useEffect(() => {
+    if (punchAnimation) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          // Stop any currently playing speech to avoid overlapping
+          window.speechSynthesis.cancel();
+
+          const name = punchAnimation.name || 'Employee';
+          let speechText = `Punch successful. Thank you, ${name}.`;
+
+          switch (punchAnimation.type) {
+            case 'entry':
+              speechText = `Punch successful. Welcome, ${name}. Your entry is registered.`;
+              break;
+            case 'exit':
+              speechText = `Punch successful. Goodbye, ${name}. Your shift is complete.`;
+              break;
+            case 'lunch_out':
+              speechText = `Punch successful. ${name}, going to lunch. Enjoy your break.`;
+              break;
+            case 'lunch_in':
+              speechText = `Punch successful. Welcome back from lunch, ${name}.`;
+              break;
+            case 'dinner_out':
+              speechText = `Punch successful. ${name}, going to dinner. Enjoy your break.`;
+              break;
+            case 'dinner_in':
+              speechText = `Punch successful. Welcome back from dinner, ${name}.`;
+              break;
+          }
+
+          const utterance = new SpeechSynthesisUtterance(speechText);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0.toFixed ? 1.0 : 1;
+          utterance.volume = 1.0;
+          
+          window.speechSynthesis.speak(utterance);
+        } catch (err) {
+          console.error('Speech synthesis execution failed:', err);
+        }
+      }
+    }
+  }, [punchAnimation]);
+
   // Notifications permission state
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -2335,6 +2380,16 @@ export default function AttendanceTerminal({
                   <button
                     type="button"
                     onClick={() => {
+                      // Synchronously prime/unlock the speech synthesis engine on user click
+                      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                        try {
+                          const primeUtterance = new SpeechSynthesisUtterance(' ');
+                          primeUtterance.volume = 0;
+                          window.speechSynthesis.speak(primeUtterance);
+                        } catch (e) {
+                          console.log('Voice engine priming skipped:', e);
+                        }
+                      }
                       selfieState.onCapture(capturedPhoto);
                       stopCamera();
                     }}

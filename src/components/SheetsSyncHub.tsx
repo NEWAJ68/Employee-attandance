@@ -60,6 +60,33 @@ export default function SheetsSyncHub({
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
+  const [adminUser, setAdminUser] = useState(settings.adminUsername || 'admin');
+  const [adminPass, setAdminPass] = useState(settings.adminPassword || 'admin123');
+  const [adminEmail, setAdminEmail] = useState(settings.adminEmail || 'shamimnewaj68@gmail.com');
+  const [adminEmailSecondary, setAdminEmailSecondary] = useState(settings.adminEmailSecondary || '');
+  const [adminRecoveryPin, setAdminRecoveryPin] = useState(settings.adminRecoveryKey || '123456');
+  const [showHubPass, setShowHubPass] = useState(false);
+  const [securitySaved, setSecuritySaved] = useState(false);
+  const [securityErrorMsg, setSecurityErrorMsg] = useState('');
+
+  React.useEffect(() => {
+    if (settings.adminUsername) {
+      setAdminUser(settings.adminUsername);
+    }
+    if (settings.adminPassword) {
+      setAdminPass(settings.adminPassword);
+    }
+    if (settings.adminEmail) {
+      setAdminEmail(settings.adminEmail);
+    }
+    if (settings.adminEmailSecondary !== undefined) {
+      setAdminEmailSecondary(settings.adminEmailSecondary);
+    }
+    if (settings.adminRecoveryKey) {
+      setAdminRecoveryPin(settings.adminRecoveryKey);
+    }
+  }, [settings.adminUsername, settings.adminPassword, settings.adminEmail, settings.adminEmailSecondary, settings.adminRecoveryKey]);
+
   const handleGoogleConnectClick = async () => {
     if (isConnectingGoogle) return;
     setIsConnectingGoogle(true);
@@ -794,7 +821,7 @@ function saveSettings(configs) {
                   type="button"
                   onClick={handleToggleAutoSync}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    settings.autoSyncSheets ? 'bg-indigo-650' : 'bg-slate-300'
+                    settings.autoSyncSheets ? 'bg-indigo-600' : 'bg-slate-300'
                   }`}
                 >
                   <span
@@ -818,7 +845,7 @@ function saveSettings(configs) {
                   type="button"
                   onClick={handleToggleStrictGeofencing}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    settings.strictGeofencing ? 'bg-indigo-650' : 'bg-slate-300'
+                    settings.strictGeofencing ? 'bg-indigo-600' : 'bg-slate-300'
                   }`}
                 >
                   <span
@@ -862,6 +889,180 @@ function saveSettings(configs) {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Admin Security Credentials Panel */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm">
+                <Terminal className="w-4 h-4 text-indigo-600" />
+                <span>Admin Login Security</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase">
+                Credentials Setup
+              </span>
+            </div>
+
+            <p className="text-[10px] text-slate-500 leading-normal font-medium">
+              Prevent unauthorized access to the workforce dashboard by updating credentials. Set up high-security password reset pathways using Google Email verification or a private backup PIN code.
+            </p>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSecuritySaved(false);
+                setSecurityErrorMsg('');
+
+                if (!adminUser.trim()) {
+                  setSecurityErrorMsg('Username cannot be empty.');
+                  return;
+                }
+                if (adminPass.length < 6) {
+                  setSecurityErrorMsg('Password must be at least 6 characters for maximum security.');
+                  return;
+                }
+                if (adminPass === 'admin123') {
+                  setSecurityErrorMsg('For security, do not reuse the default "admin123" password.');
+                  return;
+                }
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(adminEmail.trim())) {
+                  setSecurityErrorMsg('Please specify a valid recovery Gmail/Email address.');
+                  return;
+                }
+
+                if (adminEmailSecondary.trim() && !emailRegex.test(adminEmailSecondary.trim())) {
+                  setSecurityErrorMsg('Please specify a valid secondary recovery Gmail/Email address or leave it empty.');
+                  return;
+                }
+
+                if (!adminRecoveryPin.trim() || adminRecoveryPin.trim().length < 4) {
+                  setSecurityErrorMsg('Backup recovery code must be at least 4 characters/digits.');
+                  return;
+                }
+
+                if (onUpdateSettings) {
+                  onUpdateSettings({
+                    ...settings,
+                    adminUsername: adminUser.trim(),
+                    adminPassword: adminPass.trim(),
+                    adminEmail: adminEmail.trim(),
+                    adminEmailSecondary: adminEmailSecondary.trim(),
+                    adminRecoveryKey: adminRecoveryPin.trim(),
+                  });
+                  setSecuritySaved(true);
+                  setTimeout(() => setSecuritySaved(false), 3000);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                  Secure Username
+                </label>
+                <input
+                  type="text"
+                  value={adminUser}
+                  onChange={(e) => setAdminUser(e.target.value)}
+                  placeholder="admin"
+                  className="w-full px-3 py-2 border border-slate-200 text-xs rounded-xl focus:ring-1 focus:ring-indigo-500 font-semibold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                  Secure Admin Password
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showHubPass ? "text" : "password"}
+                    value={adminPass}
+                    onChange={(e) => setAdminPass(e.target.value)}
+                    placeholder="Enter custom admin password"
+                    className="w-full pl-3 pr-14 py-2 border border-slate-200 text-xs rounded-xl focus:ring-1 focus:ring-indigo-500 font-mono font-semibold"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowHubPass(!showHubPass)}
+                    className="absolute right-3 text-indigo-600 hover:text-indigo-800 transition-colors p-1 text-[11px] font-bold"
+                  >
+                    {showHubPass ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-150 pt-3.5 mt-2">
+                <span className="block text-[10px] font-bold text-indigo-600 uppercase font-mono mb-2">Password Recovery Methods</span>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                      1st Admin Gmail (Primary)
+                    </label>
+                    <input
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="shamimnewaj68@gmail.com"
+                      className="w-full px-3 py-2 border border-slate-200 text-xs rounded-xl focus:ring-1 focus:ring-indigo-500 font-semibold"
+                      required
+                    />
+                    <span className="text-[9px] text-slate-400 leading-normal block mt-1">Authorized Google account check.</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                      2nd Admin Gmail (Backup)
+                    </label>
+                    <input
+                      type="email"
+                      value={adminEmailSecondary}
+                      onChange={(e) => setAdminEmailSecondary(e.target.value)}
+                      placeholder="e.g. backup@gmail.com"
+                      className="w-full px-3 py-2 border border-slate-200 text-xs rounded-xl focus:ring-1 focus:ring-indigo-500 font-semibold"
+                    />
+                    <span className="text-[9px] text-slate-400 leading-normal block mt-1">Alternate recovery check.</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase tracking-wider text-slate-450 mb-1">
+                      Private Backup PIN
+                    </label>
+                    <input
+                      type="text"
+                      value={adminRecoveryPin}
+                      onChange={(e) => setAdminRecoveryPin(e.target.value)}
+                      placeholder="e.g. 556677"
+                      className="w-full px-3 py-2 border border-slate-200 text-xs rounded-xl focus:ring-1 focus:ring-indigo-500 font-mono font-semibold"
+                      required
+                    />
+                    <span className="text-[9px] text-slate-400 leading-normal block mt-1">Numerical PIN reset passcode.</span>
+                  </div>
+                </div>
+              </div>
+
+              {securityErrorMsg && (
+                <div className="p-2.5 bg-rose-50 border border-rose-100 rounded-xl text-3xs text-rose-700 leading-normal font-medium">
+                  ⚠️ {securityErrorMsg}
+                </div>
+              )}
+
+              {securitySaved && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl text-3xs text-emerald-800 leading-normal font-semibold">
+                  ✓ Admin login credentials and secure verification methods saved.
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white rounded-xl transition-all shadow-3xs cursor-pointer"
+              >
+                Save Security Settings
+              </button>
+            </form>
           </div>
 
           {/* Admin Fixed-Shift Client Sites Configuration Section */}

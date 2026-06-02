@@ -47,6 +47,11 @@ export const INITIAL_SETTINGS: Settings = {
   strictGeofencing: true,
   autoSyncSheets: true,
   fixedShiftLocations: ['Hetero Changsari'],
+  adminUsername: 'admin',
+  adminPassword: 'admin123',
+  adminEmail: 'shamimnewaj68@gmail.com',
+  adminEmailSecondary: '',
+  adminRecoveryKey: '123456',
 };
 
 // Generates some sensible attendance logs spanning the last few days

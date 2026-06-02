@@ -62,6 +62,11 @@ export interface Settings {
   strictGeofencing?: boolean; // if true, blocks punches outside 100m of Calitech HQ
   autoSyncSheets?: boolean; // if true, automatically triggers background push on attendance create
   fixedShiftLocations?: string[]; // list of location names that automatically qualify for fixed-shift 8-hour credit
+  adminUsername?: string; // custom administrator username
+  adminPassword?: string; // custom administrator password
+  adminEmail?: string; // custom administrator email for Google Auth check
+  adminEmailSecondary?: string; // secondary administrator email for Google Auth check
+  adminRecoveryKey?: string; // 6-digit recovery PIN (e.g. '885544') secret to the admin
 }
 
 export interface LeaveRequest {
