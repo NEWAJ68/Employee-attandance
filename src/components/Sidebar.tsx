@@ -43,6 +43,13 @@ export default function Sidebar({
 }: SidebarProps) {
   const menuItems = [
     {
+      id: 'dashboard',
+      name: 'Workforce Dashboard',
+      icon: LayoutDashboard,
+      description: 'Analytics & Live state',
+      adminOnly: true,
+    },
+    {
       id: 'terminal',
       name: loggedInEmployee ? 'My Punch Card' : 'Attendance Kiosk',
       icon: Clock,
@@ -70,22 +77,15 @@ export default function Sidebar({
         icon: Building2,
         description: 'Half Day, Overtime & Punch Policies',
         adminOnly: false,
+      },
+      {
+        id: 'leaves',
+        name: 'My Leave Requests',
+        icon: Calendar,
+        description: 'Request Sickness / Vacation',
+        adminOnly: false,
       }
     ] : []),
-    {
-      id: 'leaves',
-      name: loggedInEmployee ? 'My Leave Requests' : 'Leave Management',
-      icon: Calendar,
-      description: loggedInEmployee ? 'Request Sickness / Vacation' : 'Submit & Review Leaves',
-      adminOnly: false,
-    },
-    {
-      id: 'dashboard',
-      name: 'Workforce Dashboard',
-      icon: LayoutDashboard,
-      description: 'Analytics & Live state',
-      adminOnly: true,
-    },
     {
       id: 'employees',
       name: 'Employee profiles',
@@ -114,6 +114,15 @@ export default function Sidebar({
       description: 'Half Day, Overtime & Punch Policies',
       adminOnly: true,
     },
+    ...(!loggedInEmployee ? [
+      {
+        id: 'leaves',
+        name: 'Leave Management',
+        icon: Calendar,
+        description: 'Submit & Review Leaves',
+        adminOnly: false,
+      }
+    ] : []),
     {
       id: 'sync',
       name: 'Google Sheets Integration',
