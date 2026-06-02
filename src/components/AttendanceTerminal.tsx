@@ -104,7 +104,7 @@ export default function AttendanceTerminal({
             setShowGpsModal(true);
           }
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
       );
     }
   }, [selectedEmpId, selfieState?.isOpen]);
@@ -650,9 +650,9 @@ export default function AttendanceTerminal({
         return;
       }
 
-      // If we have a cached coordinate that is less than 10 seconds (10,000 ms) old, return it instantly!
+      // If we have a cached coordinate that is less than 10 minutes (600,000 ms) old, return it instantly!
       const now = Date.now();
-      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 10000)) {
+      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 600000)) {
         console.log('Using optimized zero-latency cached GPS coordinate:', cachedLocationRef.current);
         
         // Asynchronously update the cache in the background for next time
@@ -1805,9 +1805,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-entry"
                     onClick={handleEntryCheckIn}
-                    disabled={selectedEmpStatus !== 'not-entered'}
+                    disabled={!selectedEmpId || selectedEmpStatus !== 'not-entered' || !!currentRecord?.entryTime}
                     className={`flex items-center justify-between w-full p-4.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'not-entered'
+                      selectedEmpId && selectedEmpStatus === 'not-entered' && !currentRecord?.entryTime
                         ? 'border-indigo-150 bg-indigo-50/50 hover:bg-indigo-55/60 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -1826,7 +1826,7 @@ export default function AttendanceTerminal({
                       </span>
                     </div>
                     <div className={`p-3 rounded-xl transition-transform ${
-                      selectedEmpStatus === 'not-entered' ? 'bg-indigo-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      selectedEmpId && selectedEmpStatus === 'not-entered' && !currentRecord?.entryTime ? 'bg-indigo-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <LogIn className="w-5 h-5" />
                     </div>
@@ -1840,9 +1840,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-lunchout"
                     onClick={handleLunchOut}
-                    disabled={!(currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut)}
+                    disabled={!(currentRecord && currentRecord.entryTime && !currentRecord.lunchOut && !currentRecord.exitTime)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut)
+                      (currentRecord && currentRecord.entryTime && !currentRecord.lunchOut && !currentRecord.exitTime)
                         ? 'border-amber-100 bg-amber-50/45 hover:bg-amber-55 text-amber-900 shadow-sm cursor-pointer hover:border-amber-200'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -1855,7 +1855,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Start lunch rest hour.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime && !currentRecord.lunchOut) ? 'bg-amber-500 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.entryTime && !currentRecord.lunchOut && !currentRecord.exitTime) ? 'bg-amber-500 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Utensils className="w-4 h-4" />
                     </div>
@@ -1894,9 +1894,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-exit"
                     onClick={handleExitCheckOut}
-                    disabled={!(currentRecord && currentRecord.entryTime && !currentRecord.exitTime)}
+                    disabled={!(currentRecord && currentRecord.entryTime && currentRecord.lunchIn && !currentRecord.exitTime)}
                     className={`flex items-center justify-between w-full p-4 rounded-xl border text-left transition-all group ${
-                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime)
+                      (currentRecord && currentRecord.entryTime && currentRecord.lunchIn && !currentRecord.exitTime)
                         ? 'border-rose-150 bg-rose-50/20 hover:bg-rose-50/45 text-rose-950 shadow-sm cursor-pointer hover:border-rose-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -1909,7 +1909,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10.5px] text-slate-500 block">Conclude standard working desk shifts & log payroll hours.</span>
                     </div>
                     <div className={`p-3 rounded-xl transition-transform ${
-                      (currentRecord && currentRecord.entryTime && !currentRecord.exitTime) ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.entryTime && currentRecord.lunchIn && !currentRecord.exitTime) ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <LogOut className="w-5 h-5" />
                     </div>
@@ -1925,7 +1925,7 @@ export default function AttendanceTerminal({
                     <h3 className="text-xs font-bold text-indigo-950 uppercase tracking-wider">Night Shift</h3>
                   </div>
                   <span className={`h-2 w-2 rounded-full ${
-                    selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'
+                    (currentRecord && currentRecord.entryTime2 && !currentRecord.exitTime2) ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'
                   }`}></span>
                 </div>
 
@@ -1935,9 +1935,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-entry2"
                     onClick={handleEntry2CheckIn}
-                    disabled={!!(currentRecord && currentRecord.entryTime) || !!(currentRecord && currentRecord.entryTime2)}
+                    disabled={!selectedEmpId || !!currentRecord?.entryTime2 || (currentRecord && currentRecord.entryTime && !currentRecord.exitTime)}
                     className={`flex items-center justify-between w-full p-4.5 rounded-xl border text-left transition-all group ${
-                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2)
+                      selectedEmpId && !currentRecord?.entryTime2 && !(currentRecord && currentRecord.entryTime && !currentRecord.exitTime)
                         ? 'border-indigo-200 bg-indigo-100/20 hover:bg-indigo-100/40 text-indigo-950 shadow-sm cursor-pointer hover:border-indigo-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
                     }`}
@@ -1948,11 +1948,11 @@ export default function AttendanceTerminal({
                       </span>
                       <span className="text-sm font-extrabold block text-slate-800">START SHIFT 2</span>
                       <span className="text-[10.5px] text-slate-500 block">
-                        {currentRecord?.entryTime ? 'Disabled: Day Duty Completed' : 'Log second shift / night.'}
+                        {currentRecord?.entryTime && !currentRecord?.exitTime ? 'Disabled: Day Duty Not Concluded' : 'Log second shift / night.'}
                       </span>
                     </div>
                     <div className={`p-3 rounded-xl transition-transform ${
-                      !(currentRecord && currentRecord.entryTime) && !(currentRecord && currentRecord.entryTime2) ? 'bg-indigo-700 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      selectedEmpId && !currentRecord?.entryTime2 && !(currentRecord && currentRecord.entryTime && !currentRecord.exitTime) ? 'bg-indigo-700 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Moon className="w-5 h-5" />
                     </div>
@@ -1966,9 +1966,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-dinnerout"
                     onClick={handleDinnerOut}
-                    disabled={(selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'active-working') || !!currentRecord?.dinnerOut}
+                    disabled={!(currentRecord && currentRecord.entryTime2 && !currentRecord.dinnerOut && !currentRecord.exitTime2)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      (selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working') && !currentRecord?.dinnerOut
+                      (currentRecord && currentRecord.entryTime2 && !currentRecord.dinnerOut && !currentRecord.exitTime2)
                         ? 'border-rose-100 bg-rose-50/45 hover:bg-rose-50 text-rose-900 shadow-sm cursor-pointer hover:border-rose-200'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
@@ -1981,7 +1981,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Night shift dinner break.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      (selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'active-working') && !currentRecord?.dinnerOut ? 'bg-rose-500 text-white group-hover:scale-[1.02] shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.entryTime2 && !currentRecord.dinnerOut && !currentRecord.exitTime2) ? 'bg-rose-500 text-white group-hover:scale-[1.02] shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <UtensilsCrossed className="w-4 h-4" />
                     </div>
@@ -1992,10 +1992,10 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-dinnerin"
                     onClick={handleDinnerIn}
-                    disabled={selectedEmpStatus !== 'on-dinner'}
+                    disabled={!(currentRecord && currentRecord.dinnerOut && !currentRecord.dinnerIn && !currentRecord.exitTime2)}
                     className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'on-dinner'
-                        ? 'border-emerald-250 bg-emerald-50 text-emerald-950 shadow-md cursor-pointer hover:border-emerald-450 ring-2 ring-emerald-500/25 duration-300 transform scale-[1.01] animate-pulse font-bold'
+                      (currentRecord && currentRecord.dinnerOut && !currentRecord.dinnerIn && !currentRecord.exitTime2)
+                        ? 'border-emerald-250 bg-emerald-50 text-emerald-955 shadow-md cursor-pointer hover:border-emerald-450 ring-2 ring-emerald-500/25 duration-300 transform scale-[1.01] animate-pulse font-bold'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-60 cursor-not-allowed'
                     }`}
                   >
@@ -2007,7 +2007,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10px] text-slate-500 block">Back from night dinner.</span>
                     </div>
                     <div className={`p-2.5 rounded-lg transition-transform ${
-                      selectedEmpStatus === 'on-dinner' ? 'bg-emerald-600 text-white group-hover:scale-105 shadow-sm animate-bounce' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.dinnerOut && !currentRecord.dinnerIn && !currentRecord.exitTime2) ? 'bg-emerald-600 text-white group-hover:scale-105 shadow-sm animate-bounce' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Soup className="w-4 h-4" />
                     </div>
@@ -2020,9 +2020,9 @@ export default function AttendanceTerminal({
                     type="button"
                     id="btn-kiosk-exit2"
                     onClick={handleExit2CheckOut}
-                    disabled={selectedEmpStatus !== 'active-working-shift2' && selectedEmpStatus !== 'on-dinner'}
+                    disabled={!(currentRecord && currentRecord.entryTime2 && currentRecord.dinnerIn && !currentRecord.exitTime2)}
                     className={`flex items-center justify-between w-full p-4 rounded-xl border text-left transition-all group ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner'
+                      (currentRecord && currentRecord.entryTime2 && currentRecord.dinnerIn && !currentRecord.exitTime2)
                         ? 'border-rose-150 bg-rose-50/20 hover:bg-rose-50/45 text-rose-950 shadow-sm cursor-pointer hover:border-rose-300'
                         : 'border-slate-100 bg-slate-100/50 text-slate-400 opacity-65 cursor-not-allowed'
                     }`}
@@ -2035,7 +2035,7 @@ export default function AttendanceTerminal({
                       <span className="text-[10.5px] text-slate-500 block">Conclude second shift / OT.</span>
                     </div>
                     <div className={`p-3 rounded-xl transition-transform ${
-                      selectedEmpStatus === 'active-working-shift2' || selectedEmpStatus === 'on-dinner' ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
+                      (currentRecord && currentRecord.entryTime2 && currentRecord.dinnerIn && !currentRecord.exitTime2) ? 'bg-rose-600 text-white group-hover:scale-105 shadow-sm' : 'bg-slate-200 text-slate-400'
                     }`}>
                       <MoonStar className="w-5 h-5" />
                     </div>
@@ -2276,35 +2276,19 @@ export default function AttendanceTerminal({
 
             {/* Split Dual-Preview Layout when captured, or Camera viewport when active */}
             {capturedPhoto ? (
-              <div className="grid grid-cols-2 gap-3 py-1">
-                {/* Full context image with surrounding context - Left Side */}
-                <div className="flex flex-col space-y-1.5 text-center">
-                  <div className="relative bg-slate-100 rounded-2xl overflow-hidden aspect-[3/4] border border-slate-200 shadow-sm">
-                    <img 
-                      src={capturedPhoto} 
-                      alt="Full Context Screen" 
-                      className={`w-full h-full object-cover transition-all ${photoClarity === 'blur' ? 'blur-[4px]' : ''}`} 
-                    />
-                    <div className="absolute bottom-1 right-1 bg-slate-900/60 backdrop-blur-[1px] text-[6px] text-white px-1 py-0.5 rounded font-mono scale-75">
-                      Context Screen
-                    </div>
+              <div className="flex flex-col items-center justify-center py-1 space-y-1.5 mx-auto">
+                {/* Full context image with surrounding context */}
+                <div className="relative bg-slate-100 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[280px] xs:max-w-[320px] sm:max-w-[350px] border border-slate-200 shadow-md">
+                  <img 
+                    src={capturedPhoto} 
+                    alt="Full Context Screen" 
+                    className="w-full h-full object-cover transition-all" 
+                  />
+                  <div className="absolute bottom-1 right-1 bg-slate-900/60 backdrop-blur-[1px] text-[7px] text-white px-1.5 py-0.5 rounded font-mono">
+                    Context Screen
                   </div>
-                  <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">Backdrop Verified</span>
                 </div>
-
-                {/* Cropped Personal Face Circle Preview - Right Side */}
-                <div className="flex flex-col space-y-1.5 text-center items-center justify-center">
-                  <div className="relative rounded-full overflow-hidden aspect-square w-[90px] xs:w-[105px] sm:w-[125px] h-[90px] xs:h-[105px] sm:h-[125px] border-4 border-indigo-600 shadow-lg bg-slate-100 flex items-center justify-center transition-transform hover:scale-105">
-                    <img 
-                      src={lastSavedFaceCrop || capturedPhoto} 
-                      alt="Crop Thumbnail" 
-                      className="w-full h-full object-cover" 
-                    />
-                  </div>
-                  <span className="text-[8px] font-extrabold text-indigo-700 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-full mt-1">
-                    Face Preview Crop
-                  </span>
-                </div>
+                <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider">Backdrop Verified</span>
               </div>
             ) : (
               <div className={`relative bg-slate-950 rounded-2xl overflow-hidden aspect-[3/4] w-full max-w-[280px] xs:max-w-[320px] sm:max-w-[350px] mx-auto flex items-center justify-center border-4 shadow-inner transition-all duration-300 border-slate-150`}>
@@ -2332,14 +2316,6 @@ export default function AttendanceTerminal({
                     </label>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Quality Check Warning shown ONLY when photo is Blurry */}
-            {capturedPhoto && photoClarity === 'blur' && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl py-1.5 px-3 text-center animate-pulse flex items-center justify-center space-x-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500 animate-bounce" />
-                <span className="text-[10.5px] font-black">Frame blurred! Please retake a steady photo.</span>
               </div>
             )}
 
@@ -2388,7 +2364,7 @@ export default function AttendanceTerminal({
                       onClick={captureSnapshot}
                       className={`flex-1 py-2 text-xs font-black text-white rounded-xl shadow-lg flex items-center justify-center space-x-1.5 font-sans transition-all active:scale-95 cursor-pointer ${
                         faceStatus.detected && faceStatus.alignedPercent >= 90
-                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 ring-2 ring-emerald-400 animate-pulse'
+                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 ring-2 ring-emerald-400'
                           : 'bg-indigo-600 hover:bg-indigo-750 shadow-indigo-600/15'
                       }`}
                       id="manual-capture-btn"
