@@ -63,6 +63,7 @@ import MyAttendanceView from './components/MyAttendanceView';
 import MyExpensesView from './components/MyExpensesView';
 import ExpenseManagementView from './components/ExpenseManagementView';
 import CompanyRules from './components/CompanyRules';
+import AttendanceRosterView from './components/AttendanceRosterView';
 
 const LOCAL_STORAGE_KEY = 'apex_attendance_mgmt_v1';
 
@@ -1605,6 +1606,7 @@ export default function App() {
                 {currentView === 'terminal' && 'Attendance Kiosk Desk'}
                 {currentView === 'dashboard' && 'Workforce Dashboard'}
                 {currentView === 'employees' && 'Staff Directory'}
+                {currentView === 'roster' && 'Audit Desk'}
                 {currentView === 'reports' && 'Wages & Overtime Audit'}
                 {currentView === 'rules' && 'Rules & Guidelines Directory'}
                 {currentView === 'sync' && 'Sheets Integration Center'}
@@ -1888,6 +1890,14 @@ export default function App() {
               onUpdateEmployee={handleUpdateEmployee}
               onDeleteEmployee={handleDeleteEmployee}
               onClearAllEmployees={handleClearAllEmployees}
+              settings={settings}
+            />
+          )}
+
+          {currentView === 'roster' && (
+            <AttendanceRosterView
+              employees={employees}
+              attendance={attendance}
               settings={settings}
             />
           )}

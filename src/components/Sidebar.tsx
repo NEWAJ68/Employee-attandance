@@ -95,6 +95,13 @@ export default function Sidebar({
       adminOnly: true,
     },
     {
+      id: 'roster',
+      name: 'Audit Desk',
+      icon: Users,
+      description: 'Review entries, locations & selfies',
+      adminOnly: true,
+    },
+    {
       id: 'reports',
       name: 'Financial Reports',
       icon: FileBarChart2,
