@@ -672,10 +672,10 @@ export default function AttendanceTerminal({
 
       setIsFetchingLocation(true);
       
-      const options = {
+      const optionsHigh = {
         enableHighAccuracy: true,
-        timeout: 15000, // 15 seconds to ensure GPS hardware has ample time to lock coordinates with 100% accuracy
-        maximumAge: 0   // Force fresh real-time coordinate fetching with 100% accurate live satellites
+        timeout: 8000, // Try 8 seconds with high accuracy search 
+        maximumAge: 0
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -688,18 +688,43 @@ export default function AttendanceTerminal({
           resolve(coords);
         },
         (error) => {
-          setIsFetchingLocation(false);
-          console.warn('Geolocation capture failed or was denied:', error);
-          if (error.code === 1) { // PERMISSION_DENIED is 1
+          console.warn('High precision GPS search failed or timed out. Falling back to standard-precision cell/Wi-Fi tracking...', error);
+          if (error.code === 1) { // PERMISSION_DENIED is 1 - immediately block since user blocked permission
+            setIsFetchingLocation(false);
             resolve("DENIED");
-          } else if (settings.strictGeofencing) {
-            resolve("DENIED");
-          } else {
-            // Return Calitech office coords on fallback so that users don't get blocked
-            resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+            return;
           }
+
+          // Cascade immediately to high-speed low-accuracy fallback
+          const optionsStandard = {
+            enableHighAccuracy: false,
+            timeout: 6000, // 6 seconds limit for coarse tracking
+            maximumAge: 60000 // Accept older coordinates up to 1 minute to instantly bypass latency
+          };
+
+          navigator.geolocation.getCurrentPosition(
+            (posStd) => {
+              setIsFetchingLocation(false);
+              const { latitude, longitude } = posStd.coords;
+              const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+              cachedLocationRef.current = coords;
+              lastLocationFetchTimeRef.current = Date.now();
+              resolve(coords);
+            },
+            (errStd) => {
+              setIsFetchingLocation(false);
+              console.error('All standard and high precision GPS layers failed:', errStd);
+              if (settings.strictGeofencing) {
+                resolve("DENIED");
+              } else {
+                // Return Calitech office coords on fallback so that users don't get blocked
+                resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+              }
+            },
+            optionsStandard
+          );
         },
-        options
+        optionsHigh
       );
     });
   };
@@ -712,6 +737,13 @@ export default function AttendanceTerminal({
     }
 
     setIsGpsRetrying(true);
+    
+    const optionsHigh = {
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 0
+    };
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsGpsRetrying(false);
@@ -726,29 +758,54 @@ export default function AttendanceTerminal({
         playBeep(true);
       },
       (error) => {
-        setIsGpsRetrying(false);
-        console.warn('Manual retry geolocation failed:', error);
+        console.warn('Manual high accuracy GPS search failed. Cascading to coarse network search...', error);
         if (error.code === 1) {
+          setIsGpsRetrying(false);
           setGpsErrorType('DENIED');
           triggerNotification('error', 'Location Access Denied! Please follow the settings guide to allow.');
           playBeep(false);
-        } else {
-          if (!settings.strictGeofencing) {
-            // Fallback to coordinates
-            const fallbackCoords = `${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`;
-            cachedLocationRef.current = fallbackCoords;
+          return;
+        }
+
+        const optionsStandard = {
+          enableHighAccuracy: false,
+          timeout: 6000,
+          maximumAge: 60000
+        };
+
+        navigator.geolocation.getCurrentPosition(
+          (posStd) => {
+            setIsGpsRetrying(false);
+            const { latitude, longitude } = posStd.coords;
+            const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+            cachedLocationRef.current = coords;
             lastLocationFetchTimeRef.current = Date.now();
+            
             setShowGpsModal(false);
             setGpsErrorType(null);
-            triggerNotification('success', '✅ Backup Geolocation Signal verified successfully.');
+            triggerNotification('success', '✅ GPS Signal resolved via Coarse cellular network backup.');
             playBeep(true);
-          } else {
-            triggerNotification('error', `GPS lock failed: ${error.message}. Ensure your device GPS sensor is turned ON.`);
-            playBeep(false);
-          }
-        }
+          },
+          (errStd) => {
+            setIsGpsRetrying(false);
+            console.error('All standard and high precision manual retry layers failed:', errStd);
+            if (!settings.strictGeofencing) {
+              const fallbackCoords = `${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`;
+              cachedLocationRef.current = fallbackCoords;
+              lastLocationFetchTimeRef.current = Date.now();
+              setShowGpsModal(false);
+              setGpsErrorType(null);
+              triggerNotification('success', '✅ Backup Geolocation Signal verified successfully.');
+              playBeep(true);
+            } else {
+              triggerNotification('error', `GPS lock failed: ${errStd.message}. Ensure your device GPS sensor is turned ON.`);
+              playBeep(false);
+            }
+          },
+          optionsStandard
+        );
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      optionsHigh
     );
   };
 
@@ -787,6 +844,85 @@ export default function AttendanceTerminal({
           selectedEmpId
         );
       }
+      return false;
+    }
+
+    return true;
+  };
+
+  /**
+   * Strict verification layer that checks for both geolocation proximity and image presence.
+   */
+  const validateStrictPunch = (
+    record: AttendanceRecord, 
+    actionType: 'entry' | 'lunch_out' | 'lunch_in' | 'dinner_out' | 'dinner_in' | 'entry2' | 'exit' | 'exit2'
+  ): boolean => {
+    let photo: string | undefined = '';
+    let location: string | undefined = '';
+    let actionLabel = '';
+
+    switch (actionType) {
+      case 'entry':
+        photo = record.photoIn;
+        location = record.locationIn;
+        actionLabel = 'Check-In';
+        break;
+      case 'lunch_out':
+        photo = record.photoLunchOut;
+        location = record.locationLunchOut;
+        actionLabel = 'Lunch Out';
+        break;
+      case 'lunch_in':
+        photo = record.photoLunchIn;
+        location = record.locationLunchIn;
+        actionLabel = 'Lunch In';
+        break;
+      case 'dinner_out':
+        photo = record.photoDinnerOut;
+        location = record.locationDinnerOut;
+        actionLabel = 'Dinner Out';
+        break;
+      case 'dinner_in':
+        photo = record.photoDinnerIn;
+        location = record.locationDinnerIn;
+        actionLabel = 'Dinner In';
+        break;
+      case 'entry2':
+        photo = record.photoEntry2;
+        location = record.locationEntry2;
+        actionLabel = 'Night Entry';
+        break;
+      case 'exit':
+        photo = record.photoOut;
+        location = record.locationOut;
+        actionLabel = 'Check-Out';
+        break;
+      case 'exit2':
+        photo = record.photoExit2;
+        location = record.locationExit2;
+        actionLabel = 'Night Exit';
+        break;
+    }
+
+    // A. Check Image presence (ensure valid base64 or length)
+    if (!photo || typeof photo !== 'string' || photo.trim().length < 20) {
+      triggerNotification('error', `❌ STRICT PUNCH BLOCKED: Missing mandatory facial photo validation for ${actionLabel}! Camera and/or webcam access must be granted.`);
+      playBeep(false);
+      return false;
+    }
+
+    // B. Check Geolocation presence
+    if (!location || location === 'DENIED' || location === 'NOT_SUPPORTED') {
+      triggerNotification('error', `❌ STRICT PUNCH BLOCKED: Live location coordinates are required for ${actionLabel}! Geolocation access must be granted.`);
+      playBeep(false);
+      return false;
+    }
+
+    // C. Check Geolocation proximity
+    const { isWithinRange, distance, matchedLocationName } = verifyProximityToOffice(location);
+    if (!isWithinRange) {
+      triggerNotification('error', `❌ STRICT PUNCH BLOCKED: Geofence proximity verification failed! You are ${distance}m away (must be within 200m of ${matchedLocationName || 'Calitech HQ'}).`);
+      playBeep(false);
       return false;
     }
 
@@ -1049,6 +1185,7 @@ export default function AttendanceTerminal({
     };
 
     newRecord = checkProximityAndFlag(coords, 'initial entry check-in', newRecord);
+    if (!validateStrictPunch(newRecord, isNightShift ? 'entry2' : 'entry')) return;
     setPendingLocationRecord(newRecord);
   };
 
@@ -1079,6 +1216,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch departure', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'lunch_out')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} departed for lunch break dynamically at ${timeStr}.`);
     setPunchAnimation({
@@ -1114,6 +1252,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'lunch return', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'lunch_in')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} returned from lunch at ${timeStr}. Welcome back!`);
     setPunchAnimation({
@@ -1154,6 +1293,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner departure', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'dinner_out')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} departed for dinner break at ${timeStr}. Enjoy your meal!`);
     setPunchAnimation({
@@ -1188,6 +1328,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'dinner return', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'dinner_in')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification('success', `${selectedEmpName} returned from dinner break at ${timeStr}. Welcome back to work!`);
     setPunchAnimation({
@@ -1233,6 +1374,7 @@ export default function AttendanceTerminal({
         photoEntry2: selfiePhoto,
       };
       newRecord = checkProximityAndFlag(coords, 'night shift entry', newRecord);
+      if (!validateStrictPunch(newRecord, 'entry2')) return;
       setPendingLocationRecord(newRecord);
     } else {
       let updatedRecord: AttendanceRecord = {
@@ -1246,6 +1388,7 @@ export default function AttendanceTerminal({
         photoEntry2: selfiePhoto,
       };
       updatedRecord = checkProximityAndFlag(coords, 'second shift entry', updatedRecord);
+      if (!validateStrictPunch(updatedRecord, 'entry2')) return;
       onUpdateAttendance(updatedRecord);
       triggerNotification('success', `${selectedEmpName} registered second shift entry dynamically at ${timeStr}.`);
       setPunchAnimation({
@@ -1292,7 +1435,7 @@ export default function AttendanceTerminal({
       undefined,
       undefined,
       currentRecord.selectedWorkLocation,
-      undefined
+      emp ? emp.assignedShift : undefined
     );
 
     let updatedRecord: AttendanceRecord = {
@@ -1307,6 +1450,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'shift exit check-out', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'exit')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 
@@ -1349,7 +1493,7 @@ export default function AttendanceTerminal({
       currentRecord.dinnerOut,
       currentRecord.dinnerIn || (currentRecord.dinnerOut ? timeStr : ''), // auto balance dinner return
       currentRecord.selectedWorkLocation,
-      undefined
+      emp ? emp.assignedShift : undefined
     );
 
     let updatedRecord: AttendanceRecord = {
@@ -1364,6 +1508,7 @@ export default function AttendanceTerminal({
     };
 
     updatedRecord = checkProximityAndFlag(coords, 'night shift departure', updatedRecord);
+    if (!validateStrictPunch(updatedRecord, 'exit2')) return;
     onUpdateAttendance(updatedRecord);
     triggerNotification(
       'success', 

@@ -26,7 +26,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Employee, AttendanceRecord, Settings, AppNotification, LeaveRequest } from '../types';
-import { getShiftConfig, minutesDiffFromStart, calculateEarnings, getProcessedLogsForEmployee, formatDateDMY } from '../utils/calculations';
+import { getShiftConfig, minutesDiffFromStart, calculateEarnings, getProcessedLogsForEmployee, formatDateDMY, getLocalDateString } from '../utils/calculations';
 
 interface DashboardViewProps {
   employees: Employee[];
@@ -776,7 +776,7 @@ export default function DashboardView({
     setRefreshKey(prev => prev + 1);
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   // Calculations for Today
   const todayAttendance = attendance.filter(rec => rec.date === todayStr);

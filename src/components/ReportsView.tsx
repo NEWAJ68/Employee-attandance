@@ -201,7 +201,7 @@ export default function ReportsView({
       formDinnerOut,
       formDinnerIn,
       formSelectedWorkLocation,
-      undefined
+      emp ? emp.assignedShift : undefined
     );
 
     const existingRec = modalMode === 'edit'
