@@ -787,7 +787,12 @@ export default function DashboardView({
     return (rec.entryTime || rec.entryTime2) && !rec.status.includes('Absent');
   }).length;
 
-  const totalOnLunchToday = todayAttendance.filter(rec => rec.status === 'On Lunch').length;
+  const totalOnLunchToday = todayAttendance.filter(rec => {
+    const isOnLunch = 
+      rec.status.toLowerCase().includes('lunch') || 
+      (rec.lunchOut && rec.lunchOut !== '--:--' && (!rec.lunchIn || rec.lunchIn === '--:--'));
+    return isOnLunch;
+  }).length;
 
   // Let's count overtime completed or logged today
   const totalOvertimeToday = todayAttendance.reduce((total, rec) => total + (rec.overtime || 0), 0);
@@ -883,7 +888,12 @@ export default function DashboardView({
     
     if (statusFilter === 'ALL') return matchSearch;
     if (statusFilter === 'PRESENT') return matchSearch && item.status !== 'Absent';
-    if (statusFilter === 'LUNCH') return matchSearch && item.status === 'On Lunch';
+    if (statusFilter === 'LUNCH') {
+      const isOnLunch = 
+        item.status.toLowerCase().includes('lunch') || 
+        (item.lunchOut && item.lunchOut !== '--:--' && (!item.lunchIn || item.lunchIn === '--:--'));
+      return matchSearch && isOnLunch;
+    }
     if (statusFilter === 'ABSENT') return matchSearch && item.status === 'Absent';
     return matchSearch;
   });
