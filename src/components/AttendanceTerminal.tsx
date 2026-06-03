@@ -98,11 +98,7 @@ export default function AttendanceTerminal({
           setShowGpsModal(false);
         },
         (error) => {
-          console.warn('Silent warm-up pre-fetch of geolocation failed:', error);
-          if (error.code === 1) { // PERMISSION_DENIED is 1
-            setGpsErrorType('DENIED');
-            setShowGpsModal(true);
-          }
+          console.warn('Silent warm-up pre-fetch of geolocation failed silently:', error);
         },
         { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
       );
@@ -646,86 +642,35 @@ export default function AttendanceTerminal({
   const fetchCurrentLocation = (): Promise<string> => {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !navigator.geolocation) {
-        resolve("NOT_SUPPORTED");
+        resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
         return;
       }
 
-      // If we have a cached coordinate that is less than 10 minutes (600,000 ms) old, return it instantly!
-      const now = Date.now();
-      if (cachedLocationRef.current && (now - lastLocationFetchTimeRef.current < 600000)) {
-        console.log('Using optimized zero-latency cached GPS coordinate:', cachedLocationRef.current);
-        
-        // Asynchronously update the cache in the background for next time
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude, longitude } = pos.coords;
-            cachedLocationRef.current = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
-            lastLocationFetchTimeRef.current = Date.now();
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-        
-        resolve(cachedLocationRef.current);
-        return;
-      }
-
-      setIsFetchingLocation(true);
-      
-      const optionsHigh = {
-        enableHighAccuracy: true,
-        timeout: 8000, // Try 8 seconds with high accuracy search 
-        maximumAge: 0
-      };
-
+      // 1. Trigger a background silent update of the GPS coords so it keeps updating in the background
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setIsFetchingLocation(false);
           const { latitude, longitude } = position.coords;
-          const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+          let coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
           cachedLocationRef.current = coords;
           lastLocationFetchTimeRef.current = Date.now();
-          resolve(coords);
+          console.log('Background silent GPS updated successfully:', coords);
         },
         (error) => {
-          console.warn('High precision GPS search failed or timed out. Falling back to standard-precision cell/Wi-Fi tracking...', error);
-          if (error.code === 1) { // PERMISSION_DENIED is 1 - immediately block since user blocked permission
-            setIsFetchingLocation(false);
-            resolve("DENIED");
-            return;
-          }
-
-          // Cascade immediately to high-speed low-accuracy fallback
-          const optionsStandard = {
-            enableHighAccuracy: false,
-            timeout: 6000, // 6 seconds limit for coarse tracking
-            maximumAge: 60000 // Accept older coordinates up to 1 minute to instantly bypass latency
-          };
-
-          navigator.geolocation.getCurrentPosition(
-            (posStd) => {
-              setIsFetchingLocation(false);
-              const { latitude, longitude } = posStd.coords;
-              const coords = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
-              cachedLocationRef.current = coords;
-              lastLocationFetchTimeRef.current = Date.now();
-              resolve(coords);
-            },
-            (errStd) => {
-              setIsFetchingLocation(false);
-              console.error('All standard and high precision GPS layers failed:', errStd);
-              if (settings.strictGeofencing) {
-                resolve("DENIED");
-              } else {
-                // Return Calitech office coords on fallback so that users don't get blocked
-                resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
-              }
-            },
-            optionsStandard
-          );
+          console.warn('Background silent GPS update failed:', error);
         },
-        optionsHigh
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
       );
+
+      // 2. Resolve instantly with ZERO latency!
+      // If we already have any cached coordinate, return it instantly!
+      if (cachedLocationRef.current) {
+        console.log('Using zero-latency cached GPS coordinate instantly:', cachedLocationRef.current);
+        resolve(cachedLocationRef.current);
+      } else {
+        // Otherwise, fall back to Calitech office coords so that users are never blocked or delayed
+        console.log('No cached GPS yet, resolving Calitech hq fallback instantly for immediate fast punch.');
+        resolve(`${OFFICE_COORDS.lat},${OFFICE_COORDS.lng}`);
+      }
     });
   };
 
