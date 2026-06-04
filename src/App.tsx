@@ -32,13 +32,36 @@ import WorkLocationModal from './components/WorkLocationModal';
 
 // Firebase imports
 import { signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { collection, doc, setDoc as firestoreSetDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc as firestoreSetDoc, deleteDoc as firestoreDeleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db, auth, googleProvider, OperationType, handleFirestoreError, testConnection, cleanFirestoreData } from './firebase';
 
-// Wrapped setDoc to ensure absolute safety against undefined fields in Firestore operations
+// Wrapped setDoc to ensure absolute safety against undefined fields in Firestore operations. Checks if Local-Only Mode is active.
 const setDoc = (docRef: any, data: any, options?: any) => {
+  try {
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
+    if (isLocal) {
+      console.log('Local-Only Mode active. Bypassing Firestore setDoc.');
+      return Promise.resolve();
+    }
+  } catch (e) {
+    console.error('LocalStorage check failed in global setDoc wrap:', e);
+  }
   const cleaned = cleanFirestoreData(data);
   return options ? firestoreSetDoc(docRef, cleaned, options) : firestoreSetDoc(docRef, cleaned);
+};
+
+// Wrapped deleteDoc to allow bypassing when Local-Only Mode is active.
+const deleteDoc = (docRef: any) => {
+  try {
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
+    if (isLocal) {
+      console.log('Local-Only Mode active. Bypassing Firestore deleteDoc.');
+      return Promise.resolve();
+    }
+  } catch (e) {
+    console.error('LocalStorage check failed in global deleteDoc wrap:', e);
+  }
+  return firestoreDeleteDoc(docRef);
 };
 
 // Google Sheets Service Imports
@@ -175,6 +198,14 @@ export default function App() {
   };
 
   // Sync state helpers
+  const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('apex_local_only_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('synced');
   const [firebaseStatus, setFirebaseStatus] = useState<'connecting' | 'connected' | 'offline' | 'error'>('connecting');
@@ -226,6 +257,13 @@ export default function App() {
       }
     }
 
+    if (isLocalOnlyMode) {
+      setFirebaseStatus('offline');
+      setFirebaseError(null);
+      console.log('LocalStorage Kiosk Active (Zero-Cost Local-Only Mode initiated by user preferences)');
+      return;
+    }
+
     // 2. Perform Anonymous Firebase auth login mapping or fallback to unauthenticated
     setFirebaseStatus('connecting');
     setFirebaseError(null);
@@ -237,6 +275,28 @@ export default function App() {
     let unsubNotifs: (() => void) | null = null;
     let unsubExpenses: (() => void) | null = null;
     let destroyed = false;
+
+    // Fast failover error proxy to catch Quota Exceeded and seamlessly auto-transition to local mode without breaking active kiosk.
+    const handleSubscriptionError = (err: any, label: string) => {
+      console.error(`${label} snapshot subscription query failed:`, err);
+      const errMsg = err?.message || String(err);
+      
+      const isQuotaExceeded = errMsg.toLowerCase().includes('quota') || 
+                              errMsg.toLowerCase().includes('limit exceeded') || 
+                              errMsg.toLowerCase().includes('resource exhausted') ||
+                              errMsg.toLowerCase().includes('denied');
+                              
+      if (isQuotaExceeded) {
+        console.warn('GCP Firestore Free Tier daily limits exceeded! Automatically transitioning database to Local-Only mode to avoid user disruption.');
+        localStorage.setItem('apex_local_only_mode', 'true');
+        setIsLocalOnlyMode(true);
+        setFirebaseStatus('offline');
+        setFirebaseError(null);
+      } else {
+        setFirebaseStatus('error');
+        setFirebaseError(errMsg);
+      }
+    };
 
     const setupSubscriptions = () => {
       if (destroyed) return;
@@ -288,9 +348,7 @@ export default function App() {
           setSettings(docSnap.data() as Settings);
         }
       }, (err) => {
-        console.error('Settings document snapshot query failed:', err);
-        setFirebaseStatus('error');
-        setFirebaseError(err.message || String(err));
+        handleSubscriptionError(err, 'Settings');
       });
 
       // Snapshot - Employees
@@ -303,9 +361,7 @@ export default function App() {
         });
         setEmployees(list);
       }, (err) => {
-        console.error('Employees cloud listing denied:', err);
-        setFirebaseStatus('error');
-        setFirebaseError(err.message || String(err));
+        handleSubscriptionError(err, 'Employees');
       });
 
       // Snapshot - Attendance
@@ -318,9 +374,7 @@ export default function App() {
         });
         setAttendance(list);
       }, (err) => {
-        console.error('Attendance cloud listing denied:', err);
-        setFirebaseStatus('error');
-        setFirebaseError(err.message || String(err));
+        handleSubscriptionError(err, 'Attendance');
       });
 
       // Snapshot - Leave Requests
@@ -334,9 +388,7 @@ export default function App() {
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         setLeaveRequests(list);
       }, (err) => {
-        console.error('Leave requests query failed:', err);
-        setFirebaseStatus('error');
-        setFirebaseError(err.message || String(err));
+        handleSubscriptionError(err, 'Leave requests');
       });
 
       // Snapshot - Notifications
@@ -351,9 +403,7 @@ export default function App() {
         list.sort((a, b) => b.id.localeCompare(a.id));
         setNotifications(list);
       }, (err) => {
-        console.error('Audit alerts subscription query denied:', err);
-        setFirebaseStatus('error');
-        setFirebaseError(err.message || String(err));
+        handleSubscriptionError(err, 'Audit alerts');
       });
 
       // Snapshot - Expenses
@@ -368,7 +418,7 @@ export default function App() {
         list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         setExpenses(list);
       }, (err) => {
-        console.error('Expenses subscription denied:', err);
+        handleSubscriptionError(err, 'Expenses');
       });
     };
 
@@ -402,7 +452,7 @@ export default function App() {
       if (unsubNotifs) unsubNotifs();
       if (unsubExpenses) unsubExpenses();
     };
-  }, []);
+  }, [isLocalOnlyMode]);
 
   // Unified State Writer to LocalStorage
   const handleSaveToLocalStorage = (
@@ -1635,21 +1685,51 @@ export default function App() {
               </div>
             )}
 
-            <div 
-              onClick={handleManualConnectionCheck}
-              className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:opacity-90 ${
-                firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-155 text-indigo-700 hover:bg-indigo-100/80' :
-                firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
-                'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
+            {/* Toggleable Mode (Cloud vs Local Zero-Quota) */}
+            <button 
+              onClick={() => {
+                const nextMode = !isLocalOnlyMode;
+                if (nextMode) {
+                  if (confirm("Switch to 100% Free Local Mode? This will stop querying your Firestore database to conserve your daily free read/write limits. The app will persist all records locally completely for free.")) {
+                    localStorage.setItem('apex_local_only_mode', 'true');
+                    setIsLocalOnlyMode(true);
+                  }
+                } else {
+                  if (confirm("Restore Firebase Cloud Sync Mode? The app will resume listening and syncing with Firestore. (Requires free daily quota elements or billing).")) {
+                    localStorage.removeItem('apex_local_only_mode');
+                    setIsLocalOnlyMode(false);
+                  }
+                }
+              }}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.02] hover:shadow-xs ${
+                isLocalOnlyMode 
+                  ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-150' 
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100/95'
               }`}
-              title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}. Click to re-establish connection manually.` : "Firebase Database Online. Click to manually ping / synchronize now."}
+              title={isLocalOnlyMode ? "Operating in Zero-Quota Local Storage. Click to reactivate Cloud Firebase sync." : "Operating in Cloud Sync. Click to activate Zero-Quota Local Mode and save your free tier!"}
             >
-              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
-              <span className="hidden sm:inline">
-                Cloud DB: {firebaseStatus}{firebaseError ? ` (${firebaseError.slice(0, 15)}...)` : ''}
-              </span>
-              <span className="sm:hidden text-[9px]">DB: {firebaseStatus === 'connected' ? 'On' : firebaseStatus === 'connecting' ? 'Hold' : 'Off'}</span>
-            </div>
+              <Zap className={`w-3.5 h-3.5 shrink-0 ${isLocalOnlyMode ? 'text-amber-600 animate-pulse' : 'text-indigo-500'}`} />
+              <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local (Free)' : 'Cloud Active'}</span>
+              <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : 'Cloud'}</span>
+            </button>
+
+            {!isLocalOnlyMode && (
+              <div 
+                onClick={handleManualConnectionCheck}
+                className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:opacity-90 ${
+                  firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-155 text-indigo-700 hover:bg-indigo-100/80' :
+                  firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
+                  'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
+                }`}
+                title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}. Click to re-establish connection manually.` : "Firebase Database Online. Click to manually ping / synchronize now."}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
+                <span className="hidden sm:inline">
+                  Cloud DB: {firebaseStatus}{firebaseError ? ` (${firebaseError.slice(0, 15)}...)` : ''}
+                </span>
+                <span className="sm:hidden text-[9px]">DB: {firebaseStatus === 'connected' ? 'On' : firebaseStatus === 'connecting' ? 'Hold' : 'Off'}</span>
+              </div>
+            )}
 
             {appsScriptUrl ? (
               <div 
@@ -1835,6 +1915,35 @@ export default function App() {
 
         {/* View Router sheets */}
         <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
+          {isLocalOnlyMode && (
+            <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-3xs animate-fadeIn select-none print:hidden">
+              <div className="flex items-start md:items-center space-x-3.5">
+                <div className="p-2.5 bg-amber-500/10 text-amber-700 rounded-xl shrink-0 flex items-center justify-center border border-amber-200/50">
+                  <Zap className="w-5 h-5 text-amber-600 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-snug flex items-center gap-1.5 font-sans">
+                    <span>Local Mode Active (बिलकुल फ्री - सुरक्षित मोड)</span>
+                    <span className="px-1.5 py-0.5 bg-amber-200 border border-amber-300 text-amber-900 rounded font-mono text-[9px] font-bold tracking-normal">ZERO-BILLING</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-655 mt-1 leading-relaxed max-w-2xl font-medium">
+                    The app is running offline in your browser to save your Firestore daily free reads limit. All attendance, employees data, leaves, rules & costs are saved completely for free! You do not need to enter payment card details.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm("Would you like to turn back on Cloud Firebase sync mode? Realtime subscription reads might resume.")) {
+                    localStorage.removeItem('apex_local_only_mode');
+                    window.location.reload();
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-extrabold text-[10px] uppercase tracking-wider rounded-xl cursor-pointer transition-all shrink-0 hover:shadow-xs active:scale-95"
+              >
+                Switch to Cloud Mode
+              </button>
+            </div>
+          )}
           {currentView === 'terminal' && (
             <AttendanceTerminal
               employees={employees}

@@ -503,25 +503,31 @@ export const ALLOWED_LOCATIONS: AllowedLocation[] = [
   {
     lat: 26.1185573,
     lng: 91.5396016,
-    name: "Calitech Engineering Solutions Pvt. Ltd.",
+    name: "Calitech",
     radiusMeters: 500
   },
   {
     lat: 26.1158,
     lng: 91.4932,
-    name: "Ajanta Pharma, Guwahati",
+    name: "Ajanta",
     radiusMeters: 200
   },
   {
     lat: 26.1030,
     lng: 91.5173,
-    name: "Natco Pharma, Guwahati",
+    name: "Natco",
     radiusMeters: 200
   },
   {
     lat: 26.1124,
     lng: 91.4880,
-    name: "Hetero Pharma, Guwahati, Hudumpur",
+    name: "Hetero Palashbari",
+    radiusMeters: 200
+  },
+  {
+    lat: 26.2570,
+    lng: 91.6910,
+    name: "Hetero Changsari",
     radiusMeters: 200
   }
 ];

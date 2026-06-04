@@ -898,7 +898,7 @@ export default function AttendanceTerminal({
       record.distanceFromHq = distance;
       
       // Dynamic automatic site mapping log inside notes
-      const siteTag = `[Matched Site: ${matchedLocationName}]`;
+      const siteTag = `[Site: ${matchedLocationName}]`;
       if (!record.notes) {
         record.notes = siteTag;
       } else if (!record.notes.includes(matchedLocationName)) {
