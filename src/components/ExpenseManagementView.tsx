@@ -28,12 +28,14 @@ interface ExpenseManagementProps {
     type: 'info' | 'warning' | 'alert' | 'success',
     employeeId?: string
   ) => void;
+  onUpdateExpense?: (updatedExpense: Expense) => Promise<any>;
 }
 
 export default function ExpenseManagementView({
   employees,
   expenses,
-  onAddNotification
+  onAddNotification,
+  onUpdateExpense
 }: ExpenseManagementProps) {
   // Filters state
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('All');
@@ -88,7 +90,11 @@ export default function ExpenseManagementView({
     };
 
     try {
-      await setDoc(doc(db, 'expenses', expenseId), cleanFirestoreData(updatedExpense));
+      if (onUpdateExpense) {
+        await onUpdateExpense(cleanFirestoreData(updatedExpense) as Expense);
+      } else {
+        await setDoc(doc(db, 'expenses', expenseId), cleanFirestoreData(updatedExpense));
+      }
 
       // Create a nice push alert notification to inform employee about decisions
       if (onAddNotification) {

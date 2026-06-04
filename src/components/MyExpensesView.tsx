@@ -22,6 +22,8 @@ import { db, OperationType, handleFirestoreError, cleanFirestoreData } from '../
 interface MyExpensesProps {
   loggedInEmployee: Employee;
   expenses: Expense[];
+  onAddExpense?: (newExpense: Expense) => Promise<any>;
+  onDeleteExpense?: (expenseId: string) => Promise<any>;
 }
 
 const EXPENSE_TYPES = [
@@ -35,7 +37,9 @@ const EXPENSE_TYPES = [
 
 export default function MyExpensesView({
   loggedInEmployee,
-  expenses
+  expenses,
+  onAddExpense,
+  onDeleteExpense
 }: MyExpensesProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -79,7 +83,11 @@ export default function MyExpensesView({
     setIsSubmitting(true);
     const docId = showDeleteConfirm.id;
     try {
-      await deleteDoc(doc(db, 'expenses', docId));
+      if (onDeleteExpense) {
+        await onDeleteExpense(docId);
+      } else {
+        await deleteDoc(doc(db, 'expenses', docId));
+      }
       setShowDeleteConfirm(null);
     } catch (err) {
       console.error('Failed to delete expense doc:', err);
@@ -171,7 +179,11 @@ export default function MyExpensesView({
     };
 
     try {
-      await setDoc(doc(db, 'expenses', docId), cleanFirestoreData(newExpense));
+      if (onAddExpense) {
+        await onAddExpense(cleanFirestoreData(newExpense) as Expense);
+      } else {
+        await setDoc(doc(db, 'expenses', docId), cleanFirestoreData(newExpense));
+      }
       
       // Clear forms and reset editing state
       setDate(new Date().toISOString().split('T')[0]);

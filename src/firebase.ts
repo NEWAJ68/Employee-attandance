@@ -55,8 +55,9 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errStr = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errStr,
     authInfo: {
       userId: auth.currentUser?.uid || null,
       email: auth.currentUser?.email || null,
@@ -72,6 +73,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+
+  const lowerErr = errStr.toLowerCase();
+  const isQuota = 
+    lowerErr.includes('resource-exhausted') || 
+    lowerErr.includes('quota') || 
+    lowerErr.includes('limit exceeded') || 
+    lowerErr.includes('billing');
+
+  if (isQuota && typeof window !== 'undefined') {
+    console.warn("Firestore Quota Exceeded detected inside error handler. Dispatching global event...");
+    window.dispatchEvent(new CustomEvent('firestore-quota-exceeded', { detail: { error: errStr } }));
+  }
+
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -90,6 +104,19 @@ export async function testConnection(): Promise<boolean> {
     ]);
     return true;
   } catch (error: any) {
+    const errorStr = String(error?.message || error?.code || '').toLowerCase();
+    const isQuota = 
+      errorStr.includes('resource-exhausted') || 
+      errorStr.includes('quota') || 
+      errorStr.includes('limit exceeded') || 
+      errorStr.includes('billing');
+
+    if (isQuota && typeof window !== 'undefined') {
+      console.warn("Firestore Quota Exceeded detected inside testConnection. Dispatching global event...");
+      window.dispatchEvent(new CustomEvent('firestore-quota-exceeded', { detail: { error: error?.message || 'Quota limit exceeded' } }));
+      return false;
+    }
+
     // If the server explicitly returns any Firestore/Firebase error code (like permission-denied, unauthenticated, etc.),
     // it means we successfully contacted the Google Cloud Firestore endpoint and got a real-time response.
     if (error && (

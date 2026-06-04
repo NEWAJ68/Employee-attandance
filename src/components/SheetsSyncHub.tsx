@@ -917,12 +917,25 @@ function saveSettings(configs) {
                   setSecurityErrorMsg('Username cannot be empty.');
                   return;
                 }
-                if (adminPass.length < 6) {
-                  setSecurityErrorMsg('Password must be at least 6 characters for maximum security.');
-                  return;
+                const passwordErrors: string[] = [];
+                if (adminPass.length < 8) {
+                  passwordErrors.push('at least 8 characters');
                 }
-                if (adminPass === 'admin123') {
-                  setSecurityErrorMsg('For security, do not reuse the default "admin123" password.');
+                if (!/[A-Z]/.test(adminPass)) {
+                  passwordErrors.push('an uppercase letter (A-Z)');
+                }
+                if (!/[a-z]/.test(adminPass)) {
+                  passwordErrors.push('a lowercase letter (a-z)');
+                }
+                if (!/\d/.test(adminPass)) {
+                  passwordErrors.push('a digit (0-9)');
+                }
+                if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(adminPass)) {
+                  passwordErrors.push('a special character (e.g., !@#$%)');
+                }
+
+                if (passwordErrors.length > 0) {
+                  setSecurityErrorMsg(`Password is weak! It must contain: ${passwordErrors.join(', ')}.`);
                   return;
                 }
 

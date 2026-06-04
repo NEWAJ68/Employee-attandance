@@ -25,12 +25,14 @@ import {
   Trash,
   ExternalLink,
   Activity,
-  Database
+  Database,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification, Expense } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
-import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString, timeToMinutes, isValidTimeStr } from './utils/calculations';
+import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString, timeToMinutes, isValidTimeStr, calculateAttendanceMetrics, getShiftConfig, detectShiftFromPunchTime } from './utils/calculations';
 import WorkLocationModal from './components/WorkLocationModal';
 
 // Firebase imports
@@ -44,13 +46,29 @@ const setDoc = (docRef: any, data: any, options?: any) => {
     const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
     if (isLocal) {
       console.log('Local-Only Mode active. Bypassing Firestore setDoc.');
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
       return Promise.resolve();
     }
   } catch (e) {
     console.error('LocalStorage check failed in global setDoc wrap:', e);
   }
   const cleaned = cleanFirestoreData(data);
-  return options ? firestoreSetDoc(docRef, cleaned, options) : firestoreSetDoc(docRef, cleaned);
+  const promise = options ? firestoreSetDoc(docRef, cleaned, options) : firestoreSetDoc(docRef, cleaned);
+  return promise.catch((err) => {
+    const errorStr = String(err?.message || err?.code || '').toLowerCase();
+    if (
+      errorStr.includes('resource-exhausted') ||
+      errorStr.includes('quota') ||
+      errorStr.includes('limit exceeded') ||
+      errorStr.includes('billing')
+    ) {
+      if (typeof window !== 'undefined') {
+        console.warn("Quota exceeded in setDoc! Dispatching quick global event...");
+        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+      }
+    }
+    throw err;
+  });
 };
 
 // Wrapped deleteDoc to allow bypassing when Local-Only Mode is active.
@@ -59,12 +77,27 @@ const deleteDoc = (docRef: any) => {
     const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
     if (isLocal) {
       console.log('Local-Only Mode active. Bypassing Firestore deleteDoc.');
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
       return Promise.resolve();
     }
   } catch (e) {
     console.error('LocalStorage check failed in global deleteDoc wrap:', e);
   }
-  return firestoreDeleteDoc(docRef);
+  return firestoreDeleteDoc(docRef).catch((err) => {
+    const errorStr = String(err?.message || err?.code || '').toLowerCase();
+    if (
+      errorStr.includes('resource-exhausted') ||
+      errorStr.includes('quota') ||
+      errorStr.includes('limit exceeded') ||
+      errorStr.includes('billing')
+    ) {
+      if (typeof window !== 'undefined') {
+        console.warn("Quota exceeded in deleteDoc! Dispatching quick global event...");
+        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+      }
+    }
+    throw err;
+  });
 };
 
 // Google Sheets Service Imports
@@ -229,6 +262,13 @@ export default function App() {
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [lastLatencyCheck, setLastLatencyCheck] = useState<Date | null>(null);
   const [isMeasuringLatency, setIsMeasuringLatency] = useState<boolean>(false);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('apex_quota_exceeded') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Sync punch queue to localStorage whenever it changes
   useEffect(() => {
@@ -286,6 +326,22 @@ export default function App() {
     // Fast failover error proxy to catch Quota Exceeded/connection errors and seamlessly auto-transition to local mode without breaking active kiosk.
     const handleSubscriptionError = (err: any, label: string) => {
       console.error(`${label} snapshot subscription query failed:`, err);
+      const errorStr = String(err?.message || err?.code || '').toLowerCase();
+      const isQuota = 
+        errorStr.includes('resource-exhausted') || 
+        errorStr.includes('quota') || 
+        errorStr.includes('limit exceeded') || 
+        errorStr.includes('billing');
+
+      if (isQuota) {
+        try {
+          localStorage.setItem('apex_quota_exceeded', 'true');
+        } catch (e) {
+          console.error(e);
+        }
+        setIsQuotaExceeded(true);
+      }
+
       console.warn('GCP Firestore subscription failed! Automatically transitioning database to Local-Only mode to avoid user disruption.');
       localStorage.setItem('apex_local_only_mode', 'true');
       setIsLocalOnlyMode(true);
@@ -419,10 +475,16 @@ export default function App() {
 
     const syncLocalCachedDataToCloud = async () => {
       try {
+        const hasUnsynced = localStorage.getItem('apex_has_unsynced_offline_data') === 'true';
+        if (!hasUnsynced) {
+          console.log('No unsynced offline changes found in local cache. Skipping redundant Firestore writes to conserve daily free-tier quota.');
+          return;
+        }
+
         const savedStr = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (!savedStr) return;
         const parsed = JSON.parse(savedStr);
-        console.log('Detected local cached offline states. Initiating push of local records to Cloud Firestore for true backup...');
+        console.log('Detected local cached offline states with active unsynced changes. Initiating push of local records to Cloud Firestore for secure backup...');
         
         // Push settings
         if (parsed.settings) {
@@ -475,6 +537,7 @@ export default function App() {
           }
         }
         console.log('Cloud upload completely synchronized!');
+        localStorage.setItem('apex_has_unsynced_offline_data', 'false');
       } catch (e) {
         console.error('Failed uploading local cached data to cloud:', e);
       }
@@ -814,6 +877,167 @@ export default function App() {
       clearInterval(interval);
     };
   }, [isLocalOnlyMode]);
+
+  // Listen for firestore-quota-exceeded events to activate secure local-cache fallback protection
+  useEffect(() => {
+    const handleQuotaExceeded = () => {
+      console.warn("Firestore Quota Exceeded event captured. Transitioning to local fail-safe state...");
+      try {
+        localStorage.setItem('apex_quota_exceeded', 'true');
+      } catch (e) {
+        console.error(e);
+      }
+      setIsQuotaExceeded(true);
+      if (!isLocalOnlyMode) {
+        localStorage.setItem('apex_local_only_mode', 'true');
+        setIsLocalOnlyMode(true);
+        setFirebaseStatus('offline');
+        handleRaiseNotification(
+          'Database Quota Exceeded',
+          'The Firestore Cloud database has exceeded its free daily limit. Face-to-face features have safely auto-transitioned to offline local caching mode so no data is lost! Your attendance records are fully preserved.',
+          'warning'
+        );
+      }
+    };
+    
+    window.addEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    return () => {
+      window.removeEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    };
+  }, [isLocalOnlyMode]);
+
+  // Automatic scan for forgotten punch-outs (Auto Clock Out past 4 hours and 10 minutes from shift end)
+  useEffect(() => {
+    if (attendance.length === 0) return;
+
+    const runAutoClockOutCheck = () => {
+      const now = new Date();
+      const updatedRecords: AttendanceRecord[] = [];
+
+      for (const record of attendance) {
+        if (!record.date) continue;
+        const emp = employees.find(e => e.id === record.employeeId);
+        const [y, m, d] = record.date.split('-').map(Number);
+        if (isNaN(y) || isNaN(m) || isNaN(d)) continue;
+
+        // Day Shift (Shift 1) Check
+        const hasEntry1 = isValidTimeStr(record.entryTime);
+        const hasExit1 = isValidTimeStr(record.exitTime);
+
+        if (hasEntry1 && !hasExit1) {
+          const detectedShift = detectShiftFromPunchTime(record.entryTime);
+          const shiftConfig = getShiftConfig(detectedShift);
+          const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
+          const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
+
+          const shiftEndDate = new Date(y, m - 1, d);
+          if (endHours * 60 + endMins < startHours * 60 + startMins) {
+            shiftEndDate.setDate(shiftEndDate.getDate() + 1);
+          }
+          shiftEndDate.setHours(endHours, endMins, 0, 0);
+
+          // Threshold of 4 hours 10 mins (250 minutes) after shiftEndDate
+          const thresholdDate = new Date(shiftEndDate.getTime() + 250 * 60 * 1000);
+
+          if (now > thresholdDate) {
+            const autoExitTime = shiftConfig.end;
+            const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
+              record.entryTime,
+              autoExitTime,
+              record.lunchOut,
+              record.lunchIn || (record.lunchOut ? autoExitTime : ''),
+              settings,
+              record.entryTime2,
+              record.exitTime2,
+              record.dinnerOut,
+              record.dinnerIn,
+              record.selectedWorkLocation,
+              emp?.assignedShift
+            );
+
+            const updatedRecord: AttendanceRecord = {
+              ...record,
+              lunchIn: record.lunchOut && !record.lunchIn ? autoExitTime : record.lunchIn,
+              exitTime: autoExitTime,
+              totalHours,
+              overtime,
+              status: [...statusFlags.filter(x => x !== 'Present'), 'Auto Out'].join(', '),
+              notes: (record.notes ? record.notes + ' ' : '') + '[System: Auto clocked out (forgot exit)]'
+            };
+            updatedRecords.push(updatedRecord);
+          }
+        }
+
+        // Night Shift/Second Shift (Shift 2) Check
+        const hasEntry2 = isValidTimeStr(record.entryTime2);
+        const hasExit2 = isValidTimeStr(record.exitTime2);
+
+        if (hasEntry2 && !hasExit2) {
+          const detectedShift = detectShiftFromPunchTime(record.entryTime2);
+          const shiftConfig = getShiftConfig(detectedShift);
+          const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
+          const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
+
+          const shiftEndDate = new Date(y, m - 1, d);
+          if (endHours * 60 + endMins < startHours * 60 + startMins) {
+            shiftEndDate.setDate(shiftEndDate.getDate() + 1);
+          }
+          shiftEndDate.setHours(endHours, endMins, 0, 0);
+
+          // Threshold of 4 hours 10 mins (250 minutes) after shiftEndDate
+          const thresholdDate = new Date(shiftEndDate.getTime() + 250 * 60 * 1000);
+
+          if (now > thresholdDate) {
+            const autoExitTime = shiftConfig.end;
+            const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
+              record.entryTime,
+              record.exitTime,
+              record.lunchOut,
+              record.lunchIn,
+              settings,
+              record.entryTime2,
+              autoExitTime,
+              record.dinnerOut,
+              record.dinnerIn || (record.dinnerOut ? autoExitTime : ''),
+              record.selectedWorkLocation,
+              emp?.assignedShift
+            );
+
+            const updatedRecord: AttendanceRecord = {
+              ...record,
+              dinnerIn: record.dinnerOut && !record.dinnerIn ? autoExitTime : record.dinnerIn,
+              exitTime2: autoExitTime,
+              totalHours,
+              overtime,
+              status: [...statusFlags.filter(x => x !== 'Night Shift' && x !== 'Night Shift Active'), 'Auto Out'].join(', '),
+              notes: (record.notes ? record.notes + ' ' : '') + '[System: Auto clocked out Shift 2 (forgot exit)]'
+            };
+            updatedRecords.push(updatedRecord);
+          }
+        }
+      }
+
+      if (updatedRecords.length > 0) {
+        console.log(`Auto Clock Out triggered for ${updatedRecords.length} records.`);
+        updatedRecords.forEach(rec => {
+          handleUpdateAttendance(rec);
+          handleRaiseNotification(
+            'System Auto Check-Out',
+            `Auto clocked out ${rec.employeeName} because they forgot to exit after their shift ended.`,
+            'info',
+            rec.employeeId
+          );
+        });
+      }
+    };
+
+    // Run check immediately upon load/updates
+    runAutoClockOutCheck();
+
+    // Set up check interval every 3 minutes (180000 ms) for maximum responsive accuracy
+    const runTimer = setInterval(runAutoClockOutCheck, 180000);
+    return () => clearInterval(runTimer);
+  }, [attendance, employees, settings]);
 
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
@@ -1365,6 +1589,44 @@ export default function App() {
     }
   };
 
+  const handleUpsertExpense = async (newExpense: Expense) => {
+    // Optimistic state update: update local state instantly
+    setExpenses((prev) => [newExpense, ...prev.filter(e => e.id !== newExpense.id)]);
+
+    // Determine connection state
+    const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine || isLocalOnlyMode;
+
+    if (isOfflineMode) {
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      return Promise.resolve();
+    } else {
+      // Fire Firestore write asynchronously in the background
+      return setDoc(doc(db, 'expenses', newExpense.id), newExpense).catch(err => {
+        console.warn('Firestore expense upload failed, saved locally:', err);
+        localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      });
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    // Optimistic state update: update local state instantly
+    setExpenses((prev) => prev.filter(e => e.id !== expenseId));
+
+    // Determine connection state
+    const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine || isLocalOnlyMode;
+
+    if (isOfflineMode) {
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      return Promise.resolve();
+    } else {
+      // Fire Firestore write asynchronously in the background
+      return deleteDoc(doc(db, 'expenses', expenseId)).catch(err => {
+        console.warn('Firestore expense deletion failed, saved locally:', err);
+        localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      });
+    }
+  };
+
   // Leave system request submission
   const handleSubmitLeaveRequest = async (newRequest: LeaveRequest) => {
     try {
@@ -1378,7 +1640,33 @@ export default function App() {
         newRequest.employeeId
       );
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${newRequest.id}`);
+      console.warn("Leave submission cloud sync failed, saving locally...", err);
+      const nextLeaves = [newRequest, ...leaveRequests.filter(r => r.id !== newRequest.id)];
+      setLeaveRequests(nextLeaves);
+      handleSaveToLocalStorage(employees, attendance, settings, appsScriptUrl, isAdminLoggedIn, nextLeaves);
+
+      const errorStr = String(err?.message || err?.code || '').toLowerCase();
+      const isQuota = 
+        errorStr.includes('resource-exhausted') || 
+        errorStr.includes('quota') || 
+        errorStr.includes('limit exceeded') || 
+        errorStr.includes('billing');
+
+      if (isQuota) {
+        setIsQuotaExceeded(true);
+        if (!isLocalOnlyMode) {
+          localStorage.setItem('apex_local_only_mode', 'true');
+          setIsLocalOnlyMode(true);
+          setFirebaseStatus('offline');
+          handleRaiseNotification(
+            'Saved Offline (Quota Exceeded)',
+            'GCP Firestore daily free limit exceeded. Stored leave request locally.',
+            'warning'
+          );
+        }
+      } else {
+        handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${newRequest.id}`);
+      }
     }
   };
 
@@ -1426,7 +1714,56 @@ export default function App() {
         );
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${requestId}`);
+      console.warn("Leave decision cloud sync failed, saving locally...", err);
+      // Fallback update to local state
+      const targetRequest = leaveRequests.find(r => r.id === requestId);
+      if (targetRequest) {
+        const updatedRequest: LeaveRequest = { ...targetRequest, status };
+        const nextLeaves = leaveRequests.map(r => r.id === requestId ? updatedRequest : r);
+        setLeaveRequests(nextLeaves);
+
+        let nextAttendance = attendance;
+        if (status === 'Approved') {
+          const newAttendanceRecord: AttendanceRecord = {
+            employeeId: targetRequest.employeeId,
+            employeeName: targetRequest.employeeName,
+            date: targetRequest.startDate,
+            entryTime: 'ON LEAVE',
+            exitTime: 'ON LEAVE',
+            lunchOut: '',
+            lunchIn: '',
+            totalHours: 0,
+            overtime: 0,
+            status: `On Leave: ${targetRequest.leaveType}`
+          };
+          nextAttendance = [...attendance.filter(r => !(r.date === targetRequest.startDate && r.employeeId === targetRequest.employeeId)), newAttendanceRecord];
+          setAttendance(nextAttendance);
+        }
+        handleSaveToLocalStorage(employees, nextAttendance, settings, appsScriptUrl, isAdminLoggedIn, nextLeaves);
+      }
+
+      const errorStr = String(err?.message || err?.code || '').toLowerCase();
+      const isQuota = 
+        errorStr.includes('resource-exhausted') || 
+        errorStr.includes('quota') || 
+        errorStr.includes('limit exceeded') || 
+        errorStr.includes('billing');
+
+      if (isQuota) {
+        setIsQuotaExceeded(true);
+        if (!isLocalOnlyMode) {
+          localStorage.setItem('apex_local_only_mode', 'true');
+          setIsLocalOnlyMode(true);
+          setFirebaseStatus('offline');
+          handleRaiseNotification(
+            'Saved Offline (Quota Exceeded)',
+            'GCP Firestore limit reached. Your decision has been saved locally.',
+            'warning'
+          );
+        }
+      } else {
+        handleFirestoreError(err, OperationType.WRITE, `leaveRequests/${requestId}`);
+      }
     }
   };
 
@@ -1438,13 +1775,51 @@ export default function App() {
   };
 
   const handleUpdateSettings = async (updatedSettings: Settings) => {
-    try {
-      await setDoc(doc(db, 'settings', 'global'), updatedSettings);
-      setSettings(updatedSettings);
+    // 1. Optimistic state update: update local state instantly so the UI transitions and saves immediately
+    setSettings(updatedSettings);
+    handleSaveToLocalStorage(employees, attendance, updatedSettings);
+
+    if (isLocalOnlyMode) {
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
       triggerRemoteSheetsSync('syncSettings', { settings: updatedSettings });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+      return;
     }
+
+    // 2. Perform Firestore write in background without blocking the UI thread
+    setDoc(doc(db, 'settings', 'global'), updatedSettings)
+      .then(() => {
+        triggerRemoteSheetsSync('syncSettings', { settings: updatedSettings });
+      })
+      .catch((err) => {
+        console.warn("Firestore settings backup check failed. Saved locally.", err);
+        const errorStr = String(err?.message || err?.code || '').toLowerCase();
+        const isQuota = 
+          errorStr.includes('resource-exhausted') || 
+          errorStr.includes('quota') || 
+          errorStr.includes('limit exceeded') || 
+          errorStr.includes('billing');
+
+        if (isQuota) {
+          setIsQuotaExceeded(true);
+          try {
+            localStorage.setItem('apex_quota_exceeded', 'true');
+          } catch (e) {
+            console.error(e);
+          }
+          if (!isLocalOnlyMode) {
+            localStorage.setItem('apex_local_only_mode', 'true');
+            setIsLocalOnlyMode(true);
+            setFirebaseStatus('offline');
+            handleRaiseNotification(
+              'Saved Offline (Quota Exceeded)',
+              'The Cloud database has exceeded its free daily limit. Your password and settings are successfully saved locally!',
+              'warning'
+            );
+          }
+        } else {
+          handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+        }
+      });
   };
 
   const handleClearAllAttendance = async () => {
@@ -1779,6 +2154,24 @@ export default function App() {
 
         {/* Main viewport */}
         <div className={`flex-1 flex flex-col ${layoutMode === 'desktop' ? 'lg:pl-72' : ''} min-w-0 min-h-screen pb-12`}>
+          {isQuotaExceeded && (
+            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 text-xs font-mono font-medium flex items-center justify-between shadow-md print:hidden w-full shrink-0 animate-pulse">
+              <div className="flex items-center space-x-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0 select-none" />
+                <span className="leading-relaxed">
+                  <strong>Notice (सूचना):</strong> Firestore Daily Quota Exceeded. Safely operating in <strong>Offline Local-Cache Mode</strong>. 
+                  All punches, settings changes, and updates are preserved locally. <strong className="underline text-amber-100">No data will be lost (कोई डेटा नुकसान नहीं होगा)</strong>.
+                </span>
+              </div>
+              <button 
+                onClick={() => setIsQuotaExceeded(false)}
+                className="ml-3 hover:text-amber-200 text-amber-100 font-bold underline cursor-pointer select-none shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Top bar (for mobile toggle menu / system status indicators) */}
           <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-3 md:px-6 sticky top-0 z-20 print:hidden select-none w-full">
             <div className="flex items-center space-x-2">
@@ -1829,7 +2222,9 @@ export default function App() {
                 if (isLocalOnlyMode) {
                   if (confirm("Would you like to try reconnecting to Google Cloud Firestore? If daily free limits are still exhausted, the kiosk will automatically run in local mode again.")) {
                     localStorage.removeItem('apex_local_only_mode');
+                    localStorage.removeItem('apex_quota_exceeded');
                     setIsLocalOnlyMode(false);
+                    setIsQuotaExceeded(false);
                     window.location.reload();
                   }
                 } else {
@@ -1838,21 +2233,25 @@ export default function App() {
               }}
               className={`flex items-center space-x-1 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.01] shrink-0 ${
                 isLocalOnlyMode 
-                  ? 'bg-amber-100 border-amber-305 text-amber-900 hover:bg-amber-150' 
+                  ? 'bg-amber-100 border-amber-300 text-amber-900 hover:bg-amber-155' 
                   : firebaseStatus === 'connected' 
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-755 hover:bg-indigo-100/90'
+                    ? 'bg-emerald-50 border-emerald-250 text-emerald-800 hover:bg-emerald-100'
                     : firebaseStatus === 'connecting'
                       ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
-                      : 'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
+                      : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
               }`}
               title={isLocalOnlyMode ? "Kiosk Engine: Local Mode (100% Free). Click to dry-run Cloud connection." : "Kiosk Engine: Cloud Database Sync Active. Click to ping handshake."}
             >
-              <Zap className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${isLocalOnlyMode ? 'text-amber-600 animate-pulse' : 'text-indigo-500'}`} />
+              {isLocalOnlyMode ? (
+                <CloudOff className="w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 text-amber-600 animate-pulse" />
+              ) : (
+                <Cloud className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${firebaseStatus === 'connected' ? 'text-emerald-500 animate-pulse' : 'text-rose-500'}`} />
+              )}
               {layoutMode === 'mobile' ? (
                 <span className="text-[9px] font-black">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
               ) : (
                 <>
-                  <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local (Free)' : `Cloud: ${firebaseStatus === 'connected' ? 'On' : firebaseStatus}`}</span>
+                  <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local Fail-Safe (Free)' : `Cloud: ${firebaseStatus === 'connected' ? 'Connected' : firebaseStatus.toUpperCase()}`}</span>
                   <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
                 </>
               )}
@@ -1867,14 +2266,14 @@ export default function App() {
                   : firebaseStatus === 'connected'
                     ? dbLatency !== null
                       ? dbLatency < 120
-                        ? 'bg-emerald-50 border-emerald-205 text-emerald-800 hover:bg-emerald-100'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
                         : dbLatency < 350
-                          ? 'bg-teal-50 border-teal-200 text-teal-800 hover:bg-teal-100'
+                          ? 'bg-teal-550 border-teal-200 text-teal-800 hover:bg-teal-100'
                           : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-                      : 'bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100/90'
+                      : 'bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100'
                     : firebaseStatus === 'connecting' || isMeasuringLatency
                       ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
-                      : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                      : 'bg-rose-50 border-rose-250 text-rose-800 hover:bg-rose-100'
               }`}
               title={
                 isLocalOnlyMode 
@@ -1898,13 +2297,13 @@ export default function App() {
                 <>
                   <span className="hidden sm:inline-block">
                     {isLocalOnlyMode ? (
-                      "DB: Local"
+                      "DB: Local Mode"
                     ) : firebaseStatus === 'connected' ? (
-                      dbLatency !== null ? `DB: ${dbLatency}ms` : 'DB: Online'
+                      dbLatency !== null ? `DB Speed: ${dbLatency}ms` : 'Cloud Status: Connected'
                     ) : firebaseStatus === 'connecting' || isMeasuringLatency ? (
                       "DB: Pinging..."
                     ) : (
-                      "DB: Offline"
+                      "DB Status: Offline"
                     )}
                   </span>
                   <span className="sm:hidden text-[9px]">
@@ -2118,6 +2517,7 @@ export default function App() {
                 onClick={() => {
                   if (confirm("Would you like to turn back on Cloud Firebase sync mode? Realtime subscription reads might resume.")) {
                     localStorage.removeItem('apex_local_only_mode');
+                    localStorage.removeItem('apex_quota_exceeded');
                     window.location.reload();
                   }
                 }}
@@ -2293,6 +2693,8 @@ export default function App() {
             <MyExpensesView
               loggedInEmployee={loggedInEmployee}
               expenses={expenses}
+              onAddExpense={handleUpsertExpense}
+              onDeleteExpense={handleDeleteExpense}
             />
           )}
 
@@ -2301,6 +2703,7 @@ export default function App() {
               employees={employees}
               expenses={expenses}
               onAddNotification={handleRaiseNotification}
+              onUpdateExpense={handleUpsertExpense}
             />
           )}
         </main>
