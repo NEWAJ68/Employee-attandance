@@ -234,16 +234,26 @@ export default function App() {
   };
 
   // Sync state helpers
-  const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(false);
+  const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('apex_local_only_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
+  // Keep isLocalOnlyMode synchronized with localStorage to prevent startup connection and subscription errors
   useEffect(() => {
     try {
-      localStorage.removeItem('apex_local_only_mode');
-      localStorage.removeItem('apex_quota_exceeded');
+      if (isLocalOnlyMode) {
+        localStorage.setItem('apex_local_only_mode', 'true');
+      } else {
+        localStorage.removeItem('apex_local_only_mode');
+      }
     } catch (e) {
-      console.error('Failed to clear persistent local-only flags:', e);
+      console.error('Failed to sync isLocalOnlyMode to localStorage:', e);
     }
-  }, []);
+  }, [isLocalOnlyMode]);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('synced');
