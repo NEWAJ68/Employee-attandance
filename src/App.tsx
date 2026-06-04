@@ -276,26 +276,14 @@ export default function App() {
     let unsubExpenses: (() => void) | null = null;
     let destroyed = false;
 
-    // Fast failover error proxy to catch Quota Exceeded and seamlessly auto-transition to local mode without breaking active kiosk.
+    // Fast failover error proxy to catch Quota Exceeded/connection errors and seamlessly auto-transition to local mode without breaking active kiosk.
     const handleSubscriptionError = (err: any, label: string) => {
       console.error(`${label} snapshot subscription query failed:`, err);
-      const errMsg = err?.message || String(err);
-      
-      const isQuotaExceeded = errMsg.toLowerCase().includes('quota') || 
-                              errMsg.toLowerCase().includes('limit exceeded') || 
-                              errMsg.toLowerCase().includes('resource exhausted') ||
-                              errMsg.toLowerCase().includes('denied');
-                              
-      if (isQuotaExceeded) {
-        console.warn('GCP Firestore Free Tier daily limits exceeded! Automatically transitioning database to Local-Only mode to avoid user disruption.');
-        localStorage.setItem('apex_local_only_mode', 'true');
-        setIsLocalOnlyMode(true);
-        setFirebaseStatus('offline');
-        setFirebaseError(null);
-      } else {
-        setFirebaseStatus('error');
-        setFirebaseError(errMsg);
-      }
+      console.warn('GCP Firestore subscription failed! Automatically transitioning database to Local-Only mode to avoid user disruption.');
+      localStorage.setItem('apex_local_only_mode', 'true');
+      setIsLocalOnlyMode(true);
+      setFirebaseStatus('offline');
+      setFirebaseError(null);
     };
 
     const setupSubscriptions = () => {
@@ -422,25 +410,101 @@ export default function App() {
       });
     };
 
+    const syncLocalCachedDataToCloud = async () => {
+      try {
+        const savedStr = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (!savedStr) return;
+        const parsed = JSON.parse(savedStr);
+        console.log('Detected local cached offline states. Initiating push of local records to Cloud Firestore for true backup...');
+        
+        // Push settings
+        if (parsed.settings) {
+          await firestoreSetDoc(doc(db, 'settings', 'global'), parsed.settings);
+        }
+        
+        // Push employees
+        if (parsed.employees && Array.isArray(parsed.employees)) {
+          for (const emp of parsed.employees) {
+            if (emp && emp.id) {
+              await firestoreSetDoc(doc(db, 'employees', emp.id), emp);
+            }
+          }
+        }
+        
+        // Push attendance
+        if (parsed.attendance && Array.isArray(parsed.attendance)) {
+          for (const rec of parsed.attendance) {
+            if (rec && rec.date && rec.employeeId) {
+              const docId = `${rec.date}_${rec.employeeId}`;
+              await firestoreSetDoc(doc(db, 'attendance', docId), rec);
+            }
+          }
+        }
+        
+        // Push leaveRequests
+        if (parsed.leaveRequests && Array.isArray(parsed.leaveRequests)) {
+          for (const req of parsed.leaveRequests) {
+            if (req && req.id) {
+              await firestoreSetDoc(doc(db, 'leaveRequests', req.id), req);
+            }
+          }
+        }
+        
+        // Push notifications
+        if (parsed.notifications && Array.isArray(parsed.notifications)) {
+          for (const notif of parsed.notifications) {
+            if (notif && notif.id) {
+              await firestoreSetDoc(doc(db, 'notifications', notif.id), notif);
+            }
+          }
+        }
+        
+        // Push expenses
+        if (parsed.expenses && Array.isArray(parsed.expenses)) {
+          for (const exp of parsed.expenses) {
+            if (exp && exp.id) {
+              await firestoreSetDoc(doc(db, 'expenses', exp.id), exp);
+            }
+          }
+        }
+        console.log('Cloud upload completely synchronized!');
+      } catch (e) {
+        console.error('Failed uploading local cached data to cloud:', e);
+      }
+    };
+
     signInAnonymously(auth)
       .then(async () => {
         console.log('Firebase Anonymous Session initialized successfully.');
         const isOnline = await testConnection();
-        // If snapshot succeeds it will configure connected anyway, but we set initial state
-        setFirebaseStatus(isOnline ? 'connected' : 'offline');
         if (!isOnline) {
-          setFirebaseError('Database handshake timed out or is unverified.');
+          console.warn('Database handshake timed out! Seamlessly transitioning to Local-Only mode.');
+          localStorage.setItem('apex_local_only_mode', 'true');
+          setIsLocalOnlyMode(true);
+          setFirebaseStatus('offline');
+          setFirebaseError(null);
+        } else {
+          setFirebaseStatus('connected');
+          setFirebaseError(null);
+          await syncLocalCachedDataToCloud();
+          setupSubscriptions();
         }
-        setupSubscriptions();
       })
       .catch(async (err) => {
-        console.warn('Firebase Anonymous Auth restricted by GCP project policy, proceeding unauthenticated:', err.message);
+        console.warn('Firebase Anonymous Auth failed, checking direct socket connection:', err.message);
         const isOnline = await testConnection();
-        setFirebaseStatus(isOnline ? 'connected' : 'offline');
         if (!isOnline) {
-          setFirebaseError('Unauthenticated. Handshake timed out or is unverified.');
+          console.warn('Direct connection failed! Seamlessly transitioning to Local-Only mode.');
+          localStorage.setItem('apex_local_only_mode', 'true');
+          setIsLocalOnlyMode(true);
+          setFirebaseStatus('offline');
+          setFirebaseError(null);
+        } else {
+          setFirebaseStatus('connected');
+          setFirebaseError(null);
+          await syncLocalCachedDataToCloud();
+          setupSubscriptions();
         }
-        setupSubscriptions();
       });
 
     return () => {
@@ -1075,17 +1139,16 @@ export default function App() {
   const handleAddAttendance = async (newRecord: AttendanceRecord) => {
     const docId = `${newRecord.date}_${newRecord.employeeId}`;
 
-    // Prevent shift overlaps that would corrupt payroll calculations
+    // Log shift overlap as warning rather than hard blocking employee punches
     const overlapCheck = detectShiftOverlap(newRecord, attendance);
     if (overlapCheck) {
-      alert(`Shift Overlap Blocked!\n\n${overlapCheck.reason}`);
+      console.warn('Shift Overlap warning logged: ', overlapCheck.reason);
       handleRaiseNotification(
-        'Shift Overlap Blocked',
-        overlapCheck.reason,
-        'alert',
+        'Shift Overlap Warning',
+        `Warning: Shift overlap detected on ${newRecord.date} for ${newRecord.employeeName || 'Staff'}. Dynamic punch logged.`,
+        'warning',
         newRecord.employeeId
       );
-      return;
     }
 
     try {
@@ -1164,17 +1227,16 @@ export default function App() {
     const docId = `${updatedRecord.date}_${updatedRecord.employeeId}`;
     const oldDocId = `${oldDate}_${oldEmpId}`;
 
-    // Prevent shift overlaps that would corrupt payroll calculations on updates
+    // Log shift overlap on update rather than hard blocking
     const overlapCheck = detectShiftOverlap(updatedRecord, attendance, oldEmpId, oldDate);
     if (overlapCheck) {
-      alert(`Shift Overlap Blocked!\n\n${overlapCheck.reason}`);
+      console.warn('Shift Overlap on update warning logged: ', overlapCheck.reason);
       handleRaiseNotification(
-        'Shift Overlap Blocked',
-        overlapCheck.reason,
-        'alert',
+        'Shift Overlap Warning on Update',
+        `Warning: Shift overlap warning updated on ${updatedRecord.date} for ${updatedRecord.employeeName || 'Staff'}.`,
+        'warning',
         updatedRecord.employeeId
       );
-      return;
     }
 
     try {
@@ -1624,7 +1686,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col" id="main-application-stage">
-      <div className={`flex flex-1 w-full bg-[#f3f4f6] min-h-0 relative ${layoutMode === 'mobile' ? 'max-w-[430px] mx-auto bg-white border-r border-l border-slate-200/80 shadow-2xl relative' : ''}`}>
+      <div className={`flex flex-1 w-full bg-[#f3f4f6] min-h-0 relative ${layoutMode === 'mobile' ? 'max-w-[430px] mx-auto bg-white border-r border-l border-slate-200/80 shadow-2xl relative max-w-full overflow-x-hidden' : ''}`}>
         {/* Dynamic Sidebar navigation */}
         <Sidebar
           currentView={currentView}
@@ -1642,15 +1704,15 @@ export default function App() {
         {/* Main viewport */}
         <div className={`flex-1 flex flex-col ${layoutMode === 'desktop' ? 'lg:pl-72' : ''} min-w-0 min-h-screen pb-12`}>
           {/* Top bar (for mobile toggle menu / system status indicators) */}
-          <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-4 md:px-6 sticky top-0 z-20 print:hidden select-none">
-            <div className="flex items-center space-x-3">
+          <header className="h-16 border-b border-slate-100 bg-white shadow-3xs flex items-center justify-between px-3 md:px-6 sticky top-0 z-20 print:hidden select-none w-full">
+            <div className="flex items-center space-x-2">
               <button
                 onClick={toggleSidebar}
                 className={`${layoutMode === 'desktop' ? 'lg:hidden' : ''} text-slate-500 hover:text-slate-800 bg-slate-100 p-2 rounded-xl transition-all cursor-pointer`}
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h2 className="hidden text-xs md:flex items-center space-x-1.5 font-bold uppercase font-mono tracking-widest text-slate-400">
+              <h2 className={layoutMode === 'mobile' ? 'hidden' : 'hidden text-xs md:flex items-center space-x-1.5 font-bold uppercase font-mono tracking-widest text-slate-400'}>
               <span>View:</span>
               <span className="text-slate-650 tracking-normal capitalize font-sans">
                 {currentView === 'terminal' && 'Attendance Kiosk Desk'}
@@ -1669,11 +1731,11 @@ export default function App() {
           </div>
 
           {/* Sync indicator caps */}
-          <div className="flex items-center space-x-1.5 sm:space-x-3.5">
+          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-3.5">
             {punchQueue.length > 0 && (
               <div 
                 onClick={firebaseStatus === 'connected' ? syncOfflineQueue : undefined}
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border select-none transition-all cursor-pointer ${
+                className={`flex items-center space-x-1 px-1.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono border select-none transition-all cursor-pointer ${
                   firebaseStatus === 'connected' 
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-850 hover:bg-emerald-100/90 hover:border-emerald-300' 
                     : 'bg-amber-50 border-amber-200 text-amber-850 hover:bg-amber-100/90 animate-pulse'
@@ -1681,59 +1743,48 @@ export default function App() {
                 title={firebaseStatus === 'connected' ? "Connection restored! Click here to flush and sync queued punches immediately." : `${punchQueue.length} offline punches are locally saved. They will automatically sync when connection is recovered.`}
               >
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <span>Queue: {punchQueue.length} offline</span>
+                <span>Q: {punchQueue.length}</span>
               </div>
             )}
 
-            {/* Toggleable Mode (Cloud vs Local Zero-Quota) */}
-            <button 
+            {/* Unified connection status badge indicating Cloud Status vs Auto-Fallback Local Mode */}
+            <div 
               onClick={() => {
-                const nextMode = !isLocalOnlyMode;
-                if (nextMode) {
-                  if (confirm("Switch to 100% Free Local Mode? This will stop querying your Firestore database to conserve your daily free read/write limits. The app will persist all records locally completely for free.")) {
-                    localStorage.setItem('apex_local_only_mode', 'true');
-                    setIsLocalOnlyMode(true);
-                  }
-                } else {
-                  if (confirm("Restore Firebase Cloud Sync Mode? The app will resume listening and syncing with Firestore. (Requires free daily quota elements or billing).")) {
+                if (isLocalOnlyMode) {
+                  if (confirm("Would you like to try reconnecting to Google Cloud Firestore? If daily free limits are still exhausted, the kiosk will automatically run in local mode again.")) {
                     localStorage.removeItem('apex_local_only_mode');
                     setIsLocalOnlyMode(false);
+                    window.location.reload();
                   }
+                } else {
+                  handleManualConnectionCheck();
                 }
               }}
-              className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.02] hover:shadow-xs ${
+              className={`flex items-center space-x-1 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.01] shrink-0 ${
                 isLocalOnlyMode 
-                  ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-150' 
-                  : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100/95'
+                  ? 'bg-amber-100 border-amber-305 text-amber-900 hover:bg-amber-150' 
+                  : firebaseStatus === 'connected' 
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-755 hover:bg-indigo-100/90'
+                    : firebaseStatus === 'connecting'
+                      ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
+                      : 'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
               }`}
-              title={isLocalOnlyMode ? "Operating in Zero-Quota Local Storage. Click to reactivate Cloud Firebase sync." : "Operating in Cloud Sync. Click to activate Zero-Quota Local Mode and save your free tier!"}
+              title={isLocalOnlyMode ? "Kiosk Engine: Local Mode (100% Free). Click to dry-run Cloud connection." : "Kiosk Engine: Cloud Database Sync Active. Click to ping handshake."}
             >
-              <Zap className={`w-3.5 h-3.5 shrink-0 ${isLocalOnlyMode ? 'text-amber-600 animate-pulse' : 'text-indigo-500'}`} />
-              <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local (Free)' : 'Cloud Active'}</span>
-              <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : 'Cloud'}</span>
-            </button>
-
-            {!isLocalOnlyMode && (
-              <div 
-                onClick={handleManualConnectionCheck}
-                className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:opacity-90 ${
-                  firebaseStatus === 'connected' ? 'bg-indigo-50 border-indigo-155 text-indigo-700 hover:bg-indigo-100/80' :
-                  firebaseStatus === 'connecting' ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse' :
-                  'bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100/80'
-                }`}
-                title={firebaseError ? `Firebase Status: ${firebaseStatus}. Error: ${firebaseError}. Click to re-establish connection manually.` : "Firebase Database Online. Click to manually ping / synchronize now."}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-indigo-500 animate-pulse' : firebaseStatus === 'connecting' ? 'bg-amber-500 animate-bounce' : 'bg-rose-500'}`} />
-                <span className="hidden sm:inline">
-                  Cloud DB: {firebaseStatus}{firebaseError ? ` (${firebaseError.slice(0, 15)}...)` : ''}
-                </span>
-                <span className="sm:hidden text-[9px]">DB: {firebaseStatus === 'connected' ? 'On' : firebaseStatus === 'connecting' ? 'Hold' : 'Off'}</span>
-              </div>
-            )}
+              <Zap className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${isLocalOnlyMode ? 'text-amber-600 animate-pulse' : 'text-indigo-500'}`} />
+              {layoutMode === 'mobile' ? (
+                <span className="text-[9px] font-black">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
+              ) : (
+                <>
+                  <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local (Free)' : `Cloud: ${firebaseStatus === 'connected' ? 'On' : firebaseStatus}`}</span>
+                  <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
+                </>
+              )}
+            </div>
 
             {appsScriptUrl ? (
               <div 
-                className={`flex items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+                className={`${layoutMode === 'mobile' ? 'hidden' : 'hidden md:flex'} items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
                   syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700 animate-pulse'
                 }`}
                 title="Synchronized to real-time Apps Script rows"
@@ -1744,7 +1795,7 @@ export default function App() {
               </div>
             ) : (
               <div 
-                className="flex items-center space-x-1 px-2 py-1 md:px-3 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"
+                className={layoutMode === 'mobile' ? 'hidden' : "hidden md:flex items-center space-x-1 px-2 py-1 md:px-3 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"}
                 title="Mock database saving to browser localState"
               >
                 <WifiOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -1759,7 +1810,7 @@ export default function App() {
                 setLayoutMode(layoutMode === 'mobile' ? 'desktop' : 'mobile');
                 setIsSidebarOpen(false);
               }}
-              className="flex items-center justify-center space-x-1 px-3 py-2 bg-indigo-50 border border-indigo-100/50 hover:bg-indigo-100 hover:border-indigo-200 text-indigo-750 rounded-xl text-xs font-bold transition-all select-none cursor-pointer"
+              className="hidden sm:flex items-center justify-center space-x-1 px-3 py-2 bg-indigo-50 border border-indigo-100/50 hover:bg-indigo-100 hover:border-indigo-200 text-indigo-755 rounded-xl text-xs font-bold transition-all select-none cursor-pointer"
               title={layoutMode === 'mobile' ? "Switch to Fullscreen Desktop View" : "Switch to Compact Mobile View"}
             >
               <Smartphone className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -1769,11 +1820,11 @@ export default function App() {
             {/* Logout Button */}
             <button
               onClick={isAdminLoggedIn ? handleLogout : handleEmployeeLogout}
-              className="flex items-center justify-center space-x-1 px-2.5 py-2 md:px-3.5 bg-rose-50 border border-slate-100 rounded-xl text-rose-700 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all select-none cursor-pointer"
+              className="flex items-center justify-center space-x-1 px-1.5 py-1.5 sm:px-2.5 sm:py-2 md:px-3.5 bg-rose-50 border border-slate-100 rounded-xl text-rose-700 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all select-none cursor-pointer"
               title="Click here to sign out"
             >
               <LogOut className="w-4 h-4 text-rose-505 shrink-0" />
-              <span className="hidden sm:inline">Sign Out</span>
+              <span className={layoutMode === 'mobile' ? 'hidden' : "hidden sm:inline"}>Sign Out</span>
             </button>
 
             {/* Notification Bell Dropdown */}
@@ -1781,7 +1832,7 @@ export default function App() {
               <button
                 id="header-bell-badge"
                 onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
-                className="p-2 md:p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
+                className="p-1.5 md:p-2.5 hover:bg-slate-50 border border-slate-150 hover:border-slate-200 rounded-xl relative transition-all cursor-pointer flex items-center justify-center select-none"
               >
                   <Bell className="w-4 h-4 text-slate-600" />
                   {filteredNotifications.filter(u => !isNotificationRead(u)).length > 0 && (
