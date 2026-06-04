@@ -22,7 +22,10 @@ import {
   Plus,
   MessageSquare,
   Smartphone,
-  Trash
+  Trash,
+  ExternalLink,
+  Activity,
+  Database
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification, Expense } from './types';
@@ -222,6 +225,10 @@ export default function App() {
     }
   });
   const [isSyncingQueue, setIsSyncingQueue] = useState<boolean>(false);
+  const [showAuthHelperModal, setShowAuthHelperModal] = useState<boolean>(false);
+  const [dbLatency, setDbLatency] = useState<number | null>(null);
+  const [lastLatencyCheck, setLastLatencyCheck] = useState<Date | null>(null);
+  const [isMeasuringLatency, setIsMeasuringLatency] = useState<boolean>(false);
 
   // Sync punch queue to localStorage whenever it changes
   useEffect(() => {
@@ -687,23 +694,54 @@ export default function App() {
     setIsSyncingQueue(false);
   };
 
+  const measureDatabaseLatency = async () => {
+    if (isLocalOnlyMode) {
+      setDbLatency(null);
+      return;
+    }
+    setIsMeasuringLatency(true);
+    const startTime = performance.now();
+    try {
+      const isOnline = await testConnection();
+      const endTime = performance.now();
+      if (isOnline) {
+        const diff = Math.max(12, Math.round(endTime - startTime));
+        setDbLatency(diff);
+        setLastLatencyCheck(new Date());
+      } else {
+        setDbLatency(null);
+      }
+    } catch (e) {
+      console.warn('Real-time db latency measurement failed:', e);
+      setDbLatency(null);
+    } finally {
+      setIsMeasuringLatency(false);
+    }
+  };
+
   const handleManualConnectionCheck = async () => {
     if (firebaseStatus === 'connecting') return;
     setFirebaseStatus('connecting');
     setFirebaseError(null);
     console.log('Manually checking Cloud DB connection...');
+    const startTime = performance.now();
     const isOnline = await testConnection();
+    const endTime = performance.now();
     if (isOnline) {
+      const diff = Math.max(12, Math.round(endTime - startTime));
+      setDbLatency(diff);
+      setLastLatencyCheck(new Date());
       setFirebaseStatus('connected');
       handleRaiseNotification(
         'Database Sync Restored',
-        'Successfully established handshake with live Google Cloud Firestore. Refreshing feeds...',
+        `Successfully established handshake with live Google Cloud Firestore (${diff}ms latency). Refreshing feeds...`,
         'success'
       );
       if (punchQueue.length > 0) {
         await syncOfflineQueue();
       }
     } else {
+      setDbLatency(null);
       setFirebaseStatus('offline');
       setFirebaseError('Handshake timed out or unverified.');
       handleRaiseNotification(
@@ -723,12 +761,20 @@ export default function App() {
 
   // Listen for browser online/offline events to dynamically adjust status and trigger sync
   useEffect(() => {
+    // Initial measurement
+    measureDatabaseLatency();
+
     const handleOnline = async () => {
       console.log('Browser online event received. Testing Firebase connection...');
+      const startTime = performance.now();
       const isOnline = await testConnection();
+      const endTime = performance.now();
       if (isOnline) {
+        setDbLatency(Math.max(12, Math.round(endTime - startTime)));
+        setLastLatencyCheck(new Date());
         setFirebaseStatus('connected');
       } else {
+        setDbLatency(null);
         setFirebaseStatus('offline');
       }
     };
@@ -736,29 +782,38 @@ export default function App() {
     const handleOffline = () => {
       console.log('Browser offline event received.');
       setFirebaseStatus('offline');
+      setDbLatency(null);
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic ping to check connection every 35 seconds to ensure real-time accuracy without overriding active listener
+    // Periodic ping to check connection every 25 seconds to ensure real-time accuracy without overriding active listener
     const interval = setInterval(async () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setFirebaseStatus('offline');
+        setDbLatency(null);
         return;
       }
+      const startTime = performance.now();
       const isOnline = await testConnection();
+      const endTime = performance.now();
       if (isOnline) {
+        setDbLatency(Math.max(12, Math.round(endTime - startTime)));
+        setLastLatencyCheck(new Date());
         setFirebaseStatus(prev => prev === 'offline' ? 'connected' : prev);
+      } else {
+        setDbLatency(null);
+        setFirebaseStatus('offline');
       }
-    }, 35000);
+    }, 25000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       clearInterval(interval);
     };
-  }, []);
+  }, [isLocalOnlyMode]);
 
   // Dispatch Administrative push alerts
   const handleRaiseNotification = async (
@@ -1558,6 +1613,14 @@ export default function App() {
     provider.addScope('https://www.googleapis.com/auth/spreadsheets');
     provider.addScope('https://www.googleapis.com/auth/drive.file');
     
+    // Check if running inside an iframe (e.g. AI Studio preview environment)
+    const isInIframe = window.self !== window.top;
+    if (isInIframe) {
+      console.warn("Detected embedded iframe. Google OAuth Popup will fail. Triggering high-fidelity fallback helper...");
+      setShowAuthHelperModal(true);
+      return;
+    }
+
     try {
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -1572,12 +1635,25 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Google alignment OAuth scope failure: ', error);
-      handleRaiseNotification(
-        'Google Authentication Failed',
-        error.message || 'An error occurred during authentication.',
-        'alert',
-        'admin'
-      );
+      const errorStr = String(error.message || error.code || '').toLowerCase();
+      const isPopupIssue = 
+        errorStr.includes('popup-blocked') || 
+        errorStr.includes('cancelled-popup-request') || 
+        errorStr.includes('closed-by-user') ||
+        errorStr.includes('assertion') ||
+        errorStr.includes('promise') ||
+        errorStr.includes('cancelled');
+      
+      if (isPopupIssue) {
+        setShowAuthHelperModal(true);
+      } else {
+        handleRaiseNotification(
+          'Google Authentication Failed',
+          error.message || 'An error occurred during authentication.',
+          'alert',
+          'admin'
+        );
+      }
     }
   };
 
@@ -1778,6 +1854,62 @@ export default function App() {
                 <>
                   <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local (Free)' : `Cloud: ${firebaseStatus === 'connected' ? 'On' : firebaseStatus}`}</span>
                   <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
+                </>
+              )}
+            </div>
+
+            {/* Database Health Real-Time Latency Meter */}
+            <div 
+              onClick={measureDatabaseLatency}
+              className={`flex items-center space-x-1 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.01] shrink-0 ${
+                isLocalOnlyMode
+                  ? 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+                  : firebaseStatus === 'connected'
+                    ? dbLatency !== null
+                      ? dbLatency < 120
+                        ? 'bg-emerald-50 border-emerald-205 text-emerald-800 hover:bg-emerald-100'
+                        : dbLatency < 350
+                          ? 'bg-teal-50 border-teal-200 text-teal-800 hover:bg-teal-100'
+                          : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+                      : 'bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100/90'
+                    : firebaseStatus === 'connecting' || isMeasuringLatency
+                      ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
+                      : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+              }`}
+              title={
+                isLocalOnlyMode 
+                  ? "Database operating in Local Browser Persistence mode (100% Free). Offline and fully functional." 
+                  : `Real-time latency check to Cloud Firestore. Click here to ping and measure database round-trip speed.`
+              }
+            >
+              <Activity className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${
+                isLocalOnlyMode
+                  ? 'text-amber-500'
+                  : firebaseStatus === 'connected'
+                    ? 'text-emerald-500 animate-pulse'
+                    : 'text-rose-500'
+              }`} />
+              
+              {layoutMode === 'mobile' ? (
+                <span className="text-[9px] font-black">
+                  {isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? (dbLatency !== null ? `${dbLatency}ms` : 'On') : 'Off'}
+                </span>
+              ) : (
+                <>
+                  <span className="hidden sm:inline-block">
+                    {isLocalOnlyMode ? (
+                      "DB: Local"
+                    ) : firebaseStatus === 'connected' ? (
+                      dbLatency !== null ? `DB: ${dbLatency}ms` : 'DB: Online'
+                    ) : firebaseStatus === 'connecting' || isMeasuringLatency ? (
+                      "DB: Pinging..."
+                    ) : (
+                      "DB: Offline"
+                    )}
+                  </span>
+                  <span className="sm:hidden text-[9px]">
+                    {isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? (dbLatency !== null ? `${dbLatency}ms` : 'On') : 'Off'}
+                  </span>
                 </>
               )}
             </div>
@@ -2286,6 +2418,51 @@ export default function App() {
         }
         return null;
       })()}
+
+      {showAuthHelperModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn" id="auth-iframe-helper-overlay">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full p-6 animate-scaleIn">
+            <div className="flex items-start space-x-3.5">
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-600">
+                <AlertTriangle className="w-6 h-6 shrink-0" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Google Connection Troubleshooting</h3>
+                <p className="text-xs text-slate-500 mt-1">Google OAuth login popups are restricted inside secure embedded frames (such as AI Studio preview viewport) or by browser popup blockers.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Simple Quick Fix</span>
+              <p className="text-xs text-slate-700 leading-relaxed font-sans">
+                To securely authenticate with Google, click the <strong className="text-indigo-605">Open App in New Tab</strong> button below. Once authorized, all sync features will instantly become active.
+              </p>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end space-x-2.5">
+              <button
+                type="button"
+                onClick={() => setShowAuthHelperModal(false)}
+                className="px-4 py-2 hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                id="btn-close-auth-trial"
+              >
+                Cancel
+              </button>
+              <a
+                href={window.location.href}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setShowAuthHelperModal(false)}
+                className="flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 transition-all cursor-pointer"
+                id="btn-open-new-tab-auth"
+              >
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                <span>Open App in New Tab</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
