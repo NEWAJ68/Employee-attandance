@@ -1043,7 +1043,7 @@ export default function App() {
       setAttendance((prev) => [...prev.filter(r => !(r.date === newRecord.date && r.employeeId === newRecord.employeeId)), newRecord]);
 
       // Determine connection state
-      const isOfflineMode = firebaseStatus === 'offline' || !navigator.onLine;
+      const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine;
 
       if (isOfflineMode) {
         setPunchQueue(prev => {
@@ -1139,7 +1139,7 @@ export default function App() {
       });
 
       // Determine connection state
-      const isOfflineMode = firebaseStatus === 'offline' || !navigator.onLine;
+      const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine;
 
       if (isOfflineMode) {
         setPunchQueue(prev => {

@@ -82,7 +82,7 @@ export async function testConnection(): Promise<boolean> {
   }
   try {
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firebase connection check timed out')), 3500)
+      setTimeout(() => reject(new Error('Firebase connection check timed out')), 10000)
     );
     await Promise.race([
       getDocFromServer(doc(db, 'test', 'connection')),
@@ -90,14 +90,13 @@ export async function testConnection(): Promise<boolean> {
     ]);
     return true;
   } catch (error: any) {
-    // If the server explicitly returns a Firestore error code (like permission-denied or unauthenticated),
+    // If the server explicitly returns any Firestore/Firebase error code (like permission-denied, unauthenticated, etc.),
     // it means we successfully contacted the Google Cloud Firestore endpoint and got a real-time response.
     if (error && (
-      error.code === 'permission-denied' || 
-      error.code === 'unauthenticated' || 
-      error.code === 'not-found' ||
+      error.code ||
       error.message?.includes('permission-denied') ||
-      error.message?.includes('unauthenticated')
+      error.message?.includes('unauthenticated') ||
+      error.message?.includes('not-found')
     )) {
       console.log("Firestore connection verified (server responded):", error.code || error.message);
       return true;
