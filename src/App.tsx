@@ -27,12 +27,13 @@ import {
   Activity,
   Database,
   Cloud,
-  CloudOff
+  CloudOff,
+  Loader2
 } from 'lucide-react';
 
 import { Employee, AttendanceRecord, Settings, AppState, LeaveRequest, AppNotification, Expense } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SETTINGS, generateInitialAttendance } from './data';
-import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString, timeToMinutes, isValidTimeStr, calculateAttendanceMetrics, getShiftConfig, detectShiftFromPunchTime } from './utils/calculations';
+import { verifyProximityToOffice, OFFICE_COORDS, getLocalDateString, timeToMinutes, isValidTimeStr, calculateAttendanceMetrics, getShiftConfig, detectShiftFromPunchTime, addMinutesToTimeStr } from './utils/calculations';
 import WorkLocationModal from './components/WorkLocationModal';
 
 // Firebase imports
@@ -44,7 +45,7 @@ import { db, auth, googleProvider, OperationType, handleFirestoreError, testConn
 const setDoc = (docRef: any, data: any, options?: any) => {
   const cleaned = cleanFirestoreData(data);
   try {
-    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || localStorage.getItem('apex_quota_exceeded') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
     if (isLocal) {
       console.log('Local-Only Mode active. Queueing surgical write for:', docRef?.path);
       localStorage.setItem('apex_has_unsynced_offline_data', 'true');
@@ -123,7 +124,7 @@ const setDoc = (docRef: any, data: any, options?: any) => {
 // Wrapped deleteDoc to allow bypassing when Local-Only Mode is active.
 const deleteDoc = (docRef: any) => {
   try {
-    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || localStorage.getItem('apex_quota_exceeded') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
     if (isLocal) {
       console.log('Local-Only Mode active. Queueing surgical delete for:', docRef?.path);
       localStorage.setItem('apex_has_unsynced_offline_data', 'true');
@@ -332,7 +333,7 @@ export default function App() {
   // Sync state helpers
   const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('apex_local_only_mode') === 'true';
+      return localStorage.getItem('apex_local_only_mode') === 'true' || localStorage.getItem('apex_quota_exceeded') === 'true';
     } catch {
       return false;
     }
@@ -874,7 +875,7 @@ export default function App() {
 
   // Automatic Real-time Google Sheets Mirroring on dynamic snapshot updates
   useEffect(() => {
-    if (!googleAccessToken || !googleSpreadsheetId || !settings.autoSyncSheets) {
+    if (!googleAccessToken || !googleSpreadsheetId) {
       return;
     }
 
@@ -889,10 +890,10 @@ export default function App() {
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [employees, googleAccessToken, googleSpreadsheetId, settings.autoSyncSheets]);
+  }, [employees, googleAccessToken, googleSpreadsheetId]);
 
   useEffect(() => {
-    if (!googleAccessToken || !googleSpreadsheetId || !settings.autoSyncSheets) {
+    if (!googleAccessToken || !googleSpreadsheetId) {
       return;
     }
 
@@ -907,7 +908,7 @@ export default function App() {
     }, 3500);
 
     return () => clearTimeout(timer);
-  }, [attendance, googleAccessToken, googleSpreadsheetId, settings.autoSyncSheets]);
+  }, [attendance, googleAccessToken, googleSpreadsheetId]);
 
   // Trigger queue sync when connectivity is restored or when forced
   const syncOfflineQueue = async () => {
@@ -1124,7 +1125,7 @@ export default function App() {
         const hasExit1 = isValidTimeStr(tempRecord.exitTime);
 
         if (hasEntry1 && !hasExit1) {
-          const detectedShift = detectShiftFromPunchTime(tempRecord.entryTime);
+          const detectedShift = emp?.assignedShift || detectShiftFromPunchTime(tempRecord.entryTime);
           const shiftConfig = getShiftConfig(detectedShift);
           const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
           const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
@@ -1140,11 +1141,12 @@ export default function App() {
 
           if (now > thresholdDate) {
             const autoExitTime = shiftConfig.end;
+            const fallbackLunchIn = tempRecord.lunchOut ? addMinutesToTimeStr(tempRecord.lunchOut, settings.lunchDurationMinutes || 60) : '';
             const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
               tempRecord.entryTime,
               autoExitTime,
               tempRecord.lunchOut,
-              tempRecord.lunchIn || (tempRecord.lunchOut ? autoExitTime : ''),
+              tempRecord.lunchIn || fallbackLunchIn,
               settings,
               tempRecord.entryTime2,
               tempRecord.exitTime2,
@@ -1156,7 +1158,7 @@ export default function App() {
 
             tempRecord = {
               ...tempRecord,
-              lunchIn: tempRecord.lunchOut && !tempRecord.lunchIn ? autoExitTime : tempRecord.lunchIn,
+              lunchIn: tempRecord.lunchOut && !tempRecord.lunchIn ? fallbackLunchIn : tempRecord.lunchIn,
               exitTime: autoExitTime,
               totalHours,
               overtime,
@@ -1172,7 +1174,7 @@ export default function App() {
         const hasExit2 = isValidTimeStr(tempRecord.exitTime2);
 
         if (hasEntry2 && !hasExit2) {
-          const detectedShift = detectShiftFromPunchTime(tempRecord.entryTime2);
+          const detectedShift = emp?.assignedShift || detectShiftFromPunchTime(tempRecord.entryTime2);
           const shiftConfig = getShiftConfig(detectedShift);
           const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
           const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
@@ -1188,6 +1190,7 @@ export default function App() {
 
           if (now > thresholdDate) {
             const autoExitTime = shiftConfig.end;
+            const fallbackDinnerIn = tempRecord.dinnerOut ? addMinutesToTimeStr(tempRecord.dinnerOut, settings.lunchDurationMinutes || 60) : '';
             const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
               tempRecord.entryTime,
               tempRecord.exitTime,
@@ -1197,14 +1200,14 @@ export default function App() {
               tempRecord.entryTime2,
               autoExitTime,
               tempRecord.dinnerOut,
-              tempRecord.dinnerIn || (tempRecord.dinnerOut ? autoExitTime : ''),
+              tempRecord.dinnerIn || fallbackDinnerIn,
               tempRecord.selectedWorkLocation,
               emp?.assignedShift
             );
 
             tempRecord = {
               ...tempRecord,
-              dinnerIn: tempRecord.dinnerOut && !tempRecord.dinnerIn ? autoExitTime : tempRecord.dinnerIn,
+              dinnerIn: tempRecord.dinnerOut && !tempRecord.dinnerIn ? fallbackDinnerIn : tempRecord.dinnerIn,
               exitTime2: autoExitTime,
               totalHours,
               overtime,
@@ -2352,12 +2355,12 @@ export default function App() {
         {/* Main viewport */}
         <div className={`flex-1 flex flex-col ${layoutMode === 'desktop' ? 'lg:pl-72' : ''} min-w-0 min-h-screen pb-12`}>
           {isQuotaExceeded && (
-            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 text-xs font-mono font-medium flex items-center justify-between shadow-md print:hidden w-full shrink-0 animate-pulse">
+            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 text-xs font-mono font-medium flex items-center justify-between shadow-md print:hidden w-full shrink-0 animate-pulse animate-duration-5000">
               <div className="flex items-center space-x-2.5">
                 <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0 select-none" />
                 <span className="leading-relaxed">
                   <strong>Notice (सूचना):</strong> Firestore Daily Quota Exceeded. Safely operating in <strong>Offline Local-Cache Mode</strong>. 
-                  All punches, settings changes, and updates are preserved locally. <strong className="underline text-amber-100">No data will be lost (कोई डेटा नुकसान नहीं होगा)</strong>.
+                  All punches and updates are preserved locally. To upgrade or manage database limits, visit the <a href="https://console.firebase.google.com/project/substantial-comfort-j8gvj/firestore/databases/ai-studio-9fbfd28c-3019-482a-96f7-e9572f9b7159/data?openUpgradeDialog=true" target="_blank" rel="noopener noreferrer" className="underline font-bold text-amber-100 hover:text-white">Firestore Console Database Admin (रिसोर्स कोटा प्रबंधन)</a>.
                 </span>
               </div>
               <button 
@@ -2397,27 +2400,57 @@ export default function App() {
           </div>
 
           {/* Sync indicator caps */}
-          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-3.5">
-            {punchQueue.length > 0 && (
-              <div 
-                onClick={firebaseStatus === 'connected' ? syncOfflineQueue : undefined}
-                className={`flex items-center space-x-1 px-1.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono border select-none transition-all cursor-pointer ${
-                  firebaseStatus === 'connected' 
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-850 hover:bg-emerald-100/90 hover:border-emerald-300' 
-                    : 'bg-amber-50 border-amber-200 text-amber-850 hover:bg-amber-100/90 animate-pulse'
-                }`}
-                title={firebaseStatus === 'connected' ? "Connection restored! Click here to flush and sync queued punches immediately." : `${punchQueue.length} offline punches are locally saved. They will automatically sync when connection is recovered.`}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${firebaseStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <span>Q: {punchQueue.length}</span>
-              </div>
-            )}
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 max-w-full shrink">
+            {/* 1. Local Kiosk Indicator */}
+            <div 
+              onClick={() => {
+                if (punchQueue.length > 0) {
+                  syncOfflineQueue();
+                } else {
+                  alert("Local Kiosk: All punches are saved on this device! No pending count.");
+                }
+              }}
+              className={`flex items-center space-x-1 px-2 py-1 md:space-x-1.5 md:px-3 rounded-full text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider font-sans border select-none transition-all cursor-pointer hover:scale-[1.01] shrink-0 ${
+                isSyncingQueue
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : punchQueue.length > 0
+                    ? 'bg-amber-100 border-amber-300 text-amber-900 animate-pulse'
+                    : 'bg-rose-50/50 border-rose-100 text-rose-600 hover:bg-rose-50'
+              }`}
+              title="Local database storage and queued check-ins status"
+            >
+              {isSyncingQueue ? (
+                <Loader2 className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-spin" />
+              ) : punchQueue.length > 0 ? (
+                <Loader2 className="w-3.5 h-3.5 shrink-0 text-amber-500 animate-spin" />
+              ) : (
+                <Database className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+              )}
+              <span>
+                {isSyncingQueue ? (
+                  <>
+                    <span className="hidden md:inline-block">Local Kiosk: Syncing...</span>
+                    <span className="md:hidden">Syncing</span>
+                  </>
+                ) : punchQueue.length > 0 ? (
+                  <>
+                    <span className="hidden md:inline-block">Local Queue: {punchQueue.length} Pending</span>
+                    <span className="md:hidden">Queue: {punchQueue.length}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden md:inline-block">Local Storage: Saved</span>
+                    <span className="md:hidden">Local</span>
+                  </>
+                )}
+              </span>
+            </div>
 
-            {/* Unified connection status badge indicating Cloud Status vs Auto-Fallback Local Mode */}
+            {/* 2. Cloud Server Indicator */}
             <div 
               onClick={() => {
                 if (isLocalOnlyMode) {
-                  if (confirm("Would you like to try reconnecting to Google Cloud Firestore? If daily free limits are still exhausted, the kiosk will automatically run in local mode again.")) {
+                  if (confirm("Reconnect to Google Cloud Firestore?")) {
                     localStorage.removeItem('apex_local_only_mode');
                     localStorage.removeItem('apex_quota_exceeded');
                     setIsLocalOnlyMode(false);
@@ -2428,109 +2461,42 @@ export default function App() {
                   handleManualConnectionCheck();
                 }
               }}
-              className={`flex items-center space-x-1 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.01] shrink-0 ${
-                isLocalOnlyMode 
-                  ? 'bg-amber-100 border-amber-300 text-amber-900 hover:bg-amber-155' 
-                  : firebaseStatus === 'connected' 
-                    ? 'bg-emerald-50 border-emerald-250 text-emerald-800 hover:bg-emerald-100'
-                    : firebaseStatus === 'connecting'
-                      ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
-                      : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+              className={`flex items-center space-x-1 px-2 py-1 md:space-x-1.5 md:px-3 rounded-full text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider font-sans border select-none transition-all cursor-pointer hover:scale-[1.01] shrink-0 ${
+                firebaseStatus === 'connecting' || isMeasuringLatency
+                  ? 'bg-blue-50 border-blue-200 text-blue-800'
+                  : firebaseStatus === 'connected' && !isLocalOnlyMode
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-850 hover:bg-emerald-100'
+                    : 'bg-rose-50 border-rose-250 text-rose-700 hover:bg-rose-100'
               }`}
-              title={isLocalOnlyMode ? "Kiosk Engine: Local Mode (100% Free). Click to dry-run Cloud connection." : "Kiosk Engine: Cloud Database Sync Active. Click to ping handshake."}
+              title="Cloud Database Sync Connection. Click to check connection."
             >
-              {isLocalOnlyMode ? (
-                <CloudOff className="w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 text-amber-600 animate-pulse" />
+              {firebaseStatus === 'connecting' || isMeasuringLatency ? (
+                <Loader2 className="w-3.5 h-3.5 shrink-0 text-blue-600 animate-spin" />
+              ) : firebaseStatus === 'connected' && !isLocalOnlyMode ? (
+                <Cloud className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
               ) : (
-                <Cloud className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${firebaseStatus === 'connected' ? 'text-emerald-500 animate-pulse' : 'text-rose-500'}`} />
+                <CloudOff className="w-3.5 h-3.5 shrink-0 text-rose-400" />
               )}
-              {layoutMode === 'mobile' ? (
-                <span className="text-[9px] font-black">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
-              ) : (
-                <>
-                  <span className="hidden sm:inline-block">Kiosk: {isLocalOnlyMode ? 'Local Fail-Safe (Free)' : `Cloud: ${firebaseStatus === 'connected' ? 'Connected' : firebaseStatus.toUpperCase()}`}</span>
-                  <span className="sm:hidden text-[9px]">{isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? 'Cloud' : 'Off'}</span>
-                </>
-              )}
+              <span>
+                {firebaseStatus === 'connecting' || isMeasuringLatency ? (
+                  <>
+                    <span className="hidden md:inline-block">Cloud Status: Connecting...</span>
+                    <span className="md:hidden">Syncing</span>
+                  </>
+                ) : firebaseStatus === 'connected' && !isLocalOnlyMode ? (
+                  <>
+                    <span className="hidden md:inline-block">Cloud Sync: Connected</span>
+                    <span className="md:hidden">Cloud</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden md:inline-block">Cloud Status: Offline</span>
+                    <span className="md:hidden">Offline</span>
+                  </>
+                )}
+              </span>
             </div>
-
-            {/* Database Health Real-Time Latency Meter */}
-            <div 
-              onClick={measureDatabaseLatency}
-              className={`flex items-center space-x-1 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider font-mono border cursor-pointer select-none transition-all hover:scale-[1.01] shrink-0 ${
-                isLocalOnlyMode
-                  ? 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-                  : firebaseStatus === 'connected'
-                    ? dbLatency !== null
-                      ? dbLatency < 120
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                        : dbLatency < 350
-                          ? 'bg-teal-550 border-teal-200 text-teal-800 hover:bg-teal-100'
-                          : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-                      : 'bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100'
-                    : firebaseStatus === 'connecting' || isMeasuringLatency
-                      ? 'bg-amber-50 border-amber-150 text-amber-700 animate-pulse'
-                      : 'bg-rose-50 border-rose-250 text-rose-800 hover:bg-rose-100'
-              }`}
-              title={
-                isLocalOnlyMode 
-                  ? "Database operating in Local Browser Persistence mode (100% Free). Offline and fully functional." 
-                  : `Real-time latency check to Cloud Firestore. Click here to ping and measure database round-trip speed.`
-              }
-            >
-              <Activity className={`w-3 h-3 md:w-3.5 md:h-3.5 shrink-0 ${
-                isLocalOnlyMode
-                  ? 'text-amber-500'
-                  : firebaseStatus === 'connected'
-                    ? 'text-emerald-500 animate-pulse'
-                    : 'text-rose-500'
-              }`} />
-              
-              {layoutMode === 'mobile' ? (
-                <span className="text-[9px] font-black">
-                  {isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? (dbLatency !== null ? `${dbLatency}ms` : 'On') : 'Off'}
-                </span>
-              ) : (
-                <>
-                  <span className="hidden sm:inline-block">
-                    {isLocalOnlyMode ? (
-                      "DB: Local Mode"
-                    ) : firebaseStatus === 'connected' ? (
-                      dbLatency !== null ? `DB Speed: ${dbLatency}ms` : 'Cloud Status: Connected'
-                    ) : firebaseStatus === 'connecting' || isMeasuringLatency ? (
-                      "DB: Pinging..."
-                    ) : (
-                      "DB Status: Offline"
-                    )}
-                  </span>
-                  <span className="sm:hidden text-[9px]">
-                    {isLocalOnlyMode ? 'Local' : firebaseStatus === 'connected' ? (dbLatency !== null ? `${dbLatency}ms` : 'On') : 'Off'}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {appsScriptUrl ? (
-              <div 
-                className={`${layoutMode === 'mobile' ? 'hidden' : 'hidden md:flex'} items-center space-x-1 px-2 py-1 md:px-3 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
-                  syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700 animate-pulse'
-                }`}
-                title="Synchronized to real-time Apps Script rows"
-              >
-                <Wifi className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                <span className="hidden sm:inline-block">GAS Sheet: Connected</span>
-                <span className="sm:hidden text-[9px]">GAS</span>
-              </div>
-            ) : (
-              <div 
-                className={layoutMode === 'mobile' ? 'hidden' : "hidden md:flex items-center space-x-1 px-2 py-1 md:px-3 bg-slate-100 border border-slate-200 text-slate-550 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono"}
-                title="Mock database saving to browser localState"
-              >
-                <WifiOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="hidden sm:inline-block">LocalStorage Kiosk Active</span>
-                <span className="sm:hidden text-[9px]">LOCAL</span>
-              </div>
-            )}
+          </div>
 
             {/* View Layout Toggle */}
             <button
@@ -2689,7 +2655,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-          </div>
         </header>
 
         {/* View Router sheets */}
@@ -3063,6 +3028,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+
       </div>
     </div>
   );

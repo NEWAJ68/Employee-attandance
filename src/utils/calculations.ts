@@ -68,6 +68,17 @@ export const minutesToDecimalHours = (mins: number): number => {
 };
 
 /**
+ * Adds minutes to an HH:MM format time string and returns the new HH:MM string.
+ */
+export const addMinutesToTimeStr = (timeStr: string, minsToAdd: number): string => {
+  if (!timeStr || !isValidTimeStr(timeStr)) return '';
+  const totalMins = (timeToMinutes(timeStr) + minsToAdd) % 1440;
+  const h = Math.floor(totalMins / 60).toString().padStart(2, '0');
+  const m = (totalMins % 60).toString().padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+/**
  * Checks if a time is after a reference time
  */
 export const isTimeAfter = (timeStr: string, refStr: string): boolean => {
@@ -328,6 +339,11 @@ export const calculateAttendanceMetrics = (
     } else {
       lunchMins = settings.lunchDurationMinutes || 60;
     }
+    // Safety cap: If lunch duration is unreasonably long (e.g., > 120 mins), it's highly likely a forgotten punch-in.
+    // Fall back to standard lunch break to protect employee's worked hours.
+    if (lunchMins > 120) {
+      lunchMins = settings.lunchDurationMinutes || 60;
+    }
   }
 
   // Dinner break calculation
@@ -341,6 +357,11 @@ export const calculateAttendanceMetrics = (
         dinnerMins = (24 * 60 - doMins) + diMins;
       }
     } else {
+      dinnerMins = settings.lunchDurationMinutes || 60;
+    }
+    // Safety cap: If dinner duration is unreasonably long (e.g., > 120 mins), it's highly likely a forgotten punch-in.
+    // Fall back to standard break to protect employee's worked hours.
+    if (dinnerMins > 120) {
       dinnerMins = settings.lunchDurationMinutes || 60;
     }
   }
@@ -357,8 +378,8 @@ export const calculateAttendanceMetrics = (
   const actualIn = s1Entry || s2Entry;
   const actualOut = s2Exit || s1Exit;
 
-  // Retrieve active shift timings config automatically from punch-in time or fallback to assignedShift
-  const detectedShift = actualIn ? detectShiftFromPunchTime(actualIn) : (assignedShift || 'General Shift');
+  // Retrieve active shift timings config automatically from assignedShift or fallback to punch-in time detection
+  const detectedShift = assignedShift || (actualIn ? detectShiftFromPunchTime(actualIn) : 'General Shift');
   const shiftConfig = getShiftConfig(detectedShift);
 
   const inDiff = actualIn ? minutesDiffFromStart(actualIn, shiftConfig.start) : 0;
