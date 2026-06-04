@@ -234,13 +234,16 @@ export default function App() {
   };
 
   // Sync state helpers
-  const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(() => {
+  const [isLocalOnlyMode, setIsLocalOnlyMode] = useState<boolean>(false);
+
+  useEffect(() => {
     try {
-      return localStorage.getItem('apex_local_only_mode') === 'true';
-    } catch {
-      return false;
+      localStorage.removeItem('apex_local_only_mode');
+      localStorage.removeItem('apex_quota_exceeded');
+    } catch (e) {
+      console.error('Failed to clear persistent local-only flags:', e);
     }
-  });
+  }, []);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'error'>('synced');
@@ -342,8 +345,7 @@ export default function App() {
         setIsQuotaExceeded(true);
       }
 
-      console.warn('GCP Firestore subscription failed! Automatically transitioning database to Local-Only mode to avoid user disruption.');
-      localStorage.setItem('apex_local_only_mode', 'true');
+      console.warn('GCP Firestore subscription failed! Transitioning database temporarily to Local-Only mode to avoid user disruption.');
       setIsLocalOnlyMode(true);
       setFirebaseStatus('offline');
       setFirebaseError(null);
@@ -549,7 +551,6 @@ export default function App() {
         const isOnline = await testConnection();
         if (!isOnline) {
           console.warn('Database handshake timed out! Seamlessly transitioning to Local-Only mode.');
-          localStorage.setItem('apex_local_only_mode', 'true');
           setIsLocalOnlyMode(true);
           setFirebaseStatus('offline');
           setFirebaseError(null);
@@ -565,7 +566,6 @@ export default function App() {
         const isOnline = await testConnection();
         if (!isOnline) {
           console.warn('Direct connection failed! Seamlessly transitioning to Local-Only mode.');
-          localStorage.setItem('apex_local_only_mode', 'true');
           setIsLocalOnlyMode(true);
           setFirebaseStatus('offline');
           setFirebaseError(null);
@@ -889,12 +889,11 @@ export default function App() {
       }
       setIsQuotaExceeded(true);
       if (!isLocalOnlyMode) {
-        localStorage.setItem('apex_local_only_mode', 'true');
         setIsLocalOnlyMode(true);
         setFirebaseStatus('offline');
         handleRaiseNotification(
           'Database Quota Exceeded',
-          'The Firestore Cloud database has exceeded its free daily limit. Face-to-face features have safely auto-transitioned to offline local caching mode so no data is lost! Your attendance records are fully preserved.',
+          'The Firestore Cloud database has exceeded its free daily limit. Face-to-face features have safely auto-transitioned to offline local caching mode temporarily so no data is lost! Your attendance records are fully preserved.',
           'warning'
         );
       }
@@ -910,7 +909,7 @@ export default function App() {
   useEffect(() => {
     if (attendance.length === 0) return;
 
-    const runAutoClockOutCheck = () => {
+    const runAutoClockOutCheck = async () => {
       const now = new Date();
       const updatedRecords: AttendanceRecord[] = [];
 
@@ -920,12 +919,15 @@ export default function App() {
         const [y, m, d] = record.date.split('-').map(Number);
         if (isNaN(y) || isNaN(m) || isNaN(d)) continue;
 
+        let changed = false;
+        let tempRecord = { ...record };
+
         // Day Shift (Shift 1) Check
-        const hasEntry1 = isValidTimeStr(record.entryTime);
-        const hasExit1 = isValidTimeStr(record.exitTime);
+        const hasEntry1 = isValidTimeStr(tempRecord.entryTime);
+        const hasExit1 = isValidTimeStr(tempRecord.exitTime);
 
         if (hasEntry1 && !hasExit1) {
-          const detectedShift = detectShiftFromPunchTime(record.entryTime);
+          const detectedShift = detectShiftFromPunchTime(tempRecord.entryTime);
           const shiftConfig = getShiftConfig(detectedShift);
           const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
           const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
@@ -942,38 +944,38 @@ export default function App() {
           if (now > thresholdDate) {
             const autoExitTime = shiftConfig.end;
             const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
-              record.entryTime,
+              tempRecord.entryTime,
               autoExitTime,
-              record.lunchOut,
-              record.lunchIn || (record.lunchOut ? autoExitTime : ''),
+              tempRecord.lunchOut,
+              tempRecord.lunchIn || (tempRecord.lunchOut ? autoExitTime : ''),
               settings,
-              record.entryTime2,
-              record.exitTime2,
-              record.dinnerOut,
-              record.dinnerIn,
-              record.selectedWorkLocation,
+              tempRecord.entryTime2,
+              tempRecord.exitTime2,
+              tempRecord.dinnerOut,
+              tempRecord.dinnerIn,
+              tempRecord.selectedWorkLocation,
               emp?.assignedShift
             );
 
-            const updatedRecord: AttendanceRecord = {
-              ...record,
-              lunchIn: record.lunchOut && !record.lunchIn ? autoExitTime : record.lunchIn,
+            tempRecord = {
+              ...tempRecord,
+              lunchIn: tempRecord.lunchOut && !tempRecord.lunchIn ? autoExitTime : tempRecord.lunchIn,
               exitTime: autoExitTime,
               totalHours,
               overtime,
               status: [...statusFlags.filter(x => x !== 'Present'), 'Auto Out'].join(', '),
-              notes: (record.notes ? record.notes + ' ' : '') + '[System: Auto clocked out (forgot exit)]'
+              notes: (tempRecord.notes ? tempRecord.notes + ' ' : '') + '[System: Auto clocked out (forgot exit)]'
             };
-            updatedRecords.push(updatedRecord);
+            changed = true;
           }
         }
 
         // Night Shift/Second Shift (Shift 2) Check
-        const hasEntry2 = isValidTimeStr(record.entryTime2);
-        const hasExit2 = isValidTimeStr(record.exitTime2);
+        const hasEntry2 = isValidTimeStr(tempRecord.entryTime2);
+        const hasExit2 = isValidTimeStr(tempRecord.exitTime2);
 
         if (hasEntry2 && !hasExit2) {
-          const detectedShift = detectShiftFromPunchTime(record.entryTime2);
+          const detectedShift = detectShiftFromPunchTime(tempRecord.entryTime2);
           const shiftConfig = getShiftConfig(detectedShift);
           const [endHours, endMins] = shiftConfig.end.split(':').map(Number);
           const [startHours, startMins] = shiftConfig.start.split(':').map(Number);
@@ -990,51 +992,70 @@ export default function App() {
           if (now > thresholdDate) {
             const autoExitTime = shiftConfig.end;
             const { totalHours, overtime, statusFlags } = calculateAttendanceMetrics(
-              record.entryTime,
-              record.exitTime,
-              record.lunchOut,
-              record.lunchIn,
+              tempRecord.entryTime,
+              tempRecord.exitTime,
+              tempRecord.lunchOut,
+              tempRecord.lunchIn,
               settings,
-              record.entryTime2,
+              tempRecord.entryTime2,
               autoExitTime,
-              record.dinnerOut,
-              record.dinnerIn || (record.dinnerOut ? autoExitTime : ''),
-              record.selectedWorkLocation,
+              tempRecord.dinnerOut,
+              tempRecord.dinnerIn || (tempRecord.dinnerOut ? autoExitTime : ''),
+              tempRecord.selectedWorkLocation,
               emp?.assignedShift
             );
 
-            const updatedRecord: AttendanceRecord = {
-              ...record,
-              dinnerIn: record.dinnerOut && !record.dinnerIn ? autoExitTime : record.dinnerIn,
+            tempRecord = {
+              ...tempRecord,
+              dinnerIn: tempRecord.dinnerOut && !tempRecord.dinnerIn ? autoExitTime : tempRecord.dinnerIn,
               exitTime2: autoExitTime,
               totalHours,
               overtime,
               status: [...statusFlags.filter(x => x !== 'Night Shift' && x !== 'Night Shift Active'), 'Auto Out'].join(', '),
-              notes: (record.notes ? record.notes + ' ' : '') + '[System: Auto clocked out Shift 2 (forgot exit)]'
+              notes: (tempRecord.notes ? tempRecord.notes + ' ' : '') + '[System: Auto clocked out Shift 2 (forgot exit)]'
             };
-            updatedRecords.push(updatedRecord);
+            changed = true;
           }
+        }
+
+        if (changed) {
+          updatedRecords.push(tempRecord);
         }
       }
 
       if (updatedRecords.length > 0) {
         console.log(`Auto Clock Out triggered for ${updatedRecords.length} records.`);
-        updatedRecords.forEach(rec => {
-          handleUpdateAttendance(rec);
+        
+        // Update local state in a single atomic update to prevent triggering cascading useEffect checks
+        setAttendance((prev) => {
+          const filtered = prev.filter(r => !updatedRecords.some(ur => ur.date === r.date && ur.employeeId === r.employeeId));
+          return [...filtered, ...updatedRecords];
+        });
+
+        // Background Cloud Backup & Sheets sync
+        for (const rec of updatedRecords) {
+          const docId = `${rec.date}_${rec.employeeId}`;
+          try {
+            await setDoc(doc(db, 'attendance', docId), rec);
+            if (settings.autoSyncSheets) {
+              triggerRemoteSheetsSync('syncAttendance', { record: rec });
+            }
+          } catch (err) {
+            console.error('Failed to auto clock out backup sync:', err);
+          }
+
           handleRaiseNotification(
             'System Auto Check-Out',
             `Auto clocked out ${rec.employeeName} because they forgot to exit after their shift ended.`,
             'info',
             rec.employeeId
           );
-        });
+        }
       }
     };
 
-    // Run check immediately upon load/updates
     runAutoClockOutCheck();
 
-    // Set up check interval every 3 minutes (180000 ms) for maximum responsive accuracy
     const runTimer = setInterval(runAutoClockOutCheck, 180000);
     return () => clearInterval(runTimer);
   }, [attendance, employees, settings]);
@@ -1655,7 +1676,6 @@ export default function App() {
       if (isQuota) {
         setIsQuotaExceeded(true);
         if (!isLocalOnlyMode) {
-          localStorage.setItem('apex_local_only_mode', 'true');
           setIsLocalOnlyMode(true);
           setFirebaseStatus('offline');
           handleRaiseNotification(
@@ -1752,7 +1772,6 @@ export default function App() {
       if (isQuota) {
         setIsQuotaExceeded(true);
         if (!isLocalOnlyMode) {
-          localStorage.setItem('apex_local_only_mode', 'true');
           setIsLocalOnlyMode(true);
           setFirebaseStatus('offline');
           handleRaiseNotification(
@@ -1807,7 +1826,6 @@ export default function App() {
             console.error(e);
           }
           if (!isLocalOnlyMode) {
-            localStorage.setItem('apex_local_only_mode', 'true');
             setIsLocalOnlyMode(true);
             setFirebaseStatus('offline');
             handleRaiseNotification(
