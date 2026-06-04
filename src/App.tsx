@@ -42,31 +42,80 @@ import { db, auth, googleProvider, OperationType, handleFirestoreError, testConn
 
 // Wrapped setDoc to ensure absolute safety against undefined fields in Firestore operations. Checks if Local-Only Mode is active.
 const setDoc = (docRef: any, data: any, options?: any) => {
+  const cleaned = cleanFirestoreData(data);
   try {
-    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
     if (isLocal) {
-      console.log('Local-Only Mode active. Bypassing Firestore setDoc.');
+      console.log('Local-Only Mode active. Queueing surgical write for:', docRef?.path);
       localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      
+      if (docRef && docRef.path) {
+        const queueStr = localStorage.getItem('apex_unsynced_operations_queue_v1');
+        let queue: any[] = [];
+        if (queueStr) {
+          try {
+            queue = JSON.parse(queueStr);
+          } catch {
+            queue = [];
+          }
+        }
+        queue = queue.filter((op: any) => op.path !== docRef.path);
+        queue.push({
+          path: docRef.path,
+          action: 'set',
+          data: cleaned,
+          timestamp: Date.now()
+        });
+        localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(queue));
+      }
       return Promise.resolve();
     }
   } catch (e) {
-    console.error('LocalStorage check failed in global setDoc wrap:', e);
+    console.error('LocalStorage queue operation failed in setDoc:', e);
   }
-  const cleaned = cleanFirestoreData(data);
+
   const promise = options ? firestoreSetDoc(docRef, cleaned, options) : firestoreSetDoc(docRef, cleaned);
   return promise.catch((err) => {
     const errorStr = String(err?.message || err?.code || '').toLowerCase();
-    if (
+    const isQuota = 
       errorStr.includes('resource-exhausted') ||
       errorStr.includes('quota') ||
       errorStr.includes('limit exceeded') ||
-      errorStr.includes('billing')
-    ) {
+      errorStr.includes('billing');
+
+    if (isQuota) {
       if (typeof window !== 'undefined') {
         console.warn("Quota exceeded in setDoc! Dispatching quick global event...");
         window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
       }
     }
+
+    // Queue failed write operation so it's not lost
+    try {
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      if (docRef && docRef.path) {
+        const queueStr = localStorage.getItem('apex_unsynced_operations_queue_v1');
+        let queue: any[] = [];
+        if (queueStr) {
+          try {
+            queue = JSON.parse(queueStr);
+          } catch {
+            queue = [];
+          }
+        }
+        queue = queue.filter((op: any) => op.path !== docRef.path);
+        queue.push({
+          path: docRef.path,
+          action: 'set',
+          data: cleaned,
+          timestamp: Date.now()
+        });
+        localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(queue));
+      }
+    } catch (e) {
+      console.error('Failed to queue operation on firestore failure:', e);
+    }
+
     throw err;
   });
 };
@@ -74,28 +123,75 @@ const setDoc = (docRef: any, data: any, options?: any) => {
 // Wrapped deleteDoc to allow bypassing when Local-Only Mode is active.
 const deleteDoc = (docRef: any) => {
   try {
-    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true';
+    const isLocal = localStorage.getItem('apex_local_only_mode') === 'true' || (typeof navigator !== 'undefined' && !navigator.onLine);
     if (isLocal) {
-      console.log('Local-Only Mode active. Bypassing Firestore deleteDoc.');
+      console.log('Local-Only Mode active. Queueing surgical delete for:', docRef?.path);
       localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+
+      if (docRef && docRef.path) {
+        const queueStr = localStorage.getItem('apex_unsynced_operations_queue_v1');
+        let queue: any[] = [];
+        if (queueStr) {
+          try {
+            queue = JSON.parse(queueStr);
+          } catch {
+            queue = [];
+          }
+        }
+        queue = queue.filter((op: any) => op.path !== docRef.path);
+        queue.push({
+          path: docRef.path,
+          action: 'delete',
+          timestamp: Date.now()
+        });
+        localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(queue));
+      }
       return Promise.resolve();
     }
   } catch (e) {
-    console.error('LocalStorage check failed in global deleteDoc wrap:', e);
+    console.error('LocalStorage queue operation failed in deleteDoc:', e);
   }
+
   return firestoreDeleteDoc(docRef).catch((err) => {
     const errorStr = String(err?.message || err?.code || '').toLowerCase();
-    if (
+    const isQuota = 
       errorStr.includes('resource-exhausted') ||
       errorStr.includes('quota') ||
       errorStr.includes('limit exceeded') ||
-      errorStr.includes('billing')
-    ) {
+      errorStr.includes('billing');
+
+    if (isQuota) {
       if (typeof window !== 'undefined') {
         console.warn("Quota exceeded in deleteDoc! Dispatching quick global event...");
         window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
       }
     }
+
+    // Queue failed delete operation so it's not lost
+    try {
+      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      if (docRef && docRef.path) {
+        const queueStr = localStorage.getItem('apex_unsynced_operations_queue_v1');
+        let queue: any[] = [];
+        if (queueStr) {
+          try {
+            queue = JSON.parse(queueStr);
+          } catch {
+            queue = [];
+          }
+        }
+        queue = queue.filter((op: any) => op.path !== docRef.path);
+        queue.push({
+          path: docRef.path,
+          action: 'delete',
+          timestamp: Date.now()
+        });
+        localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(queue));
+      }
+    } catch (e) {
+      console.error('Failed to queue delete operation on firestore failure:', e);
+    }
+
     throw err;
   });
 };
@@ -493,63 +589,154 @@ export default function App() {
           return;
         }
 
-        const savedStr = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (!savedStr) return;
-        const parsed = JSON.parse(savedStr);
-        console.log('Detected local cached offline states with active unsynced changes. Initiating push of local records to Cloud Firestore for secure backup...');
-        
-        // Push settings
-        if (parsed.settings) {
-          await firestoreSetDoc(doc(db, 'settings', 'global'), parsed.settings);
+        // Retrieve queue
+        const queueStr = localStorage.getItem('apex_unsynced_operations_queue_v1');
+        let queue: Array<{ path: string; action: 'set' | 'delete'; data?: any; timestamp: number }> = [];
+        if (queueStr) {
+          try {
+            queue = JSON.parse(queueStr);
+          } catch {
+            queue = [];
+          }
         }
+
+        if (queue.length === 0) {
+          // Fallback / Upgrade: Construct queue from legacy local backup to avoid data regression
+          const savedStr = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (savedStr) {
+            try {
+              const parsed = JSON.parse(savedStr);
+              console.log('Reconstructing incremental change queue from legacy offline state to prevent data loss...');
+              
+              if (parsed.settings) {
+                queue.push({
+                  path: 'settings/global',
+                  action: 'set',
+                  data: parsed.settings,
+                  timestamp: Date.now()
+                });
+              }
+              
+              if (parsed.employees && Array.isArray(parsed.employees)) {
+                parsed.employees.forEach((emp: any) => {
+                  if (emp && emp.id) {
+                    queue.push({
+                      path: `employees/${emp.id}`,
+                      action: 'set',
+                      data: emp,
+                      timestamp: Date.now()
+                    });
+                  }
+                });
+              }
+              
+              if (parsed.attendance && Array.isArray(parsed.attendance)) {
+                parsed.attendance.forEach((rec: any) => {
+                  if (rec && rec.date && rec.employeeId) {
+                    queue.push({
+                      path: `attendance/${rec.date}_${rec.employeeId}`,
+                      action: 'set',
+                      data: rec,
+                      timestamp: Date.now()
+                    });
+                  }
+                });
+              }
+              
+              if (parsed.leaveRequests && Array.isArray(parsed.leaveRequests)) {
+                parsed.leaveRequests.forEach((req: any) => {
+                  if (req && req.id) {
+                    queue.push({
+                      path: `leaveRequests/${req.id}`,
+                      action: 'set',
+                      data: req,
+                      timestamp: Date.now()
+                    });
+                  }
+                });
+              }
+              
+              if (parsed.notifications && Array.isArray(parsed.notifications)) {
+                parsed.notifications.forEach((notif: any) => {
+                  if (notif && notif.id) {
+                    queue.push({
+                      path: `notifications/${notif.id}`,
+                      action: 'set',
+                      data: notif,
+                      timestamp: Date.now()
+                    });
+                  }
+                });
+              }
+              
+              if (parsed.expenses && Array.isArray(parsed.expenses)) {
+                parsed.expenses.forEach((exp: any) => {
+                  if (exp && exp.id) {
+                    queue.push({
+                      path: `expenses/${exp.id}`,
+                      action: 'set',
+                      data: exp,
+                      timestamp: Date.now()
+                    });
+                  }
+                });
+              }
+              
+              localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(queue));
+            } catch (err) {
+              console.error('Failed to reconstruct queue from legacy storage:', err);
+            }
+          }
+        }
+
+        if (queue.length === 0) {
+          console.log('No specific queued operations found. Resetting unsynced flag to prevent infinite loops.');
+          localStorage.setItem('apex_has_unsynced_offline_data', 'false');
+          return;
+        }
+
+        console.log(`Detected local cached offline states with ${queue.length} active unsynced changes. Initiating direct queue push...`);
+        const completedPaths: string[] = [];
         
-        // Push employees
-        if (parsed.employees && Array.isArray(parsed.employees)) {
-          for (const emp of parsed.employees) {
-            if (emp && emp.id) {
-              await firestoreSetDoc(doc(db, 'employees', emp.id), emp);
+        for (const op of queue) {
+          if (!op.path) continue;
+          const parts = op.path.split('/');
+          if (parts.length < 2) continue;
+          const colName = parts[0];
+          const docId = parts[1];
+          const docRef = doc(db, colName, docId);
+          
+          try {
+            if (op.action === 'set') {
+              const cleaned = cleanFirestoreData(op.data);
+              await firestoreSetDoc(docRef, cleaned);
+            } else if (op.action === 'delete') {
+              await firestoreDeleteDoc(docRef);
+            }
+            completedPaths.push(op.path);
+          } catch (err: any) {
+            console.error(`Failed to sync operation for path: ${op.path}`, err);
+            const errorStr = String(err?.message || err?.code || '').toLowerCase();
+            const isQuota = 
+              errorStr.includes('resource-exhausted') || 
+              errorStr.includes('quota') || 
+              errorStr.includes('limit exceeded') || 
+              errorStr.includes('billing');
+            
+            if (isQuota) {
+              throw err; // Stop executing loop, handle quota globally
             }
           }
         }
         
-        // Push attendance
-        if (parsed.attendance && Array.isArray(parsed.attendance)) {
-          for (const rec of parsed.attendance) {
-            if (rec && rec.date && rec.employeeId) {
-              const docId = `${rec.date}_${rec.employeeId}`;
-              await firestoreSetDoc(doc(db, 'attendance', docId), rec);
-            }
-          }
+        const remainingQueue = queue.filter(op => !completedPaths.includes(op.path));
+        if (remainingQueue.length > 0) {
+          localStorage.setItem('apex_unsynced_operations_queue_v1', JSON.stringify(remainingQueue));
+        } else {
+          localStorage.removeItem('apex_unsynced_operations_queue_v1');
+          localStorage.setItem('apex_has_unsynced_offline_data', 'false');
+          console.log('All queued operations synchronized successfully!');
         }
-        
-        // Push leaveRequests
-        if (parsed.leaveRequests && Array.isArray(parsed.leaveRequests)) {
-          for (const req of parsed.leaveRequests) {
-            if (req && req.id) {
-              await firestoreSetDoc(doc(db, 'leaveRequests', req.id), req);
-            }
-          }
-        }
-        
-        // Push notifications
-        if (parsed.notifications && Array.isArray(parsed.notifications)) {
-          for (const notif of parsed.notifications) {
-            if (notif && notif.id) {
-              await firestoreSetDoc(doc(db, 'notifications', notif.id), notif);
-            }
-          }
-        }
-        
-        // Push expenses
-        if (parsed.expenses && Array.isArray(parsed.expenses)) {
-          for (const exp of parsed.expenses) {
-            if (exp && exp.id) {
-              await firestoreSetDoc(doc(db, 'expenses', exp.id), exp);
-            }
-          }
-        }
-        console.log('Cloud upload completely synchronized!');
-        localStorage.setItem('apex_has_unsynced_offline_data', 'false');
       } catch (e) {
         console.error('Failed uploading local cached data to cloud:', e);
       }
@@ -1624,38 +1811,20 @@ export default function App() {
     // Optimistic state update: update local state instantly
     setExpenses((prev) => [newExpense, ...prev.filter(e => e.id !== newExpense.id)]);
 
-    // Determine connection state
-    const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine || isLocalOnlyMode;
-
-    if (isOfflineMode) {
-      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
-      return Promise.resolve();
-    } else {
-      // Fire Firestore write asynchronously in the background
-      return setDoc(doc(db, 'expenses', newExpense.id), newExpense).catch(err => {
-        console.warn('Firestore expense upload failed, saved locally:', err);
-        localStorage.setItem('apex_has_unsynced_offline_data', 'true');
-      });
-    }
+    // Fire Firestore write via custom wrapper which handles online vs queueing automatically
+    return setDoc(doc(db, 'expenses', newExpense.id), newExpense).catch(err => {
+      console.warn('Firestore expense upload failed, saved locally and queued:', err);
+    });
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
     // Optimistic state update: update local state instantly
     setExpenses((prev) => prev.filter(e => e.id !== expenseId));
 
-    // Determine connection state
-    const isOfflineMode = firebaseStatus === 'offline' || firebaseStatus === 'error' || !navigator.onLine || isLocalOnlyMode;
-
-    if (isOfflineMode) {
-      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
-      return Promise.resolve();
-    } else {
-      // Fire Firestore write asynchronously in the background
-      return deleteDoc(doc(db, 'expenses', expenseId)).catch(err => {
-        console.warn('Firestore expense deletion failed, saved locally:', err);
-        localStorage.setItem('apex_has_unsynced_offline_data', 'true');
-      });
-    }
+    // Fire Firestore write via custom wrapper which handles online vs queueing automatically
+    return deleteDoc(doc(db, 'expenses', expenseId)).catch(err => {
+      console.warn('Firestore expense deletion failed, saved locally and queued:', err);
+    });
   };
 
   // Leave system request submission
@@ -1809,7 +1978,7 @@ export default function App() {
     handleSaveToLocalStorage(employees, attendance, updatedSettings);
 
     if (isLocalOnlyMode) {
-      localStorage.setItem('apex_has_unsynced_offline_data', 'true');
+      setDoc(doc(db, 'settings', 'global'), updatedSettings);
       triggerRemoteSheetsSync('syncSettings', { settings: updatedSettings });
       return;
     }
