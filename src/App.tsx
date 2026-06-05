@@ -2355,20 +2355,36 @@ export default function App() {
         {/* Main viewport */}
         <div className={`flex-1 flex flex-col ${layoutMode === 'desktop' ? 'lg:pl-72' : ''} min-w-0 min-h-screen pb-12`}>
           {isQuotaExceeded && (
-            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 text-xs font-mono font-medium flex items-center justify-between shadow-md print:hidden w-full shrink-0 animate-pulse animate-duration-5000">
-              <div className="flex items-center space-x-2.5">
-                <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0 select-none" />
-                <span className="leading-relaxed">
-                  <strong>Notice (सूचना):</strong> Firestore Daily Quota Exceeded. Safely operating in <strong>Offline Local-Cache Mode</strong>. 
-                  All punches and updates are preserved locally. To upgrade or manage database limits, visit the <a href="https://console.firebase.google.com/project/substantial-comfort-j8gvj/firestore/databases/ai-studio-9fbfd28c-3019-482a-96f7-e9572f9b7159/data?openUpgradeDialog=true" target="_blank" rel="noopener noreferrer" className="underline font-bold text-amber-100 hover:text-white">Firestore Console Database Admin (रिसोर्स कोटा प्रबंधन)</a>.
-                </span>
+            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-3 text-xs font-mono font-medium flex flex-col md:flex-row md:items-center justify-between gap-2 shadow-md print:hidden w-full shrink-0">
+              <div className="flex items-start md:items-center space-x-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-200 shrink-0 select-none mt-0.5 md:mt-0" />
+                <div className="leading-relaxed">
+                  <div>
+                    <strong>Notice (सूचना):</strong> Firestore Daily Quota Exceeded. Safely operating in <strong>Offline Local-Cache Mode</strong>.
+                  </div>
+                  <div className="mt-1 text-amber-100 font-sans">
+                    🇮🇳 <strong>IST Reset Time:</strong> Firebase Free Quota daily midnight resets happen at <strong>12:00 AM Pacific Time (PST/PDT)</strong>. 
+                    This corresponds exactly to <strong>12:30 PM afternoon (दोपहर 12:30 बजे) Indian Standard Time (IST)</strong>. 
+                    सुबह 3:00 बजे (3 AM IST) कोटा रीसेट नहीं होता है। आप दोपहर के 12:30 बजे तक प्रतीक्षा कर सकते हैं या फिर डेटाबेस सीमा अपग्रेड कर सकते हैं।
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={() => setIsQuotaExceeded(false)}
-                className="ml-3 hover:text-amber-200 text-amber-100 font-bold underline cursor-pointer select-none shrink-0"
-              >
-                Dismiss
-              </button>
+              <div className="flex items-center space-x-3 shrink-0 mt-1 md:mt-0 self-end md:self-auto">
+                <a 
+                  href="https://console.firebase.google.com/project/substantial-comfort-j8gvj/firestore/databases/ai-studio-9fbfd28c-3019-482a-96f7-e9572f9b7159/data?openUpgradeDialog=true" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold rounded-lg transition-colors inline-block text-[10px]"
+                >
+                  Manage Limits (प्रबंधन)
+                </a>
+                <button 
+                  onClick={() => setIsQuotaExceeded(false)}
+                  className="hover:text-amber-200 text-amber-100 font-bold underline cursor-pointer select-none text-[11px]"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
 

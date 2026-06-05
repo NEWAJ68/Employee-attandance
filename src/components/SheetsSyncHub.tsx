@@ -61,7 +61,7 @@ export default function SheetsSyncHub({
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   const [adminUser, setAdminUser] = useState(settings.adminUsername || 'admin');
-  const [adminPass, setAdminPass] = useState(settings.adminPassword || 'admin123');
+  const [adminPass, setAdminPass] = useState(settings.adminPassword || 'Admin123?@');
   const [adminEmail, setAdminEmail] = useState(settings.adminEmail || 'shamimnewaj68@gmail.com');
   const [adminEmailSecondary, setAdminEmailSecondary] = useState(settings.adminEmailSecondary || '');
   const [adminRecoveryPin, setAdminRecoveryPin] = useState(settings.adminRecoveryKey || '123456');

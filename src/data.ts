@@ -48,7 +48,7 @@ export const INITIAL_SETTINGS: Settings = {
   autoSyncSheets: true,
   fixedShiftLocations: ['Hetero Changsari'],
   adminUsername: 'admin',
-  adminPassword: 'admin123',
+  adminPassword: 'Admin123?@',
   adminEmail: 'shamimnewaj68@gmail.com',
   adminEmailSecondary: '',
   adminRecoveryKey: '123456',
