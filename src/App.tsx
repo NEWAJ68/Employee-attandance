@@ -398,8 +398,15 @@ export default function App() {
         if (parsed.attendance) setAttendance(parsed.attendance);
         if (parsed.settings) setSettings(parsed.settings);
         if (parsed.appsScriptUrl) {
-          setAppsScriptUrl(parsed.appsScriptUrl);
-          setSyncStatus('synced');
+          const urlStr = String(parsed.appsScriptUrl).trim();
+          if (urlStr.startsWith('https://script.google.com/macros/s/')) {
+            setAppsScriptUrl(urlStr);
+            setSyncStatus('synced');
+          } else {
+            console.warn('Non-Apps Script URL detected. Automatically healed state to default demo URL.');
+            setAppsScriptUrl('https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec');
+            setSyncStatus('synced');
+          }
         } else {
           setAppsScriptUrl('https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec');
           setSyncStatus('synced');

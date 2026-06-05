@@ -169,6 +169,18 @@ export default function SheetsSyncHub({
     setTimeout(() => setCopiedIndex(null), 3000);
   };
 
+  React.useEffect(() => {
+    setInputUrl(appsScriptUrl);
+  }, [appsScriptUrl]);
+
+  const handleResetToDemoUrl = () => {
+    const demoUrl = 'https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec';
+    setInputUrl(demoUrl);
+    onUpdateUrl(demoUrl);
+    setTestConnectionStatus('idle');
+    setTestResponseMsg('');
+  };
+
   const handleSaveUrl = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateUrl(inputUrl.trim());
@@ -738,23 +750,35 @@ function saveSettings(configs) {
                 />
               </div>
 
-              <div className="flex space-x-2 pt-1.5">
-                <button
-                  id="btn-save-sync-url"
-                  type="submit"
-                  className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/10 cursor-pointer transition-colors"
-                >
-                  Save URL String
-                </button>
-                {inputUrl.trim() && (
+              <div className="flex flex-col gap-2 pt-1.5">
+                <div className="flex space-x-2">
                   <button
-                    id="btn-test-sync-connection"
-                    type="button"
-                    onClick={testLiveConnection}
-                    disabled={testConnectionStatus === 'testing'}
-                    className="px-3 py-2 text-xs font-bold text-slate-700 bg-slate-105 border hover:bg-slate-50 rounded-xl cursor-pointer"
+                    id="btn-save-sync-url"
+                    type="submit"
+                    className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/10 cursor-pointer transition-colors"
                   >
-                    Test Connect
+                    Save URL String
+                  </button>
+                  {inputUrl.trim() && (
+                    <button
+                      id="btn-test-sync-connection"
+                      type="button"
+                      onClick={testLiveConnection}
+                      disabled={testConnectionStatus === 'testing'}
+                      className="px-3 py-2 text-xs font-bold text-slate-700 bg-slate-105 border hover:bg-slate-50 rounded-xl cursor-pointer"
+                    >
+                      Test Connect
+                    </button>
+                  )}
+                </div>
+
+                {inputUrl !== 'https://script.google.com/macros/s/AKfycbwDemoGoogleSheetsSyncIntegrationActive/exec' && (
+                  <button
+                    type="button"
+                    onClick={handleResetToDemoUrl}
+                    className="w-full py-2 border border-dashed border-indigo-200/60 hover:border-indigo-300 bg-indigo-50/20 hover:bg-indigo-50 text-indigo-700 text-[10.5px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    🔄 Revert to Default Demo Stream (फ्री डिफ़ॉल्ट सिंक)
                   </button>
                 )}
               </div>
