@@ -780,14 +780,6 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   </div>
                 </div>
 
-                {(!settings?.adminPassword || settings.adminPassword === 'admin123' || settings.adminPassword === 'Admin123?@') && (
-                  <div className="bg-amber-50 border border-amber-100/60 rounded-xl p-3.5 text-[10.5px] text-amber-800 leading-normal flex items-start space-x-2 animate-pulse mt-2">
-                    <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <span>
-                      <strong>Default Credentials:</strong> This workspace is currently configured with the administrator password <strong>"Admin123?@"</strong> (or fallback <strong>"admin123"</strong>). Change this in the settings panel to secure your reports.
-                    </span>
-                  </div>
-                )}
               </>
             )}
 
