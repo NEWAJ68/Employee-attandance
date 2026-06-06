@@ -1284,7 +1284,6 @@ export default function MyAttendanceView({
               <span>Sheet: <span className="text-indigo-650 font-bold">{selectedMonth}</span></span>
             </h3>
 
-            {/* Quick Status Legends */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-3xs font-bold leading-none select-none">
               <div className="flex items-center gap-1">
                 <span className="h-4 w-4 rounded-md bg-emerald-150 border border-emerald-300 text-emerald-850 flex items-center justify-center font-mono text-[9px] font-black">P</span>
@@ -1293,6 +1292,10 @@ export default function MyAttendanceView({
               <div className="flex items-center gap-1">
                 <span className="h-4 w-4 rounded-md bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center font-mono text-[9px] font-black">L</span>
                 <span className="text-slate-500 font-sans uppercase">Late Entry</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="h-4 w-4 rounded-md bg-orange-100 border border-orange-300 text-orange-850 flex items-center justify-center font-mono text-[9px] font-black">HD</span>
+                <span className="text-slate-500 font-sans uppercase">Half Day</span>
               </div>
               <div className="flex items-center gap-1">
                 <span className="h-4 w-4 rounded-md bg-sky-100 border border-sky-300 text-sky-850 flex items-center justify-center font-mono text-[9px] font-black">N</span>
@@ -1347,7 +1350,7 @@ export default function MyAttendanceView({
               const isToday = getLocalDateString(new Date()) === dateStringVal;
 
               // Styles map based on status
-              let containerStyle = 'bg-white border-slate-150 text-slate-705';
+              let containerStyle = 'bg-white border-slate-150 text-slate-755';
               let badgeStyle = '';
               let badgeChar = '';
 
@@ -1361,12 +1364,17 @@ export default function MyAttendanceView({
                   case 'Late Entry':
                     containerStyle = 'bg-amber-50/30 border-amber-150 hover:bg-amber-50 text-amber-800';
                     badgeStyle = 'bg-amber-500 text-white border-amber-400 font-extrabold';
-                    badgeChar = 'LE';
+                    badgeChar = 'L';
+                    break;
+                  case 'Half Day':
+                    containerStyle = 'bg-orange-50/30 border-orange-150 hover:bg-orange-50 text-orange-850';
+                    badgeStyle = 'bg-orange-600 text-white border-orange-500 font-extrabold';
+                    badgeChar = 'HD';
                     break;
                   case 'Night Shift':
                     containerStyle = 'bg-sky-50/30 border-sky-150 hover:bg-sky-50 text-sky-800';
                     badgeStyle = 'bg-sky-600 text-white border-sky-500 font-extrabold';
-                    badgeChar = 'NS';
+                    badgeChar = 'N';
                     break;
                   case 'Weekly Off':
                     containerStyle = 'bg-slate-50/30 border-slate-120 text-slate-400';
@@ -1376,7 +1384,7 @@ export default function MyAttendanceView({
                   case 'On Leave':
                     containerStyle = 'bg-teal-50/30 border-teal-150 text-teal-800 hover:bg-teal-50';
                     badgeStyle = 'bg-teal-600 text-white border-teal-500 font-extrabold';
-                    badgeChar = 'L'; // 'L' for Leave as requested
+                    badgeChar = 'OL';
                     break;
                   case 'Pending':
                     containerStyle = 'bg-indigo-50/10 border-indigo-150 shadow-3xs border-dashed text-slate-400';
@@ -1390,7 +1398,7 @@ export default function MyAttendanceView({
                     break;
                   default: // Absent
                     containerStyle = 'bg-red-50/30 border-red-150 hover:bg-red-100 text-red-800';
-                    badgeStyle = 'bg-red-600 text-white border-red-500 font-extrabold shadow-3xs'; // RED background for Absent
+                    badgeStyle = 'bg-red-600 text-white border-red-500 font-extrabold shadow-3xs';
                     badgeChar = 'A';
                     break;
                 }
