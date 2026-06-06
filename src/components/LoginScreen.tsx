@@ -44,6 +44,7 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
   // Employee form states
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [empPin, setEmpPin] = useState(''); // Employee ID serves as security pin (e.g., EMP-101)
+  const [showEmployeePassword, setShowEmployeePassword] = useState(false);
 
   // Registration form states
   const [isRegistering, setIsRegistering] = useState(false);
@@ -678,15 +679,24 @@ export default function LoginScreen({ onLogin, companyName, employees, onAddEmpl
                   <label htmlFor="employee-pin" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono mb-1">
                     Private Password or passcode
                   </label>
-                  <input
-                    id="employee-pin"
-                    type="password"
-                    required
-                    value={empPin}
-                    onChange={(e) => setEmpPin(e.target.value)}
-                    placeholder="Enter your personal password / PIN"
-                    className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs font-mono font-bold transition-all"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      id="employee-pin"
+                      type={showEmployeePassword ? "text" : "password"}
+                      required
+                      value={empPin}
+                      onChange={(e) => setEmpPin(e.target.value)}
+                      placeholder="Enter your personal password / PIN"
+                      className="appearance-none block w-full pl-4 pr-10 py-3 border border-slate-200 rounded-xl shadow-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs font-mono font-bold transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEmployeePassword(!showEmployeePassword)}
+                      className="absolute right-3.5 text-slate-400 hover:text-slate-650 transition-colors p-1 cursor-pointer"
+                    >
+                      {showEmployeePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-1.5 pt-1 border-t border-slate-50">
                     <p className="text-[10px] text-slate-400 font-sans leading-normal">
                       * Enter your custom passcode to protect your records.
